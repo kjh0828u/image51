@@ -4,6 +4,7 @@ const nextConfig: NextConfig = {
   devIndicators: false,
   eslint: { ignoreDuringBuilds: true },
   typescript: { ignoreBuildErrors: true },
+  output: 'export',
 };
 
 export default nextConfig;

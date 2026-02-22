@@ -421,10 +421,14 @@ export default function Home() {
                             <p className="text-sm font-bold truncate text-white/90">{img.file.name}</p>
                             <div className="flex items-center gap-2 mt-1">
                               <span className={cn("text-[10px] px-2 py-0.5 rounded-full font-bold uppercase", img.status === 'processing' ? 'bg-indigo-500/20 text-indigo-400' : img.status === 'done' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-white/5 text-white/40')}>{img.status}</span>
-                              {img.status === 'done' && <span className="text-[10px] text-white/20">{formatBytes(img.processedSize!)}</span>}
+                              {img.status === 'done' && <span className="text-[10px] text-white/50">{formatBytes(img.processedSize!)}</span>}
+                              {img.isDownloaded && <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-white/5 text-white/80 flex items-center gap-1"><Check className="w-2.5 h-2.5" />저장됨</span>}
                             </div>
                           </div>
                           <div className="flex items-center gap-1">
+                            {img.status === 'done' && img.processedUrl && (
+                              <button onClick={() => handleSingleDownload(img)} className={cn("p-2 transition-colors", img.isDownloaded ? "text-white/15 hover:text-white/30" : "text-white/50 hover:text-emerald-400")}><Download className="w-5 h-5" /></button>
+                            )}
                             <button onClick={() => store.removeImage(img.id)} className="p-2 text-white/20 hover:text-red-400 transition-colors"><Trash2 className="w-5 h-5" /></button>
                           </div>
                         </div>

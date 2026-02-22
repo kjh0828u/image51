@@ -122,6 +122,18 @@ function SortablePresetItem({ p, isActive, onLoad, onUpdate, onRename, onDelete 
   );
 }
 
+function Glass({ children, className, contentClassName, variant = 'default' }: { children: React.ReactNode, className?: string, contentClassName?: string, variant?: 'default' | 'bright' | 'thick' | 'card' }) {
+  const variantClass = variant === 'default' ? 'glass' : `glass-${variant}`;
+  return (
+    <div className={cn("glass-container", variantClass, className)}>
+      <div className="glass-filter" />
+      <div className="glass-overlay" />
+      <div className="glass-specular" />
+      <div className={cn("glass-content", contentClassName)}>{children}</div>
+    </div>
+  );
+}
+
 export default function Home() {
   const isHydrated = useHydrate();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -296,7 +308,15 @@ export default function Home() {
   if (!isHydrated) return null;
 
   return (
-    <div className="min-h-screen bg-galaxy text-neutral-200 flex flex-col font-sans selection:bg-indigo-500/30">
+    <div className="min-h-screen bg-galaxy text-white flex flex-col font-sans selection:bg-indigo-500/30">
+      {/* SVG Filter for Liquid Glass distortion - Top level for reliability */}
+      <svg width="0" height="0" className="absolute pointer-events-none overflow-hidden" aria-hidden="true">
+        <filter id="lg-dist" x="-50%" y="-50%" width="200%" height="200%" filterUnits="objectBoundingBox">
+          <feTurbulence type="fractalNoise" baseFrequency="0.012 0.012" numOctaves="4" seed="92" result="noise" />
+          <feGaussianBlur in="noise" stdDeviation="2" result="blurred" />
+          <feDisplacementMap in="SourceGraphic" in2="blurred" scale="120" xChannelSelector="R" yChannelSelector="G" />
+        </filter>
+      </svg>
       {/* Header */}
       <header className="z-20 w-full px-8 py-3.5">
         <div className="max-w-[1400px] mx-auto flex items-center justify-between">
@@ -359,61 +379,63 @@ export default function Home() {
         )
       }
 
-      <main className="flex-1 w-full max-w-[1400px] mx-auto flex items-start p-8 pt-2 gap-8 overflow-hidden">
+      <main className="flex-1 w-full max-w-[1500px] mx-auto flex items-start px-12 pt-3 pb-32 gap-6 overflow-hidden h-[calc(100vh-64px-48px)]">
         {/* Left Sidebar */}
-        <div className="w-[480px] flex flex-col gap-6 overflow-y-auto custom-scrollbar pr-2 sticky top-0 h-full">
+        <div className="w-[520px] flex flex-col gap-5 overflow-y-auto custom-scrollbar px-6 h-full">
           {/* Upload Section */}
           <section className="flex flex-col">
-            <h2 className="text-sm font-bold mb-4 px-1 text-white/90">이미지 업로드</h2>
-            <div onDragOver={handleDragOver} onDrop={handleDrop} onClick={() => fileInputRef.current?.click()} className="glass-bright rounded-3xl p-8 flex flex-col items-center justify-center cursor-pointer hover:border-white/30 transition-all duration-300 min-h-[320px] group border-dashed">
-              {store.images.length === 0 ? (
-                <>
-                  <div className="w-16 h-16 rounded-full border border-white/20 flex items-center justify-center mb-6 text-white/60 group-hover:scale-110 group-hover:text-white transition-all">
-                    <Plus className="w-8 h-8" />
-                  </div>
-                  <p className="text-center font-bold text-lg text-white/80 leading-snug">Click or<br /><span className="text-indigo-400">drag here</span></p>
-                </>
-              ) : (
-                <div className="w-full space-y-3 cursor-default" onClick={e => e.stopPropagation()}>
-                  {store.images.map(img => (
-                    <div key={img.id} className="bg-white/5 backdrop-blur-md rounded-2xl p-4 flex items-center gap-4 border border-white/10">
-                      <div className="w-14 h-14 rounded-xl checkered-bg relative overflow-hidden flex-shrink-0 border border-white/10">
-                        <img src={img.status === 'done' ? img.processedUrl! : img.previewUrl} className="w-full h-full object-contain" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-bold truncate text-white/90">{img.file.name}</p>
-                        <div className="flex items-center gap-2 mt-1">
-                          <span className={cn("text-[10px] px-2 py-0.5 rounded-full font-bold uppercase", img.status === 'processing' ? 'bg-indigo-500/20 text-indigo-400' : img.status === 'done' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-white/5 text-white/40')}>{img.status}</span>
-                          {img.status === 'done' && <span className="text-[10px] text-white/20">{formatBytes(img.processedSize!)}</span>}
+            <h2 className="text-[14px] font-bold mb-2 px-2 text-white/60 uppercase tracking-widest">이미지 업로드</h2>
+            <div onDragOver={handleDragOver} onDrop={handleDrop} onClick={() => fileInputRef.current?.click()}>
+              <Glass variant="bright" className="rounded-3xl cursor-pointer hover:scale-[1.02] transition-all duration-300 min-h-[380px] group border-dashed border-white/10 hover:border-white/20" contentClassName="flex flex-col items-center justify-center h-full min-h-[380px] py-28">
+                {store.images.length === 0 ? (
+                  <>
+                    <div className="w-20 h-20 rounded-full border border-white/10 flex items-center justify-center mb-6 text-white/40 group-hover:scale-110 group-hover:text-white transition-all bg-white/5">
+                      <Plus className="w-10 h-10" />
+                    </div>
+                    <p className="text-center font-bold text-xl text-white leading-tight">Click or<br /><span className="text-indigo-400">drag & drop</span></p>
+                  </>
+                ) : (
+                  <div className="w-full space-y-3 cursor-default" onClick={e => e.stopPropagation()}>
+                    {store.images.map(img => (
+                      <div key={img.id} className="bg-white/5 backdrop-blur-md rounded-2xl p-4 flex items-center gap-4 border border-white/10">
+                        <div className="w-14 h-14 rounded-xl checkered-bg relative overflow-hidden flex-shrink-0 border border-white/10">
+                          <img src={img.status === 'done' ? img.processedUrl! : img.previewUrl} className="w-full h-full object-contain" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-bold truncate text-white/90">{img.file.name}</p>
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className={cn("text-[10px] px-2 py-0.5 rounded-full font-bold uppercase", img.status === 'processing' ? 'bg-indigo-500/20 text-indigo-400' : img.status === 'done' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-white/5 text-white/40')}>{img.status}</span>
+                            {img.status === 'done' && <span className="text-[10px] text-white/20">{formatBytes(img.processedSize!)}</span>}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <button onClick={() => store.removeImage(img.id)} className="p-2 text-white/20 hover:text-red-400 transition-colors"><Trash2 className="w-5 h-5" /></button>
                         </div>
                       </div>
-                      <div className="flex items-center gap-1">
-                        <button onClick={() => store.removeImage(img.id)} className="p-2 text-white/20 hover:text-red-400 transition-colors"><Trash2 className="w-5 h-5" /></button>
-                      </div>
+                    ))}
+                    <div className="flex justify-center gap-6 pt-4 border-t border-white/5 mt-4">
+                      <button onClick={() => fileInputRef.current?.click()} className="text-sm font-bold text-indigo-400 hover:text-white transition-colors underline underline-offset-4">+ 이미지 추가</button>
+                      <button onClick={() => store.clearImages()} className="text-sm font-bold text-white/30 hover:text-red-400 transition-colors underline underline-offset-4">모두 지우기</button>
                     </div>
-                  ))}
-                  <div className="flex justify-center gap-6 pt-4 border-t border-white/5 mt-4">
-                    <button onClick={() => fileInputRef.current?.click()} className="text-sm font-bold text-indigo-400 hover:text-white transition-colors underline underline-offset-4">+ 이미지 추가</button>
-                    <button onClick={() => store.clearImages()} className="text-sm font-bold text-white/30 hover:text-red-400 transition-colors underline underline-offset-4">모두 지우기</button>
                   </div>
-                </div>
-              )}
-              <input type="file" multiple accept="image/*" className="hidden" ref={fileInputRef} onChange={(e) => { if (e.target.files) store.addImages(Array.from(e.target.files)); e.target.value = ''; }} />
+                )}
+                <input type="file" multiple accept="image/*" className="hidden" ref={fileInputRef} onChange={(e) => { if (e.target.files) store.addImages(Array.from(e.target.files)); e.target.value = ''; }} />
+              </Glass>
             </div>
           </section>
 
           {/* Profile Section */}
           <section className="flex flex-col">
-            <h2 className="text-sm font-bold mb-4 px-1 text-white/90 flex items-center justify-between">
+            <h2 className="text-[14px] font-bold mb-2 px-2 text-white/60 uppercase tracking-widest flex items-center justify-between">
               <span>프리셋 관리</span>
               <div className="flex gap-2">
-                <button onClick={() => { const n = prompt('이름:'); if (n) store.saveProfile(n) }} className="p-1 hover:bg-white/5 rounded cursor-pointer"><Plus className="w-4 h-4" /></button>
+                <button onClick={() => { const n = prompt('이름:'); if (n) store.saveProfile(n) }} className="p-1.5 hover:bg-white/10 rounded-lg cursor-pointer transition-colors"><Plus className="w-3.5 h-3.5" /></button>
               </div>
             </h2>
-            <div className="panel glass-thick h-[220px] flex flex-col overflow-hidden px-5 py-4">
+            <Glass variant="thick" className="h-[260px] overflow-hidden" contentClassName="flex flex-col h-full px-5 py-4">
               <div className="flex-1 overflow-y-auto p-2 pr-4 space-y-1 custom-scrollbar">
                 {store.profiles.length === 0 ? (
-                  <p className="text-center py-18 text-sm text-white/50">옵션 구성을 프리셋으로 저장해 보세요.</p>
+                  <p className="text-center py-24 text-sm text-white/50">옵션 구성을 프리셋으로 저장해 보세요.</p>
                 ) : (
                   <DndContext
                     sensors={sensors}
@@ -450,39 +472,39 @@ export default function Home() {
                   </DndContext>
                 )}
               </div>
-            </div>
+            </Glass>
           </section>
         </div>
 
         {/* Right Content */}
-        <div className="flex-1 overflow-y-auto custom-scrollbar h-full pb-32">
-          <h2 className="text-sm font-bold mb-4 text-white/90">변환 옵션</h2>
-          <div className="grid grid-cols-2 gap-6">
+        <div className="flex-1 overflow-y-auto custom-scrollbar h-full pr-1 pb-40">
+          <h2 className="text-[14px] font-bold mb-2 px-2 text-white/60 uppercase tracking-widest">변환 옵션</h2>
+          <div className="grid grid-cols-2 gap-5">
             {/* 1. Auto Crop */}
-            <div className="card">
+            <Glass variant="card" contentClassName="h-full">
               <div className="card-header"><span>여백 제거<span className="text-xs font-bold text-neutral-400 pl-2">(Auto Crop)</span></span><ToggleSwitch checked={store.enableAutoCrop} onChange={c => store.setOption('enableAutoCrop', c)} /></div>
               <div className={cn("card-content", !store.enableAutoCrop && "card-content-disabled")}>
                 <div className="flex justify-between mb-1"><span className="input-label">여백을 없애고 사물에 맞게 조정</span><span className="text-sm font-black text-indigo-400">{store.autoCropMargin}</span></div>
                 <input type="range" min="0" max="100" value={store.autoCropMargin} onChange={e => store.setOption('autoCropMargin', Number(e.target.value))} className="range-slider w-full" />
               </div>
-            </div>
+            </Glass>
 
             {/* 2. Compression */}
-            <div className="card">
+            <Glass variant="card" contentClassName="h-full">
               <div className="card-header"><span>이미지 압축<span className="text-xs font-bold text-neutral-400 pl-2">(Compress)</span></span><ToggleSwitch checked={store.enableCompress} onChange={c => store.setOption('enableCompress', c)} /></div>
               <div className={cn("card-content", !store.enableCompress && "card-content-disabled")}>
                 <div className="flex justify-between mb-1"><span className="input-label">품질 (%)</span><span className="text-sm font-black text-indigo-400">{store.quality}</span></div>
                 <input type="range" min="1" max="100" value={store.quality} onChange={e => store.setOption('quality', Number(e.target.value))} className="range-slider w-full" />
               </div>
-            </div>
+            </Glass>
 
             {/* 3. Resize */}
-            <div className="card relative">
+            <Glass variant="card" className="relative" contentClassName="h-full">
               <div className="card-header"><span>이미지 크기 조절<span className="text-xs font-bold text-neutral-400 pl-2">(Resize)</span></span><ToggleSwitch checked={store.enableResize} onChange={c => store.setOption('enableResize', c)} /></div>
               <div className={cn("card-content grid grid-cols-2 gap-x-4", !store.enableResize && "card-content-disabled")}>
 
-                <div><p className="input-label">가로</p><input type="text" value={store.resizeWidth} onChange={handleWidthChange} className="w-full bg-black/40 border border-white/5 rounded-xl px-4 py-2 text-sm" placeholder="Auto" /></div>
-                <div><p className="input-label">세로</p><input type="text" value={store.resizeHeight} onChange={handleHeightChange} className="w-full bg-black/40 border border-white/5 rounded-xl px-4 py-2 text-sm" placeholder="Auto" /></div>
+                <div className="mb-3"><p className="input-label">가로</p><input type="text" value={store.resizeWidth} onChange={handleWidthChange} className="w-full bg-black/40 border border-white/5 rounded-xl px-4 py-2 text-sm" placeholder="Auto" /></div>
+                <div className="mb-3"><p className="input-label">세로</p><input type="text" value={store.resizeHeight} onChange={handleHeightChange} className="w-full bg-black/40 border border-white/5 rounded-xl px-4 py-2 text-sm" placeholder="Auto" /></div>
 
                 <div className="col-span-2 flex items-center justify-between ">
                   <span className="text-xs font-bold text-white/40">비율 유지</span>
@@ -491,10 +513,10 @@ export default function Home() {
               </div>
               {ratioTooltip && <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-red-500 text-white text-[11px] px-3 py-1.5 rounded-lg whitespace-nowrap animate-bounce">⚠️ {ratioTooltip.msg}</div>}
               {resizeError && <p className="text-[10px] text-red-500 text-center mt-2">{resizeError}</p>}
-            </div>
+            </Glass>
 
             {/* 4. Grayscale */}
-            <div className="card">
+            <Glass variant="card" contentClassName="h-full">
               <div className="card-header"><span>흑백 처리<span className="text-xs font-bold text-neutral-400 pl-2">(Grayscale)</span></span><ToggleSwitch checked={store.enableGrayscale} onChange={c => store.setOption('enableGrayscale', c)} /></div>
               <div className={cn("card-content", !store.enableGrayscale && "card-content-disabled")}>
                 <div className="flex justify-between mb-1">
@@ -503,14 +525,14 @@ export default function Home() {
                 </div>
                 <input type="range" min="0" max="100" value={store.grayscale} onChange={e => store.setOption('grayscale', Number(e.target.value))} className="range-slider w-full" />
               </div>
-            </div>
+            </Glass>
 
 
             {/* 6. AI BG Removal (Detailed) */}
-            <div className="col-span-2 card p-0 overflow-hidden">
-              <div className="px-6 py-3 flex justify-between items-center bg-white/5 border-b border-white/5">
+            <Glass variant="card" className="col-span-2 p-0 overflow-hidden" contentClassName="h-full">
+              <div className="px-6 py-3 pb-2 flex justify-between items-center bg-white/5 border-b border-white/5">
                 <div className="flex items-center gap-3">
-                  <p className="font-black text-white tracking-tight text-sm">배경 제거 </p>
+                  <p className="font-black text-white tracking-tight text-[13px]">배경 제거 </p>
                   <span className="text-xs font-bold text-neutral-400">(Remove bg)</span>
                 </div>
                 <ToggleSwitch checked={store.enableBgRemoval} onChange={c => store.setOption('enableBgRemoval', c)} />
@@ -525,7 +547,7 @@ export default function Home() {
                     </div>
 
                     <div className={cn("space-y-6 transition-opacity", !store.detailRemoval && "opacity-20 pointer-events-none")}>
-                      <div className="flex items-center gap-3 pb-2">
+                      <div className="flex items-center gap-3">
                         <span className="text-xs font-bold text-white/60">경계 부드럽게</span>
                         <ToggleSwitch checked={store.alphaMatting} onChange={c => store.setOption('alphaMatting', c)} size="small" />
                       </div>
@@ -595,14 +617,14 @@ export default function Home() {
                   </div>
                 </div>
               </div>
-            </div>
+            </Glass>
           </div>
 
           {/* Floating Actions */}
-          <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 flex items-center gap-4">
-            <button onClick={handleStartProcessing} disabled={store.images.filter(i => i.status === 'pending').length === 0} className="px-10 py-3.5 rounded-full bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-black hover:scale-105 active:scale-95 transition-all shadow-2xl disabled:opacity-30 uppercase tracking-tighter italic">변환 시작</button>
+          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-4">
+            <button onClick={handleStartProcessing} disabled={store.images.filter(i => i.status === 'pending').length === 0} className="px-9 py-2.5 rounded-full bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-black hover:scale-105 active:scale-95 transition-all shadow-2xl disabled:opacity-30 uppercase tracking-tighter italic">변환 시작</button>
             {store.images.filter(i => i.status === 'done' && !i.isDownloaded).length > 0 && (
-              <button onClick={handleDownloadAll} className="px-10 py-3.5 rounded-full bg-white text-indigo-600 font-black hover:scale-105 active:scale-95 transition-all shadow-2xl uppercase tracking-tighter italic border border-indigo-100 flex items-center gap-2">
+              <button onClick={handleDownloadAll} className="px-9 py-2.5 rounded-full bg-white text-indigo-600 font-black hover:scale-105 active:scale-95 transition-all shadow-2xl uppercase tracking-tighter italic border border-indigo-100 flex items-center gap-2">
                 <Download className="w-5 h-5" /> 일괄 다운로드
               </button>
             )}
@@ -630,14 +652,15 @@ export default function Home() {
         .range-slider { -webkit-appearance: none; height: 4px; background: rgba(255,255,255,0.05); border-radius: 2px; outline: none; }
         .range-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; background: white; border-radius: 50%; cursor: pointer; border: 2px solid #6366f1; box-shadow: 0 0 10px rgba(99,102,241,0.5); }
       `}} />
+
     </div >
   );
 }
 
 function ToggleSwitch({ checked, onChange, size = 'default' }: { checked: boolean, onChange: (val: boolean) => void, size?: 'default' | 'small' }) {
   return (
-    <div onClick={() => onChange(!checked)} className={cn("relative rounded-full cursor-pointer transition-all flex items-center shadow-inner", size === 'small' ? 'w-8 h-4' : 'w-10 h-5', checked ? "bg-indigo-500" : "bg-white/5")}>
-      <div className={cn("bg-white rounded-full transition-all shadow-md", size === 'small' ? 'w-3 h-3 ml-0.5' : 'w-4 h-4 ml-0.5', checked ? (size === 'small' ? 'translate-x-4' : 'translate-x-5') : 'translate-x-0')} />
+    <div onClick={() => onChange(!checked)} className={cn("relative rounded-full cursor-pointer transition-all flex items-center shadow-inner", size === 'small' ? 'w-9 h-5' : 'w-11 h-6', checked ? "bg-indigo-500" : "bg-white/10")}>
+      <div className={cn("bg-white rounded-full transition-all shadow-md", size === 'small' ? 'w-3.5 h-3.5 ml-0.5' : 'w-4.5 h-4.5 ml-0.8', checked ? (size === 'small' ? 'translate-x-4.5' : 'translate-x-5') : 'translate-x-0')} />
     </div>
   );
 }

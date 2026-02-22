@@ -1,108 +1,151 @@
 @import "tailwindcss";
 
 :root {
-  --background: #0d0d15;
-  --foreground: #ededed;
+  --background: #000000;
+  --foreground: #ffffff;
 
-  /* Unified Glass Design System - Restored Original Strengths */
-  --glass-surface: rgba(255, 255, 255, 0.05);
-  --glass-surface-bright: rgba(255, 255, 255, 0.1);
-  --glass-surface-bright-s: rgba(255, 255, 255, 0.07);
-  --glass-border: rgba(255, 255, 255, 0.08);
-  --glass-border-bright: rgba(139, 92, 246, 0.25);
-  --glass-blur: 16px;
+  /* Apple Liquid Glass Variables from Source */
+  --lg-bg-color: rgba(255, 255, 255, 0.02);
+  --lg-highlight: rgba(255, 255, 255, 0.45);
+  --lg-highlight2: rgba(255, 255, 255, 0.55);
+  --lg-text: #ffffff;
+  --lg-border-color: rgba(255, 255, 255, 0.15);
 
-  --accent-primary: #8b5cf6;
-  --accent-secondary: #d946ef;
+  --glass-blur: 24px;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
 }
 
 body {
-  background: var(--background);
+  background-image:
+    linear-gradient(rgba(13, 13, 21, 0.9), rgba(13, 13, 21, 0.9)),
+    url('/bg.jpg');
+  background-size: cover;
+  background-position: center;
+  background-attachment: fixed;
   color: var(--foreground);
-  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  overflow-x: hidden;
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 }
 
-/* Base Glass Class */
+/* ========== APPLE LIQUID GLASS SOURCE CSS ========== */
+
+.glass-container {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  background: transparent !important;
+  border-radius: 1.7rem;
+  overflow: hidden;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
+  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 2.2);
+}
+
+.glass-filter {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  backdrop-filter: blur(var(--glass-blur, 24px));
+  -webkit-backdrop-filter: blur(var(--glass-blur, 24px));
+  filter: url(#lg-dist);
+  isolation: isolate;
+  pointer-events: none;
+}
+
+.glass-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: var(--lg-bg-color);
+  pointer-events: none;
+}
+
+.glass-specular {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  border-radius: inherit;
+  overflow: hidden;
+  box-shadow: inset 0.4px 0.4px 0 var(--lg-highlight2),
+    inset 0 0 0.8px var(--lg-highlight);
+  border: 1px solid var(--lg-border-color);
+  pointer-events: none;
+}
+
+.glass-content {
+  position: relative;
+  z-index: 3;
+  width: 100%;
+  height: auto;
+  min-height: 100%;
+  /* Ensure it takes full height of container if given */
+  display: flex;
+  flex-direction: column;
+}
+
+/* Compatibility Utilities */
 @utility glass {
-  background: var(--glass-surface);
-  backdrop-filter: blur(var(--glass-blur)) saturate(180%);
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(180%);
-  border: 1px solid var(--glass-border);
+  @apply rounded-3xl;
+  /* We use the component version in page.tsx for the layers */
 }
 
 @utility glass-bright {
-  background: var(--glass-surface-bright);
-  backdrop-filter: blur(20px) saturate(200%);
-  border: 1px solid var(--glass-border-bright);
-  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
+  @apply glass;
+  --lg-bg-color: rgba(255, 255, 255, 0.35);
 }
 
-
-@utility glass-bright-s {
-  background: var(--glass-surface-bright-s);
-  backdrop-filter: blur(20px) saturate(200%);
-  border: 1px solid var(--glass-border-bright);
-  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
-}
-
-@utility glass-thick {
-  background: rgba(255, 255, 255, 0.07);
-  backdrop-filter: blur(25px) saturate(210%);
-  border: 1px solid rgba(255, 255, 255, 0.15);
+@utility card-glass {
+  @apply glass;
+  --lg-bg-color: rgba(255, 255, 255, 0.15);
 }
 
 @layer components {
   .panel {
-    @apply glass rounded-2xl p-6 transition-all duration-300;
+    @apply rounded-3xl overflow-hidden;
   }
 
   .card {
-    @apply glass-bright-s p-5 rounded-2xl transition-all duration-300;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-  }
-
-  /* Sub-container for nested elements - Restored to original black/20 strength */
-  .card-sub {
-    background: rgba(0, 0, 0, 0.2);
-    border: 1px solid rgba(255, 255, 255, 0.05);
-    @apply rounded-3xl p-6;
-  }
-
-  .card:hover {
-    border-color: rgba(255, 255, 255, 0.2);
-    background: var(--glass-surface-bright);
+    @apply flex flex-col h-full min-h-[140px];
+    transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.2);
   }
 
   .card-header {
-    @apply flex justify-between items-center mb-5 text-sm font-semibold text-white/90;
+    @apply px-6 pt-3 pb-2 flex justify-between items-center border-b border-white/5 w-full;
+    background: rgba(255, 255, 255, 0.03);
+  }
+
+  .card-header span {
+    @apply font-bold text-white tracking-normal text-[13px];
   }
 
   .card-content {
-    @apply space-y-4 transition-all duration-300;
+    @apply px-6 py-4 space-y-5 flex-1;
   }
 
   .card-content-disabled {
-    @apply opacity-30 pointer-events-none grayscale-[0.5];
+    @apply opacity-70 pointer-events-none grayscale scale-[0.98];
+    transition: all 0.4s ease;
+  }
+
+  .card:hover {
+    transform: translateY(-4px);
+    --lg-bg-color: rgba(255, 255, 255, 0.05);
+  }
+
+  .card-sub {
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    @apply rounded-3xl p-6;
   }
 
   .input-label {
-    @apply text-[11px] font-bold text-neutral-400 uppercase tracking-widest mb-1 opacity-70;
+    @apply text-[11px] font-bold text-neutral-400 uppercase tracking-widest mb-1.5;
   }
 
   .range-slider {
-    @apply flex-1 accent-indigo-500 h-1.5 bg-black/50 rounded-full appearance-none cursor-pointer;
-  }
-
-  .btn-glass {
-    @apply glass border-white/10 hover:bg-white/10 active:scale-95 transition-all text-sm font-medium px-4 py-2 rounded-xl flex items-center gap-2;
+    @apply flex-1 accent-indigo-500 h-1.5 bg-white/10 rounded-full appearance-none cursor-pointer hover:bg-white/20 transition-all;
   }
 }
 
@@ -117,14 +160,6 @@ body {
   background-color: #0d0d15;
 }
 
-@media (max-aspect-ratio: 16/9) {
-  .bg-galaxy {
-    background-size: cover;
-  }
-}
-
-
-/* Custom Checkered Background for preview */
 .checkered-bg {
   background-image:
     linear-gradient(45deg, rgba(0, 0, 0, 0.1) 25%, transparent 25%),
@@ -134,23 +169,6 @@ body {
   background-size: 16px 16px;
   background-position: 0 0, 0 8px, 8px -8px, -8px 0px;
   background-color: rgba(255, 255, 255, 0.03);
-}
-
-/* Animations */
-@keyframes glow {
-
-  0%,
-  100% {
-    box-shadow: 0 0 10px rgba(139, 92, 246, 0.2);
-  }
-
-  50% {
-    box-shadow: 0 0 25px rgba(139, 92, 246, 0.5);
-  }
-}
-
-.animate-glow {
-  animation: glow 3s ease-in-out infinite;
 }
 
 .custom-scrollbar::-webkit-scrollbar {

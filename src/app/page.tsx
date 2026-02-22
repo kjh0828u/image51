@@ -338,55 +338,70 @@ export default function Home() {
       </header >
 
       {/* Settings Modal */}
-      {
-        isSettingsOpen && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setIsSettingsOpen(false)}>
-            <div className="bg-[#1e1e28] rounded-xl border border-[#2a2a35] shadow-2xl w-full max-w-md overflow-hidden" onClick={(e) => e.stopPropagation()}>
-              <div className="flex justify-between items-center p-5 bg-[#21212c] border-b border-[#2a2a35]">
-                <h2 className="text-lg font-bold text-white">환경 설정</h2>
-                <button onClick={() => setIsSettingsOpen(false)} className="text-neutral-400 hover:text-white transition-colors cursor-pointer">✕</button>
+      {isSettingsOpen && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-md z-50 flex items-center justify-center p-4" onClick={() => setIsSettingsOpen(false)}>
+          <div className="w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+            <Glass variant="thick" className="rounded-3xl overflow-hidden shadow-2xl" contentClassName="p-0">
+              {/* Header */}
+              <div className="flex justify-between items-center px-6 py-5 border-b border-white/5">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-xl bg-white/5 border border-white/40 flex items-center justify-center">
+                    <Settings className="w-4 h-4 text-white/50" />
+                  </div>
+                  <h2 className="text-base font-bold text-white">환경 설정</h2>
+                </div>
+                <button onClick={() => setIsSettingsOpen(false)} className="w-8 h-8 rounded-xl bg-white/5 border border-white/40 flex items-center justify-center text-white/30 hover:text-white hover:bg-white/10 transition-all cursor-pointer text-sm">✕</button>
               </div>
+
+              {/* Content */}
               <div className="p-6 space-y-6">
+                {/* Download Mode */}
                 <div>
-                  <h3 className="text-sm font-bold text-neutral-200 mb-3 block">다운로드 저장 방식</h3>
-                  <div className="space-y-3">
-                    {['default', 'custom'].map((mode) => (
-                      <label key={mode} className="flex items-center gap-3 cursor-pointer group">
-                        <input type="radio" className="hidden" checked={store.downloadMode === mode} onChange={() => store.setOption('downloadMode', mode as any)} />
-                        <div className={cn("w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all", store.downloadMode === mode ? "border-indigo-500" : "border-neutral-500")}>
-                          {store.downloadMode === mode && <div className="w-2.5 h-2.5 rounded-full bg-indigo-500" />}
+                  <h3 className="text-[11px] font-bold text-white/100 uppercase tracking-widest mb-3">다운로드 저장 방식</h3>
+                  <div className="space-y-1">
+                    {(['default', 'custom'] as const).map((mode) => (
+                      <label key={mode} className="flex items-center gap-3 cursor-pointer group px-3 py-3 rounded-2xl hover:bg-white/5 transition-all">
+                        <input type="radio" className="hidden" checked={store.downloadMode === mode} onChange={() => store.setOption('downloadMode', mode)} />
+                        <div className={cn("w-4 h-4 rounded-full border-2 flex items-center justify-center transition-all flex-shrink-0", store.downloadMode === mode ? "border-indigo-500" : "border-white/40 group-hover:border-white/40")}>
+                          {store.downloadMode === mode && <div className="w-2 h-2 rounded-full bg-indigo-500" />}
                         </div>
-                        <span className="text-sm text-neutral-300 group-hover:text-white transition-colors">{mode === 'default' ? '브라우저 다운로드 (Zip 압축)' : '특정 폴더에 직접 저장'}</span>
+                        <span className="text-sm text-white/100 group-hover:text-white/90 transition-colors">{mode === 'default' ? '브라우저 다운로드 (Zip 압축)' : '특정 폴더에 직접 저장'}</span>
                       </label>
                     ))}
                   </div>
                 </div>
+
+                {/* Custom Folder Picker */}
                 {store.downloadMode === 'custom' && (
-                  <div className="bg-black/20 p-4 rounded-xl border border-white/5 text-xs text-white/40">
+                  <div className="bg-white/3 rounded-2xl border border-white/8 p-4 space-y-3">
                     <button onClick={async () => {
                       const handle = await (window as any).showDirectoryPicker({ mode: 'readwrite' });
                       store.setCustomDirectoryHandle(handle);
                       await setHandle('customDownloadDir', handle);
-                    }} className="w-full bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 py-3 rounded-xl border border-indigo-500/20 font-bold mb-3 transition-all flex items-center justify-center gap-2">
+                    }} className="w-full bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-100 py-3 rounded-xl border border-indigo-500/20 text-sm font-bold transition-all flex items-center justify-center gap-2 cursor-pointer">
                       📁 저장 폴더 지정하기
                     </button>
-                    {store.customDirectoryHandle && <p className="text-emerald-400 font-bold flex items-center gap-2"><Check className="w-4 h-4" />지정됨: {store.customDirectoryHandle.name}</p>}
+                    {store.customDirectoryHandle && (
+                      <p className="text-emerald-400 text-xs font-bold flex items-center gap-2">
+                        <Check className="w-3.5 h-3.5" />지정됨: {store.customDirectoryHandle.name}
+                      </p>
+                    )}
                   </div>
                 )}
               </div>
-            </div>
+            </Glass>
           </div>
-        )
-      }
+        </div>
+      )}
 
       <main className="flex-1 w-full max-w-[1500px] mx-auto flex items-start px-12 pt-3 pb-32 gap-6 overflow-hidden h-[calc(100vh-64px-48px)]">
         {/* Left Sidebar */}
         <div className="w-[520px] flex flex-col gap-5 overflow-y-auto custom-scrollbar px-6 h-full">
           {/* Upload Section */}
           <section className="flex flex-col">
-            <h2 className="text-[14px] font-bold mb-2 px-2 text-white/60 uppercase tracking-widest">이미지 업로드</h2>
+            <h2 className="text-[14px] font-bold mb-2 px-2 text-white/90 uppercase tracking-widest">이미지 업로드</h2>
             <div onDragOver={handleDragOver} onDrop={handleDrop} onClick={() => fileInputRef.current?.click()}>
-              <Glass variant="bright" className="rounded-3xl cursor-pointer hover:scale-[1.02] transition-all duration-300 min-h-[380px] group border-dashed border-white/10 hover:border-white/20" contentClassName="flex flex-col items-center justify-center h-full min-h-[380px] py-28">
+              <Glass variant="bright" className="rounded-3xl cursor-pointer hover:scale-[1.02] transition-all duration-300 min-h-[380px] group border-dashed border-white/10 hover:border-white/20" contentClassName={store.images.length === 0 ? "flex flex-col items-center justify-center h-full min-h-[380px] py-28" : "flex flex-col p-5"}>
                 {store.images.length === 0 ? (
                   <>
                     <div className="w-20 h-20 rounded-full border border-white/10 flex items-center justify-center mb-6 text-white/40 group-hover:scale-110 group-hover:text-white transition-all bg-white/5">
@@ -395,24 +410,26 @@ export default function Home() {
                     <p className="text-center font-bold text-xl text-white leading-tight">Click or<br /><span className="text-indigo-400">drag & drop</span></p>
                   </>
                 ) : (
-                  <div className="w-full space-y-3 cursor-default" onClick={e => e.stopPropagation()}>
-                    {store.images.map(img => (
-                      <div key={img.id} className="bg-white/5 backdrop-blur-md rounded-2xl p-4 flex items-center gap-4 border border-white/10">
-                        <div className="w-14 h-14 rounded-xl checkered-bg relative overflow-hidden flex-shrink-0 border border-white/10">
-                          <img src={img.status === 'done' ? img.processedUrl! : img.previewUrl} className="w-full h-full object-contain" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-bold truncate text-white/90">{img.file.name}</p>
-                          <div className="flex items-center gap-2 mt-1">
-                            <span className={cn("text-[10px] px-2 py-0.5 rounded-full font-bold uppercase", img.status === 'processing' ? 'bg-indigo-500/20 text-indigo-400' : img.status === 'done' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-white/5 text-white/40')}>{img.status}</span>
-                            {img.status === 'done' && <span className="text-[10px] text-white/20">{formatBytes(img.processedSize!)}</span>}
+                  <div className="w-full flex flex-col cursor-default" onClick={e => e.stopPropagation()}>
+                    <div className="space-y-3 overflow-y-auto max-h-[340px] custom-scrollbar pr-3">
+                      {store.images.map(img => (
+                        <div key={img.id} className="bg-white/5 backdrop-blur-md rounded-2xl p-2 flex items-center gap-4 border border-white/10">
+                          <div className="w-14 h-14 rounded-xl checkered-bg relative overflow-hidden flex-shrink-0 border border-white/10">
+                            <img src={img.status === 'done' ? img.processedUrl! : img.previewUrl} className="w-full h-full object-contain" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-bold truncate text-white/90">{img.file.name}</p>
+                            <div className="flex items-center gap-2 mt-1">
+                              <span className={cn("text-[10px] px-2 py-0.5 rounded-full font-bold uppercase", img.status === 'processing' ? 'bg-indigo-500/20 text-indigo-400' : img.status === 'done' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-white/5 text-white/40')}>{img.status}</span>
+                              {img.status === 'done' && <span className="text-[10px] text-white/20">{formatBytes(img.processedSize!)}</span>}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <button onClick={() => store.removeImage(img.id)} className="p-2 text-white/20 hover:text-red-400 transition-colors"><Trash2 className="w-5 h-5" /></button>
                           </div>
                         </div>
-                        <div className="flex items-center gap-1">
-                          <button onClick={() => store.removeImage(img.id)} className="p-2 text-white/20 hover:text-red-400 transition-colors"><Trash2 className="w-5 h-5" /></button>
-                        </div>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                     <div className="flex justify-center gap-6 pt-4 border-t border-white/5 mt-4">
                       <button onClick={() => fileInputRef.current?.click()} className="text-sm font-bold text-indigo-400 hover:text-white transition-colors underline underline-offset-4">+ 이미지 추가</button>
                       <button onClick={() => store.clearImages()} className="text-sm font-bold text-white/30 hover:text-red-400 transition-colors underline underline-offset-4">모두 지우기</button>
@@ -426,7 +443,7 @@ export default function Home() {
 
           {/* Profile Section */}
           <section className="flex flex-col">
-            <h2 className="text-[14px] font-bold mb-2 px-2 text-white/60 uppercase tracking-widest flex items-center justify-between">
+            <h2 className="text-[14px] font-bold mb-2 px-2 text-white/90 uppercase tracking-widest flex items-center justify-between">
               <span>프리셋 관리</span>
               <div className="flex gap-2">
                 <button onClick={() => { const n = prompt('이름:'); if (n) store.saveProfile(n) }} className="p-1.5 hover:bg-white/10 rounded-lg cursor-pointer transition-colors"><Plus className="w-3.5 h-3.5" /></button>
@@ -478,7 +495,7 @@ export default function Home() {
 
         {/* Right Content */}
         <div className="flex-1 overflow-y-auto custom-scrollbar h-full pr-1 pb-40">
-          <h2 className="text-[14px] font-bold mb-2 px-2 text-white/60 uppercase tracking-widest">변환 옵션</h2>
+          <h2 className="text-[14px] font-bold mb-2 px-2 text-white/90 uppercase tracking-widest">변환 옵션</h2>
           <div className="grid grid-cols-2 gap-5">
             {/* 1. Auto Crop */}
             <Glass variant="card" contentClassName="h-full">

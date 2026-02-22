@@ -267,7 +267,7 @@ export default function Home() {
         try {
           const response = await fetch(img.processedUrl);
           const blob = await response.blob();
-          const fileHandle = await dirHandle.getFileHandle(`converted_${img.file.name.split('.')[0]}.${store.outputFormat.toLowerCase()}`, { create: true });
+          const fileHandle = await dirHandle.getFileHandle(getDownloadFilename(img.file.name, blob.type), { create: true });
           const writable = await fileHandle.createWritable();
           await writable.write(blob);
           await writable.close();
@@ -286,7 +286,7 @@ export default function Home() {
         if (!img.processedUrl) continue;
         const response = await fetch(img.processedUrl);
         const blob = await response.blob();
-        zip.file(`converted_${img.file.name.split('.')[0]}.${store.outputFormat.toLowerCase()}`, blob);
+        zip.file(getDownloadFilename(img.file.name, blob.type), blob);
       }
       const content = await zip.generateAsync({ type: 'blob' });
       saveAs(content, 'image51_converted.zip');
@@ -294,14 +294,26 @@ export default function Home() {
     }
   };
 
+  const getDownloadFilename = (originalName: string, blobType: string): string => {
+    const base = originalName.split('.').slice(0, -1).join('.');
+    const extMap: Record<string, string> = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/gif': 'gif' };
+    const ext = extMap[blobType] || originalName.split('.').pop() || 'png';
+    return `${base}.${ext}`;
+  };
+
   const handleSingleDownload = async (img: any) => {
     if (!img.processedUrl) return;
+    const response = await fetch(img.processedUrl);
+    const blob = await response.blob();
+    const filename = getDownloadFilename(img.file.name, blob.type);
+    const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = img.processedUrl;
-    a.download = `converted_${img.file.name.split('.')[0]}.${store.outputFormat.toLowerCase()}`;
+    a.href = url;
+    a.download = filename;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
+    URL.revokeObjectURL(url);
     useAppStore.getState().updateImageStatus(img.id, { isDownloaded: true });
   };
 
@@ -321,9 +333,7 @@ export default function Home() {
       <header className="z-20 w-full px-8 py-3.5">
         <div className="max-w-[1400px] mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 flex items-center justify-center shadow-[0_0_20px_rgba(99,102,241,0.5)] animate-glow pr-0.5">
-              <span className="text-[18px] font-black italic tracking-tighter text-white drop-shadow-md" >51</span>
-            </div>
+            <img src="/logo.webp" alt="Image51" className="w-10 h-10 object-contain drop-shadow-[0_0_12px_rgba(139,92,246,0.6)]" />
             <div>
               <h1 className="text-2xl font-black italic tracking-tighter text-white drop-shadow-md">Image51</h1>
               {/* <p className="text-[10px] text-indigo-300 font-bold uppercase tracking-[0.2em] leading-none">Smart Client AI</p> */}

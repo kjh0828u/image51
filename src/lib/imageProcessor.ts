@@ -358,7 +358,8 @@ export async function processImage(file: File, options: AppOptions): Promise<str
     }
 
     // 6. 결과물 인코딩 준비
-    let mimeType = file.type || 'image/png';
+    // 배경제거 ON → PNG, 그 외 → 입력 파일 포맷 유지
+    let mimeType = enableBgRemoval ? 'image/png' : (file.type || 'image/png');
 
     // JPG는 투명 부분 렌더링 시 흰색 배경 추가 (형식 유지)
     if (mimeType === 'image/jpeg' || mimeType === 'image/jpg') {

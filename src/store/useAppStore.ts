@@ -147,7 +147,7 @@ export const useAppStore = create<AppState>()(
 
             ...defaultOptions,
 
-            addImages: (files) => set((state) => {
+            addImages: (files: File[]) => set((state: AppState) => {
                 // 기존에 변환이 완료된(done) 상태이면서 다운로드까지 완료된 이미지만 새 이미지가 추가될 때 자동 삭제
                 const remainingImages = state.images.filter(img => {
                     if (img.status === 'done' && img.isDownloaded) {

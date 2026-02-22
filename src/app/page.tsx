@@ -2,12 +2,29 @@
 
 import { useAppStore } from '@/store/useAppStore';
 import { useCallback, useRef, useState, useEffect } from 'react';
-import { UploadCloud, Plus, Minus, Save, Trash2, Download, Pencil, GripVertical, Check } from 'lucide-react';
+import { UploadCloud, Plus, Minus, Save, Trash2, Download, Pencil, GripVertical, Check, Settings, History, Layers, Zap, Share2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { processImage } from '@/lib/imageProcessor';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 import { getHandle, setHandle } from '@/lib/idb';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  useSortable,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import { Profile } from '@/store/useAppStore';
 
 async function verifyPermission(fileHandle: any, readWrite: boolean = true) {
   const options = { mode: readWrite ? 'readwrite' : 'read' };
@@ -20,7 +37,6 @@ async function verifyPermission(fileHandle: any, readWrite: boolean = true) {
   return false;
 }
 
-// 컴포넌트 마운트 전에는 렌더링 무효화 (Zustand persist hydrate 에러 방지)
 function useHydrate() {
   const [isHydrated, setHydrated] = useState(false);
   useEffect(() => { setHydrated(true); }, []);
@@ -36,29 +52,119 @@ function formatBytes(bytes: number, decimals = 1) {
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
 }
 
+interface SortablePresetItemProps {
+  p: Profile;
+  isActive: boolean;
+  onLoad: (id: string) => void;
+  onUpdate: (id: string, name: string) => void;
+  onRename: (id: string, oldName: string) => void;
+  onDelete: (id: string, name: string) => void;
+}
+
+function SortablePresetItem({ p, isActive, onLoad, onUpdate, onRename, onDelete }: SortablePresetItemProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging
+  } = useSortable({ id: p.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    zIndex: isDragging ? 50 : undefined,
+    position: 'relative' as const,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={cn(
+        "group glass px-3 py-1.5 rounded-xl flex items-center justify-between cursor-pointer border transition-all",
+        isActive ? "bg-indigo-500/10 border-indigo-500/30" : "border-transparent hover:bg-white/5",
+        isDragging && "opacity-50 scale-[1.02] shadow-xl bg-white/10 border-white/20"
+      )}
+      onClick={() => onLoad(p.id)}
+    >
+      <div className="flex items-center gap-2 flex-1 min-w-0">
+        <div {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing p-1 text-white/20 group-hover:text-white/40">
+          <GripVertical className="w-3.5 h-3.5" />
+        </div>
+        <span className="text-sm font-bold truncate max-w-[160px]">{p.name}</span>
+      </div>
+      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+        <button
+          onClick={(e) => { e.stopPropagation(); onUpdate(p.id, p.name); }}
+          className="p-1.5 hover:text-emerald-400 transition-colors cursor-pointer"
+          title="현재 설정 저장 (덮어쓰기)"
+        >
+          <Save className="w-3.5 h-3.5" />
+        </button>
+        <button
+          onClick={(e) => { e.stopPropagation(); onRename(p.id, p.name); }}
+          className="p-1.5 hover:text-indigo-400 transition-colors cursor-pointer"
+          title="이름 수정"
+        >
+          <Pencil className="w-3.5 h-3.5" />
+        </button>
+        <button
+          onClick={(e) => { e.stopPropagation(); onDelete(p.id, p.name); }}
+          className="p-1.5 hover:text-red-400 transition-colors cursor-pointer"
+          title="삭제"
+        >
+          <Trash2 className="w-3.5 h-3.5" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function Home() {
   const isHydrated = useHydrate();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [newProfileName, setNewProfileName] = useState('');
-  const [draggedItemIndex, setDraggedItemIndex] = useState<number | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [resizeError, setResizeError] = useState<string | null>(null);
+  const [ratioTooltip, setRatioTooltip] = useState<{ type: 'w' | 'h', msg: string } | null>(null);
 
   const store = useAppStore();
 
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      const oldIndex = store.profiles.findIndex((p) => p.id === active.id);
+      const newIndex = store.profiles.findIndex((p) => p.id === over.id);
+      store.reorderProfiles(oldIndex, newIndex);
+    }
+  };
+
   useEffect(() => {
-    // 앱 초기 로드 시 IndexedDB에서 권한 핸들을 불러와 스토어에 복원 (영구 저장 연동)
     getHandle('customDownloadDir').then(handle => {
       if (handle) store.setCustomDirectoryHandle(handle);
     }).catch(e => console.error("IDB load error", e));
   }, []);
 
+  // ESC 키로 환경설정 닫기
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
+    const handleEsc = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setIsSettingsOpen(false);
     };
-    if (isSettingsOpen) window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isSettingsOpen]);
+    window.addEventListener('keydown', handleEsc);
+    return () => window.removeEventListener('keydown', handleEsc);
+  }, []);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -71,8 +177,37 @@ export default function Home() {
     }
   }, [store]);
 
+  const handleWidthChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value.replace(/[^0-9]/g, '');
+    if (store.keepRatio && store.resizeHeight.trim() !== '' && val !== '') {
+      setRatioTooltip({ type: 'w', msg: '비율 유지 중입니다. 수정하려면 세로 값을 지워주세요.' });
+      setTimeout(() => setRatioTooltip(null), 3000);
+      return;
+    }
+    store.setOption('resizeWidth', val);
+    setResizeError(null);
+  };
+
+  const handleHeightChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value.replace(/[^0-9]/g, '');
+    if (store.keepRatio && store.resizeWidth.trim() !== '' && val !== '') {
+      setRatioTooltip({ type: 'h', msg: '비율 유지 중입니다. 수정하려면 가로 값을 지워주세요.' });
+      setTimeout(() => setRatioTooltip(null), 3000);
+      return;
+    }
+    store.setOption('resizeHeight', val);
+    setResizeError(null);
+  };
+
   const handleStartProcessing = async () => {
+    if (store.enableResize && !store.resizeWidth.trim() && !store.resizeHeight.trim()) {
+      setResizeError('가로 또는 세로 크기를 한 개 이상 입력해주세요.');
+      return;
+    }
+    setResizeError(null);
+
     const pendingImages = store.images.filter(img => img.status === 'pending');
+    if (pendingImages.length === 0) return;
 
     for (const img of pendingImages) {
       store.updateImageStatus(img.id, { status: 'processing' });
@@ -95,599 +230,414 @@ export default function Home() {
     if (useAppStore.getState().autoDownloadAfterProcessing) {
       setTimeout(() => {
         handleDownloadAll();
-      }, 500); // 돔 렌더링 후 다운로드 되도록 약간의 지연시간 추가
+      }, 500);
     }
-  };
-  const getDateFolderName = () => {
-    const d = new Date();
-    const yy = String(d.getFullYear()).slice(2);
-    const mm = String(d.getMonth() + 1).padStart(2, '0');
-    const dd = String(d.getDate()).padStart(2, '0');
-    return `${yy}-${mm}-${dd}`;
-  };
-
-  const getTargetDirectory = async () => {
-    if (store.downloadMode === 'custom' && store.customDirectoryHandle) {
-      const hasPerm = await verifyPermission(store.customDirectoryHandle, true);
-      if (!hasPerm) {
-        alert("폴더 접근 권한이 없습니다. 상단 설정에서 폴더를 다시 지정해주세요.");
-        return null;
-      }
-      const folderName = getDateFolderName();
-      return await (store.customDirectoryHandle as any).getDirectoryHandle(folderName, { create: true });
-    }
-    return null;
   };
 
   const handleDownloadAll = async () => {
     const targetImages = useAppStore.getState().images.filter(img => img.status === 'done' && img.processedUrl && !img.isDownloaded);
     if (targetImages.length === 0) return;
 
-    const dirHandle = await getTargetDirectory();
+    // Check custom directory handle
+    let dirHandle = null;
+    if (store.downloadMode === 'custom' && store.customDirectoryHandle) {
+      const hasPerm = await verifyPermission(store.customDirectoryHandle, true);
+      if (hasPerm) {
+        const d = new Date();
+        const folderName = `${String(d.getFullYear()).slice(2)}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        dirHandle = await (store.customDirectoryHandle as any).getDirectoryHandle(folderName, { create: true });
+      }
+    }
 
     if (dirHandle) {
-      // 지정 폴더 저장 모드
       for (const img of targetImages) {
         if (!img.processedUrl) continue;
         try {
           const response = await fetch(img.processedUrl);
           const blob = await response.blob();
-          const fileHandle = await dirHandle.getFileHandle(`converted_${img.file.name}`, { create: true });
+          const fileHandle = await dirHandle.getFileHandle(`converted_${img.file.name.split('.')[0]}.${store.outputFormat.toLowerCase()}`, { create: true });
           const writable = await fileHandle.createWritable();
           await writable.write(blob);
           await writable.close();
           useAppStore.getState().updateImageStatus(img.id, { isDownloaded: true });
         } catch (err) {
-          console.error('Failed to save file to directory', err);
+          console.error(err);
         }
       }
     } else {
-      // 기존 기본 다운로드 (Zip 묶어서) 모드
       if (targetImages.length === 1) {
         handleSingleDownload(targetImages[0]);
         return;
       }
-
       const zip = new JSZip();
       for (const img of targetImages) {
         if (!img.processedUrl) continue;
-        try {
-          const response = await fetch(img.processedUrl);
-          const blob = await response.blob();
-          zip.file(`converted_${img.file.name}`, blob);
-        } catch (err) {
-          console.error('Failed to fetch blob for zip', err);
-        }
-      }
-
-      try {
-        const content = await zip.generateAsync({ type: 'blob' });
-        saveAs(content, 'image51_converted.zip');
-        targetImages.forEach(img => useAppStore.getState().updateImageStatus(img.id, { isDownloaded: true }));
-      } catch (err) {
-        console.error('Failed to generate zip', err);
-      }
-    }
-  };
-  const handleSingleDownload = async (img: any) => {
-    if (!img.processedUrl) return;
-
-    const dirHandle = await getTargetDirectory();
-    if (dirHandle) {
-      try {
         const response = await fetch(img.processedUrl);
         const blob = await response.blob();
-        const fileHandle = await dirHandle.getFileHandle(`converted_${img.file.name}`, { create: true });
-        const writable = await fileHandle.createWritable();
-        await writable.write(blob);
-        await writable.close();
-        useAppStore.getState().updateImageStatus(img.id, { isDownloaded: true });
-      } catch (err) {
-        console.error('Failed to save single file to directory', err);
+        zip.file(`converted_${img.file.name.split('.')[0]}.${store.outputFormat.toLowerCase()}`, blob);
       }
-    } else {
-      const a = document.createElement('a');
-      a.href = img.processedUrl!;
-      a.download = `converted_${img.file.name}`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      useAppStore.getState().updateImageStatus(img.id, { isDownloaded: true });
+      const content = await zip.generateAsync({ type: 'blob' });
+      saveAs(content, 'image51_converted.zip');
+      targetImages.forEach(img => useAppStore.getState().updateImageStatus(img.id, { isDownloaded: true }));
     }
   };
 
-  if (!isHydrated) return null; // Hydration mismatch 방지
+  const handleSingleDownload = async (img: any) => {
+    if (!img.processedUrl) return;
+    const a = document.createElement('a');
+    a.href = img.processedUrl;
+    a.download = `converted_${img.file.name.split('.')[0]}.${store.outputFormat.toLowerCase()}`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    useAppStore.getState().updateImageStatus(img.id, { isDownloaded: true });
+  };
+
+  if (!isHydrated) return null;
 
   return (
-    <div className="min-h-screen bg-[#1A1A24] text-neutral-200 flex flex-col font-sans selection:bg-indigo-500/30">
-
+    <div className="min-h-screen bg-galaxy text-neutral-200 flex flex-col font-sans selection:bg-indigo-500/30">
       {/* Header */}
-      <header className="bg-[#14141d] border-b border-[#2a2a35] shadow-sm z-10 w-full">
-        <div className="w-full max-w-[1200px] mx-auto px-6 py-3 flex items-center gap-4">
-          <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 flex-shrink-0 flex items-center justify-center text-white font-bold italic text-lg shadow-sm"></div>
-          <h1 className="text-2xl font-bold tracking-tight text-white flex-shrink-0">Image51</h1>
-          <p className="text-sm text-neutral-500 ml-4 font-medium truncate flex-1"></p>
-          <button onClick={() => setIsSettingsOpen(true)} className="px-4 py-1.5 bg-[#252532] text-neutral-300 hover:text-white rounded border border-[#2a2a35] hover:border-[#3a3a46] transition-colors text-sm font-medium shadow-sm">⚙️ 환경 설정</button>
+      <header className="z-20 w-full px-8 py-3.5">
+        <div className="max-w-[1400px] mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 flex items-center justify-center shadow-[0_0_20px_rgba(99,102,241,0.5)] animate-glow pr-0.5">
+              <span className="text-[18px] font-black italic tracking-tighter text-white drop-shadow-md" >51</span>
+            </div>
+            <div>
+              <h1 className="text-2xl font-black italic tracking-tighter text-white drop-shadow-md">Image51</h1>
+              {/* <p className="text-[10px] text-indigo-300 font-bold uppercase tracking-[0.2em] leading-none">Smart Client AI</p> */}
+            </div>
+          </div>
+
+          <button onClick={() => setIsSettingsOpen(true)} className="btn-glass px-4 py-2 flex items-center gap-2 hover:scale-105 cursor-pointer">
+            <Settings className="w-4 h-4" />
+            환경 설정
+          </button>
         </div>
-      </header>
+      </header >
 
       {/* Settings Modal */}
-      {isSettingsOpen && (
-        <div
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-          onClick={() => setIsSettingsOpen(false)}
-        >
-          <div
-            className="bg-[#1e1e28] rounded-xl border border-[#2a2a35] shadow-2xl w-full max-w-md overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex justify-between items-center p-5 bg-[#21212c] border-b border-[#2a2a35]">
-              <h2 className="text-lg font-bold text-white">환경 설정</h2>
-              <button onClick={() => setIsSettingsOpen(false)} className="text-neutral-400 hover:text-white transition-colors">✕</button>
-            </div>
-            <div className="p-6 space-y-6">
-              <div>
-                <h3 className="text-sm font-bold text-neutral-200 mb-3 block">다운로드 저장 방식</h3>
-                <div className="space-y-3">
-                  <label className="flex items-center gap-3 cursor-pointer group">
-                    <div className="relative flex items-center justify-center">
-                      <input type="radio" className="peer sr-only" checked={store.downloadMode === 'default'} onChange={() => store.setOption('downloadMode', 'default')} />
-                      <div className="w-5 h-5 rounded-full border-2 border-neutral-500 peer-checked:border-indigo-500 transition-colors" />
-                      <div className="w-2.5 h-2.5 rounded-full bg-indigo-500 absolute scale-0 peer-checked:scale-100 transition-transform" />
-                    </div>
-                    <span className="text-sm text-neutral-300 group-hover:text-white transition-colors">기본 다운로드 폴더 (Zip 압축)</span>
-                  </label>
-                  <label className="flex items-center gap-3 cursor-pointer group">
-                    <div className="relative flex items-center justify-center">
-                      <input type="radio" className="peer sr-only" checked={store.downloadMode === 'custom'} onChange={() => store.setOption('downloadMode', 'custom')} />
-                      <div className="w-5 h-5 rounded-full border-2 border-neutral-500 peer-checked:border-indigo-500 transition-colors" />
-                      <div className="w-2.5 h-2.5 rounded-full bg-indigo-500 absolute scale-0 peer-checked:scale-100 transition-transform" />
-                    </div>
-                    <span className="text-sm text-neutral-300 group-hover:text-white transition-colors">특정 폴더에 직접 저장 (날짜별 자동분류)</span>
-                  </label>
-                </div>
+      {
+        isSettingsOpen && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setIsSettingsOpen(false)}>
+            <div className="bg-[#1e1e28] rounded-xl border border-[#2a2a35] shadow-2xl w-full max-w-md overflow-hidden" onClick={(e) => e.stopPropagation()}>
+              <div className="flex justify-between items-center p-5 bg-[#21212c] border-b border-[#2a2a35]">
+                <h2 className="text-lg font-bold text-white">환경 설정</h2>
+                <button onClick={() => setIsSettingsOpen(false)} className="text-neutral-400 hover:text-white transition-colors cursor-pointer">✕</button>
               </div>
+              <div className="p-6 space-y-6">
+                <div>
+                  <h3 className="text-sm font-bold text-neutral-200 mb-3 block">다운로드 저장 방식</h3>
+                  <div className="space-y-3">
+                    {['default', 'custom'].map((mode) => (
+                      <label key={mode} className="flex items-center gap-3 cursor-pointer group">
+                        <input type="radio" className="hidden" checked={store.downloadMode === mode} onChange={() => store.setOption('downloadMode', mode as any)} />
+                        <div className={cn("w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all", store.downloadMode === mode ? "border-indigo-500" : "border-neutral-500")}>
+                          {store.downloadMode === mode && <div className="w-2.5 h-2.5 rounded-full bg-indigo-500" />}
+                        </div>
+                        <span className="text-sm text-neutral-300 group-hover:text-white transition-colors">{mode === 'default' ? '브라우저 다운로드 (Zip 압축)' : '특정 폴더에 직접 저장'}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                {store.downloadMode === 'custom' && (
+                  <div className="bg-black/20 p-4 rounded-xl border border-white/5 text-xs text-white/40">
+                    <button onClick={async () => {
+                      const handle = await (window as any).showDirectoryPicker({ mode: 'readwrite' });
+                      store.setCustomDirectoryHandle(handle);
+                      await setHandle('customDownloadDir', handle);
+                    }} className="w-full bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 py-3 rounded-xl border border-indigo-500/20 font-bold mb-3 transition-all flex items-center justify-center gap-2">
+                      📁 저장 폴더 지정하기
+                    </button>
+                    {store.customDirectoryHandle && <p className="text-emerald-400 font-bold flex items-center gap-2"><Check className="w-4 h-4" />지정됨: {store.customDirectoryHandle.name}</p>}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )
+      }
 
-              {store.downloadMode === 'custom' && (
-                <div className="bg-[#14141d] rounded-lg border border-[#2a2a35] p-4 text-sm">
-                  <p className="text-neutral-400 mb-2">저장될 기준 폴더를 선택해주세요. (폴더 내부에 YY-MM-DD 폴더가 자동 생성됩니다)</p>
-                  <button
-                    onClick={async () => {
-                      try {
-                        const handle = await (window as any).showDirectoryPicker({ mode: 'readwrite' });
-                        store.setCustomDirectoryHandle(handle);
-                        await setHandle('customDownloadDir', handle); // IDB에 영구 저장
-                      } catch (err) {
-                        console.error("User cancelled or failed to pick directory", err);
-                      }
-                    }}
-                    className="w-full bg-[#252532] hover:bg-[#2a2a35] text-white border border-[#3a3a46] rounded py-2 transition-colors mb-2 font-medium">
-                    📁 저장 폴더 지정하기
-                  </button>
-                  {store.customDirectoryHandle && (
-                    <p className="text-emerald-400 font-medium break-all flex items-center gap-2">
-                      <Check className="w-4 h-4" /> 지정 완료: <span className="text-amber-300 font-mono">{(store.customDirectoryHandle as any).name}</span> 폴더
-                    </p>
-                  )}
+      <main className="flex-1 w-full max-w-[1400px] mx-auto flex items-start p-8 pt-2 gap-8 overflow-hidden">
+        {/* Left Sidebar */}
+        <div className="w-[480px] flex flex-col gap-6 overflow-y-auto custom-scrollbar pr-2 sticky top-0 h-full">
+          {/* Upload Section */}
+          <section className="flex flex-col">
+            <h2 className="text-sm font-bold mb-4 px-1 text-white/90">이미지 업로드</h2>
+            <div onDragOver={handleDragOver} onDrop={handleDrop} onClick={() => fileInputRef.current?.click()} className="glass-bright rounded-3xl p-8 flex flex-col items-center justify-center cursor-pointer hover:border-white/30 transition-all duration-300 min-h-[320px] group border-dashed">
+              {store.images.length === 0 ? (
+                <>
+                  <div className="w-16 h-16 rounded-full border border-white/20 flex items-center justify-center mb-6 text-white/60 group-hover:scale-110 group-hover:text-white transition-all">
+                    <Plus className="w-8 h-8" />
+                  </div>
+                  <p className="text-center font-bold text-lg text-white/80 leading-snug">Click or<br /><span className="text-indigo-400">drag here</span></p>
+                </>
+              ) : (
+                <div className="w-full space-y-3 cursor-default" onClick={e => e.stopPropagation()}>
+                  {store.images.map(img => (
+                    <div key={img.id} className="bg-white/5 backdrop-blur-md rounded-2xl p-4 flex items-center gap-4 border border-white/10">
+                      <div className="w-14 h-14 rounded-xl checkered-bg relative overflow-hidden flex-shrink-0 border border-white/10">
+                        <img src={img.status === 'done' ? img.processedUrl! : img.previewUrl} className="w-full h-full object-contain" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-bold truncate text-white/90">{img.file.name}</p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className={cn("text-[10px] px-2 py-0.5 rounded-full font-bold uppercase", img.status === 'processing' ? 'bg-indigo-500/20 text-indigo-400' : img.status === 'done' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-white/5 text-white/40')}>{img.status}</span>
+                          {img.status === 'done' && <span className="text-[10px] text-white/20">{formatBytes(img.processedSize!)}</span>}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <button onClick={() => store.removeImage(img.id)} className="p-2 text-white/20 hover:text-red-400 transition-colors"><Trash2 className="w-5 h-5" /></button>
+                      </div>
+                    </div>
+                  ))}
+                  <div className="flex justify-center gap-6 pt-4 border-t border-white/5 mt-4">
+                    <button onClick={() => fileInputRef.current?.click()} className="text-sm font-bold text-indigo-400 hover:text-white transition-colors underline underline-offset-4">+ 이미지 추가</button>
+                    <button onClick={() => store.clearImages()} className="text-sm font-bold text-white/30 hover:text-red-400 transition-colors underline underline-offset-4">모두 지우기</button>
+                  </div>
                 </div>
               )}
-
-              <div className="pt-4 border-t border-[#2a2a35]">
-                <h3 className="text-sm font-bold text-neutral-200 mb-4 block">기타 설정</h3>
-                <label className="flex items-center gap-3 cursor-pointer group">
-                  <div className={cn("relative rounded-full cursor-pointer transition-colors duration-200 flex items-center w-10 h-5", store.openFolderAfterProcessing ? "bg-indigo-500" : "bg-[#2a2a35]")}>
-                    <div className={cn("bg-white rounded-full w-4 h-4 shadow-sm transform transition-transform duration-200 ml-0.5", store.openFolderAfterProcessing ? "translate-x-5" : "translate-x-0")} />
-                  </div>
-                  <span className="text-sm text-neutral-300 group-hover:text-white transition-colors">다운로드 완료 시 폴더 열기</span>
-                  <input type="checkbox" className="hidden" checked={store.openFolderAfterProcessing} onChange={e => store.setOption('openFolderAfterProcessing', e.target.checked)} />
-                </label>
-              </div>
+              <input type="file" multiple accept="image/*" className="hidden" ref={fileInputRef} onChange={(e) => { if (e.target.files) store.addImages(Array.from(e.target.files)); e.target.value = ''; }} />
             </div>
-          </div>
-        </div>
-      )}
+          </section>
 
-      <main className="flex-1 w-full max-w-[1200px] mx-auto flex items-start p-6 gap-6">
-        {/* Left Column (Upload + Profiles) */}
-        <div className="w-[32rem] flex flex-col gap-6 sticky top-6">
-
-          <div className="flex flex-col shrink-0">
-            <h2 className="text-lg font-bold mb-4 px-2 text-white">이미지 업로드</h2>
-            <section className="flex flex-col h-[400px] panel mt-0">
-              <div
-                onDragOver={handleDragOver}
-                onDrop={handleDrop}
-                onClick={() => fileInputRef.current?.click()}
-                className="border-2 border-dashed border-[#3a3a46] rounded-xl flex-1 flex flex-col items-center justify-center cursor-pointer hover:border-indigo-500/50 hover:bg-[#252532] transition-colors relative min-h-0"
-              >
-                {store.images.length === 0 ? (
-                  <>
-                    <div className="w-16 h-16 rounded-full border-2 border-indigo-500/50 flex items-center justify-center mb-4 text-indigo-400">
-                      <Plus className="w-8 h-8" />
-                    </div>
-                    <p className="text-center font-bold text-lg leading-snug">Click here or<br />drag and drop images</p>
-                  </>
-                ) : (
-                  <div className="absolute inset-0 p-4 overflow-y-auto space-y-2 cursor-default" onClick={e => e.stopPropagation()}>
-                    {store.images.map(img => (
-                      <div key={img.id} className="bg-[#14141d] p-3 rounded-lg flex items-center gap-3 border border-[#2a2a35]">
-                        <div className="w-12 h-12 bg-[#0f0f15] rounded border border-[#2a2a35] checkered-bg relative overflow-hidden flex-shrink-0">
-                          {img.status === 'done' && img.processedUrl ? (
-                            <img src={img.processedUrl} alt="processed" className="w-full h-full object-contain" />
-                          ) : (
-                            <img src={img.previewUrl} alt="preview" className="w-full h-full object-cover" />
-                          )}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate text-neutral-300">{img.file.name}</p>
-                          <div className="flex items-center gap-2 mt-0.5">
-                            <p className="text-xs text-neutral-500">
-                              {img.status === 'processing' ? '변환 중...' : img.status === 'error' ? '오류 발생' : img.status === 'pending' ? '대기 중' : '변환 완료'}
-                            </p>
-                            {img.status === 'done' && img.processedSize && (
-                              <p className="text-xs font-mono text-neutral-400">
-                                <span className={cn("inline-block", img.processedSize < img.originalSize ? 'text-neutral-500 ' : 'text-neutral-400')}>{formatBytes(img.originalSize)}</span>
-                                <span className="mx-1 text-neutral-600">→</span>
-                                <span className={cn("font-bold", img.processedSize < img.originalSize ? 'text-emerald-400' : 'text-amber-400')}>{formatBytes(img.processedSize)}</span>
-                                {img.processedSize < img.originalSize && (
-                                  <span className="ml-2 text-[12px] text-emerald-500 bg-emerald-500/10 px-1 py-0.5 rounded">
-                                    -{Math.round((1 - img.processedSize / img.originalSize) * 100)}%
-                                  </span>
-                                )}
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          {img.status === 'done' && (
-                            <button onClick={() => handleSingleDownload(img)} className={cn("p-2 transition-colors", img.isDownloaded ? "text-emerald-500" : "text-indigo-400 hover:text-indigo-300")} title={img.isDownloaded ? "다운로드 완료" : "다운로드"}>
-                              {img.isDownloaded ? <Check className="w-4 h-4" /> : <Download className="w-4 h-4" />}
-                            </button>
-                          )}
-                          <button onClick={() => store.removeImage(img.id)} className="p-2 hover:text-red-400" title="삭제">
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                    <div className="sticky bottom-0 bg-gradient-to-t from-[rgba(30,30,40,1)] pt-4 pb-2 flex items-center justify-center gap-6">
-                      <button onClick={() => fileInputRef.current?.click()} className="text-sm text-indigo-400 hover:text-indigo-300 underline font-medium">
-                        + 이미지 더 추가하기
-                      </button>
-                      <button onClick={() => store.clearImages()} className="text-sm text-red-500 hover:text-red-400 underline font-medium">
-                        모두 삭제
-                      </button>
-                    </div>
-                  </div>
-                )}
-                <input type="file" multiple accept="image/*" className="hidden" ref={fileInputRef} onChange={(e) => { if (e.target.files) store.addImages(Array.from(e.target.files)); e.target.value = ''; }} />
+          {/* Profile Section */}
+          <section className="flex flex-col">
+            <h2 className="text-sm font-bold mb-4 px-1 text-white/90 flex items-center justify-between">
+              <span>프리셋 관리</span>
+              <div className="flex gap-2">
+                <button onClick={() => { const n = prompt('이름:'); if (n) store.saveProfile(n) }} className="p-1 hover:bg-white/5 rounded cursor-pointer"><Plus className="w-4 h-4" /></button>
               </div>
-            </section>
-          </div>
-
-          <div className="flex flex-col shrink-0">
-            <div className="flex justify-between items-center mb-4 px-2">
-              <h2 className="text-lg font-bold text-white">프로파일 관리</h2>
-              <div className="flex bg-[#1e1e28] overflow-hidden rounded-md border border-[#2a2a35] shadow-sm">
-                <button onClick={() => {
-                  const name = prompt('새 프로파일 이름:');
-                  if (name) store.saveProfile(name);
-                }} className="px-3 py-1.5 hover:bg-[#252532] text-neutral-400 hover:text-white transition"><Plus className="w-4 h-4" /></button>
-                <div className="w-px bg-[#2a2a35]" />
-                <button onClick={() => {
-                  if (store.activeProfileId) store.deleteProfile(store.activeProfileId)
-                }} className="px-3 py-1.5 hover:bg-[#252532] text-neutral-400 hover:text-white transition"><Minus className="w-4 h-4" /></button>
-                <div className="w-px bg-[#2a2a35]" />
-                <button onClick={() => {
-                  if (store.activeProfileId) { store.deleteProfile(store.activeProfileId); store.saveProfile(store.profiles.find(p => p.id === store.activeProfileId)?.name || 'Updated'); }
-                }} className="px-4 py-1.5 hover:bg-[#2a2a35] flex items-center gap-2 border-l border-[#2a2a35] text-sm font-medium transition"><Save className="w-4 h-4" /> 저장</button>
-              </div>
-            </div>
-            <section className="panel mt-0">
-              <div className="bg-[#14141d] rounded border border-[#2a2a35] h-[230px] overflow-y-auto custom-scrollbar flex flex-col items-stretch">
+            </h2>
+            <div className="panel glass-thick h-[220px] flex flex-col overflow-hidden px-5 py-4">
+              <div className="flex-1 overflow-y-auto p-2 pr-4 space-y-1 custom-scrollbar">
                 {store.profiles.length === 0 ? (
-                  <p className="text-sm text-neutral-500 p-4 text-center">저장된 프로파일이 없습니다.</p>
+                  <p className="text-center py-18 text-sm text-white/50">옵션 구성을 프리셋으로 저장해 보세요.</p>
                 ) : (
-                  <div className="flex-1 pb-2">
-                    {store.profiles.map((p, index) => (
-                      <div
-                        key={p.id}
-                        draggable
-                        onDragStart={() => setDraggedItemIndex(index)}
-                        onDragOver={(e) => e.preventDefault()}
-                        onDrop={(e) => {
-                          e.preventDefault();
-                          if (draggedItemIndex !== null && draggedItemIndex !== index) {
-                            store.reorderProfiles(draggedItemIndex, index);
-                          }
-                          setDraggedItemIndex(null);
-                        }}
-                        onDragEnd={() => setDraggedItemIndex(null)}
-                        onClick={() => store.loadProfile(p.id)}
-                        onDoubleClick={() => {
-                          const newName = prompt('프로파일 이름 수정:', p.name);
-                          if (newName && newName.trim()) store.renameProfile(p.id, newName.trim());
-                        }}
-                        className={cn(
-                          "group flex items-center justify-between px-2 py-1.5 text-sm cursor-pointer border-b border-[#2a2a35] last:border-b-0 border-l-4 transition-colors select-none",
-                          store.activeProfileId === p.id ? "bg-[#20202d] border-l-indigo-500 text-white font-bold" : "border-l-transparent hover:bg-[#1a1a24] text-neutral-400"
-                        )}>
-                        <div className="flex items-center gap-2">
-                          <GripVertical className="w-4 h-4 text-neutral-600 opacity-0 group-hover:opacity-100 cursor-grab" />
-                          <span className="truncate max-w-[150px]">{p.name}</span>
-                        </div>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            const newName = prompt('프로파일 이름 수정:', p.name);
-                            if (newName && newName.trim()) store.renameProfile(p.id, newName.trim());
+                  <DndContext
+                    sensors={sensors}
+                    collisionDetection={closestCenter}
+                    onDragEnd={handleDragEnd}
+                  >
+                    <SortableContext
+                      items={store.profiles.map(p => p.id)}
+                      strategy={verticalListSortingStrategy}
+                    >
+                      {store.profiles.map(p => (
+                        <SortablePresetItem
+                          key={p.id}
+                          p={p}
+                          isActive={store.activeProfileId === p.id}
+                          onLoad={store.loadProfile}
+                          onUpdate={(id, name) => {
+                            if (confirm(`현재 설정을 '${name}' 프리셋에 덮어씌우겠습니까?`)) {
+                              store.updateProfile(id);
+                            }
                           }}
-                          className="opacity-0 group-hover:opacity-100 p-1.5 hover:bg-[#252532] rounded transition-colors text-neutral-500 hover:text-white"
-                          title="이름 수정"
-                        >
-                          <Pencil className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
+                          onRename={(id, oldName) => {
+                            const newName = prompt('프리셋 이름 수정:', oldName);
+                            if (newName && newName.trim()) store.renameProfile(id, newName.trim());
+                          }}
+                          onDelete={(id, name) => {
+                            if (confirm(`'${name}' 프리셋을 삭제하시겠습니까?`)) {
+                              store.deleteProfile(id);
+                            }
+                          }}
+                        />
+                      ))}
+                    </SortableContext>
+                  </DndContext>
                 )}
               </div>
-            </section>
-          </div>
-
+            </div>
+          </section>
         </div>
 
-        {/* Right Column (Options Grid) */}
-        <div className="flex-1 flex flex-col min-w-0 pb-10">
-          <h2 className="text-lg font-bold mb-4 px-2 text-white">변환 옵션</h2>
-
-          <div className="space-y-4">
-
-            <div className="grid grid-cols-2 gap-4">
-              {/* 여백 제거 */}
-              <div className="card">
-                <div className="card-header">
-                  <span>여백 제거</span>
-                  <ToggleSwitch checked={store.enableAutoCrop} onChange={c => store.setOption('enableAutoCrop', c)} />
-                </div>
-                <div className={cn("card-content", !store.enableAutoCrop && "card-content-disabled")}>
-                  <p className="input-label">가장자리로부터 여백 크기</p>
-                  <div className="flex items-center gap-4">
-                    <input type="range" min="0" max="100" value={store.autoCropMargin} onChange={e => store.setOption('autoCropMargin', Number(e.target.value))} className="range-slider" />
-                    <span className="text-sm font-bold text-indigo-400 min-w-8 text-right">{store.autoCropMargin} px</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* 이미지 압축 */}
-              <div className="card">
-                <div className="card-header">
-                  <span>이미지 압축</span>
-                  <ToggleSwitch checked={store.enableCompress} onChange={c => store.setOption('enableCompress', c)} />
-                </div>
-                <div className={cn("card-content", !store.enableCompress && "card-content-disabled")}>
-                  <p className="input-label">품질</p>
-                  <div className="flex items-center gap-4">
-                    <input type="range" min="1" max="100" value={store.quality} onChange={e => store.setOption('quality', Number(e.target.value))} className="range-slider" />
-                    <span className="text-sm font-bold text-indigo-400 min-w-8 text-right">{store.quality}%</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* 이미지 크기 조절 */}
-              <div className="card">
-                <div className="card-header">
-                  <span>이미지 크기 조절</span>
-                  <ToggleSwitch checked={store.enableResize} onChange={c => store.setOption('enableResize', c)} />
-                </div>
-                <div className={cn("grid grid-cols-2 gap-4 transition-opacity", !store.enableResize && "card-content-disabled")}>
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-neutral-400">가로:</span>
-                      <input type="text" value={store.resizeWidth} onChange={e => store.setOption('resizeWidth', e.target.value)} className="w-20 bg-[#14141d] border border-[#2a2a35] rounded px-2 py-1 text-sm text-white" />
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-neutral-400">세로:</span>
-                      <input type="text" value={store.resizeHeight} onChange={e => store.setOption('resizeHeight', e.target.value)} className="w-20 bg-[#14141d] border border-[#2a2a35] rounded px-2 py-1 text-sm text-white focus:outline-none" />
-                    </div>
-                  </div>
-                  <div className="flex flex-col items-center justify-center border-l border-[#2a2a35]">
-                    <span className="text-xs text-neutral-500 mb-2">비율 유지</span>
-                    <ToggleSwitch checked={store.keepRatio} onChange={c => store.setOption('keepRatio', c)} />
-                  </div>
-                </div>
-              </div>
-
-              {/* 흑백 처리 */}
-              <div className="card">
-                <div className="card-header">
-                  <span>흑백 처리</span>
-                  <ToggleSwitch checked={store.enableGrayscale} onChange={c => store.setOption('enableGrayscale', c)} />
-                </div>
-                <div className={cn("card-content", !store.enableGrayscale && "card-content-disabled")}>
-                  <p className="input-label">흑백 처리 강도</p>
-                  <div className="flex items-center gap-4">
-                    <input type="range" min="0" max="100" value={store.grayscale} onChange={e => store.setOption('grayscale', Number(e.target.value))} className="range-slider" />
-                    <span className="text-sm font-bold text-indigo-400 min-w-8 text-right">{store.grayscale}%</span>
-                  </div>
-                </div>
+        {/* Right Content */}
+        <div className="flex-1 overflow-y-auto custom-scrollbar h-full pb-32">
+          <h2 className="text-sm font-bold mb-4 text-white/90">변환 옵션</h2>
+          <div className="grid grid-cols-2 gap-6">
+            {/* 1. Auto Crop */}
+            <div className="card">
+              <div className="card-header"><span>여백 제거<span className="text-xs font-bold text-neutral-400 pl-2">(Auto Crop)</span></span><ToggleSwitch checked={store.enableAutoCrop} onChange={c => store.setOption('enableAutoCrop', c)} /></div>
+              <div className={cn("card-content", !store.enableAutoCrop && "card-content-disabled")}>
+                <div className="flex justify-between mb-1"><span className="input-label">여백을 없애고 사물에 맞게 조정</span><span className="text-sm font-black text-indigo-400">{store.autoCropMargin}</span></div>
+                <input type="range" min="0" max="100" value={store.autoCropMargin} onChange={e => store.setOption('autoCropMargin', Number(e.target.value))} className="range-slider w-full" />
               </div>
             </div>
 
-            {/* 배경 제거 (풀 위드스) */}
-            <div className="bg-[#1e1e28] rounded-xl border border-[#2a2a35] shadow-sm overflow-hidden">
-              <div className="p-4 flex justify-between items-center bg-[#21212c]">
-                <span className="text-sm font-bold text-white">배경 제거</span>
+            {/* 2. Compression */}
+            <div className="card">
+              <div className="card-header"><span>이미지 압축<span className="text-xs font-bold text-neutral-400 pl-2">(Compress)</span></span><ToggleSwitch checked={store.enableCompress} onChange={c => store.setOption('enableCompress', c)} /></div>
+              <div className={cn("card-content", !store.enableCompress && "card-content-disabled")}>
+                <div className="flex justify-between mb-1"><span className="input-label">품질 (%)</span><span className="text-sm font-black text-indigo-400">{store.quality}</span></div>
+                <input type="range" min="1" max="100" value={store.quality} onChange={e => store.setOption('quality', Number(e.target.value))} className="range-slider w-full" />
+              </div>
+            </div>
+
+            {/* 3. Resize */}
+            <div className="card relative">
+              <div className="card-header"><span>이미지 크기 조절<span className="text-xs font-bold text-neutral-400 pl-2">(Resize)</span></span><ToggleSwitch checked={store.enableResize} onChange={c => store.setOption('enableResize', c)} /></div>
+              <div className={cn("card-content grid grid-cols-2 gap-x-4", !store.enableResize && "card-content-disabled")}>
+
+                <div><p className="input-label">가로</p><input type="text" value={store.resizeWidth} onChange={handleWidthChange} className="w-full bg-black/40 border border-white/5 rounded-xl px-4 py-2 text-sm" placeholder="Auto" /></div>
+                <div><p className="input-label">세로</p><input type="text" value={store.resizeHeight} onChange={handleHeightChange} className="w-full bg-black/40 border border-white/5 rounded-xl px-4 py-2 text-sm" placeholder="Auto" /></div>
+
+                <div className="col-span-2 flex items-center justify-between ">
+                  <span className="text-xs font-bold text-white/40">비율 유지</span>
+                  <ToggleSwitch checked={store.keepRatio} onChange={c => store.setOption('keepRatio', c)} size="small" />
+                </div>
+              </div>
+              {ratioTooltip && <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-red-500 text-white text-[11px] px-3 py-1.5 rounded-lg whitespace-nowrap animate-bounce">⚠️ {ratioTooltip.msg}</div>}
+              {resizeError && <p className="text-[10px] text-red-500 text-center mt-2">{resizeError}</p>}
+            </div>
+
+            {/* 4. Grayscale */}
+            <div className="card">
+              <div className="card-header"><span>흑백 처리<span className="text-xs font-bold text-neutral-400 pl-2">(Grayscale)</span></span><ToggleSwitch checked={store.enableGrayscale} onChange={c => store.setOption('enableGrayscale', c)} /></div>
+              <div className={cn("card-content", !store.enableGrayscale && "card-content-disabled")}>
+                <div className="flex justify-between mb-1">
+                  <span className="input-label">강도 (%)</span>
+                  <span className="text-sm font-black text-indigo-400">{store.grayscale}%</span>
+                </div>
+                <input type="range" min="0" max="100" value={store.grayscale} onChange={e => store.setOption('grayscale', Number(e.target.value))} className="range-slider w-full" />
+              </div>
+            </div>
+
+
+            {/* 6. AI BG Removal (Detailed) */}
+            <div className="col-span-2 card p-0 overflow-hidden">
+              <div className="px-6 py-3 flex justify-between items-center bg-white/5 border-b border-white/5">
+                <div className="flex items-center gap-3">
+                  <p className="font-black text-white tracking-tight text-sm">배경 제거 </p>
+                  <span className="text-xs font-bold text-neutral-400">(Remove bg)</span>
+                </div>
                 <ToggleSwitch checked={store.enableBgRemoval} onChange={c => store.setOption('enableBgRemoval', c)} />
               </div>
 
-              <div className={cn("p-4 space-y-4 bg-[#1e1e28] transition-opacity", !store.enableBgRemoval && "opacity-50 pointer-events-none")}>
-                {/* 디테일 제거 */}
-                <div className="bg-[#16161f] rounded-lg border border-[#2a2a35] p-4">
-                  <div className="flex justify-between items-center mb-3">
-                    <span className="text-sm font-bold text-neutral-200">디테일 제거 <span className="text-xs text-neutral-500 font-normal ml-2">(AI 모델 활성화)</span></span>
-                    <ToggleSwitch checked={store.detailRemoval} onChange={c => store.setOption('detailRemoval', c)} size="small" />
-                  </div>
-
-                  <div className={cn("transition-opacity pl-2 border-l-2 border-[#2a2a35]", !store.detailRemoval && "opacity-50 pointer-events-none")}>
-                    <div className="flex items-center gap-3 mb-4">
-                      <span className="text-sm text-neutral-400">경계 부드럽게 자르기</span>
-                      <ToggleSwitch checked={store.alphaMatting} onChange={c => store.setOption('alphaMatting', c)} size="small" />
+              <div className={cn("py-5 px-8 space-y-8 transition-all duration-500", !store.enableBgRemoval && "card-content-disabled")}>
+                <div className="grid grid-cols-2 gap-8">
+                  <div className="card-sub">
+                    <div className="flex items-center justify-between mb-6">
+                      <p className="text-sm font-black text-white/80">고급 옵션<span className="text-xs font-bold text-neutral-400 pl-2">(Advanced Options)</span></p>
+                      <ToggleSwitch checked={store.detailRemoval} onChange={c => store.setOption('detailRemoval', c)} size="small" />
                     </div>
 
-                    <div className={cn("grid grid-cols-3 gap-4 transition-opacity", !store.alphaMatting && "opacity-50 pointer-events-none")}>
-                      <div className="space-y-2">
-                        <p className="text-xs text-neutral-400">사물 확정 감도</p>
-                        <div className="flex items-center gap-2"><input type="range" min="0" max="255" value={store.fgThreshold} onChange={e => store.setOption('fgThreshold', Number(e.target.value))} className="w-full h-1 accent-indigo-500 bg-[#14141d]" /> <span className="text-xs font-mono text-indigo-400 w-6 text-right">{store.fgThreshold}</span></div>
-                        <p className="text-[10px] text-neutral-600">추천: 240</p>
+                    <div className={cn("space-y-6 transition-opacity", !store.detailRemoval && "opacity-20 pointer-events-none")}>
+                      <div className="flex items-center gap-3 pb-2">
+                        <span className="text-xs font-bold text-white/60">경계 부드럽게</span>
+                        <ToggleSwitch checked={store.alphaMatting} onChange={c => store.setOption('alphaMatting', c)} size="small" />
                       </div>
-                      <div className="space-y-2">
-                        <p className="text-xs text-neutral-400">배경 확정 감도</p>
-                        <div className="flex items-center gap-2"><input type="range" min="0" max="50" value={store.bgThreshold} onChange={e => store.setOption('bgThreshold', Number(e.target.value))} className="w-full h-1 accent-indigo-500 bg-[#14141d]" /> <span className="text-xs font-mono text-indigo-400 w-6 text-right">{store.bgThreshold}</span></div>
-                        <p className="text-[10px] text-neutral-600">추천: 5</p>
+
+                      <div className={cn("space-y-4 transition-opacity", !store.alphaMatting && "opacity-30 pointer-events-none")}>
+                        {/* 1. 피사체 감도 */}
+                        <div className={cn("transition-opacity", !store.enableFgThreshold && "opacity-40")}>
+                          <div className="flex justify-between items-end mb-1">
+                            <p className="text-[10px] font-bold text-neutral-500 uppercase tracking-tight">피사체 감도</p>
+                            <span className="text-[11px] font-black text-indigo-400">{store.enableFgThreshold ? store.fgThreshold : 'AUTO'}</span>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <input type="range" min="0" max="255" disabled={!store.enableFgThreshold} value={store.fgThreshold} onChange={e => store.setOption('fgThreshold', Number(e.target.value))} className="range-slider w-full" />
+                            <ToggleSwitch checked={store.enableFgThreshold} onChange={c => store.setOption('enableFgThreshold', c)} size="small" />
+                          </div>
+                        </div>
+
+                        {/* 2. 배경 허용치 */}
+                        <div className={cn("transition-opacity", !store.enableBgThreshold && "opacity-40")}>
+                          <div className="flex justify-between items-end mb-1">
+                            <p className="text-[10px] font-bold text-neutral-500 uppercase tracking-tight">배경 허용치</p>
+                            <span className="text-[11px] font-black text-indigo-400">{store.enableBgThreshold ? store.bgThreshold : 'AUTO'}</span>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <input type="range" min="0" max="50" disabled={!store.enableBgThreshold} value={store.bgThreshold} onChange={e => store.setOption('bgThreshold', Number(e.target.value))} className="range-slider w-full" />
+                            <ToggleSwitch checked={store.enableBgThreshold} onChange={c => store.setOption('enableBgThreshold', c)} size="small" />
+                          </div>
+                        </div>
+
+                        {/* 3. 경계 정리 */}
+                        <div className={cn("transition-opacity", !store.enableErodeSize && "opacity-40")}>
+                          <div className="flex justify-between items-end mb-1">
+                            <p className="text-[10px] font-bold text-neutral-500 uppercase tracking-tight">경계 정리</p>
+                            <span className="text-[11px] font-black text-indigo-400">{store.enableErodeSize ? store.erodeSize : 'AUTO'}</span>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <input type="range" min="0" max="20" disabled={!store.enableErodeSize} value={store.erodeSize} onChange={e => store.setOption('erodeSize', Number(e.target.value))} className="range-slider w-full" />
+                            <ToggleSwitch checked={store.enableErodeSize} onChange={c => store.setOption('enableErodeSize', c)} size="small" />
+                          </div>
+                        </div>
                       </div>
-                      <div className="space-y-2">
-                        <p className="text-xs text-neutral-400">경계 침식</p>
-                        <div className="flex items-center gap-2"><input type="range" min="0" max="20" value={store.erodeSize} onChange={e => store.setOption('erodeSize', Number(e.target.value))} className="w-full h-1 accent-indigo-500 bg-[#14141d]" /> <span className="text-xs font-mono text-indigo-400 w-6 text-right">{store.erodeSize}</span></div>
-                        <p className="text-[10px] text-neutral-600">추천: 5</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-6">
+                    <div className="card-sub">
+                      <div className="flex justify-between items-center mb-4">
+                        <span className="text-xs font-bold text-neutral-400">가짜 투명 패턴 제거</span>
+                        <ToggleSwitch checked={store.fakeTransRemoval} onChange={c => store.setOption('fakeTransRemoval', c)} size="small" />
+                      </div>
+                      <div className={cn("flex items-center gap-4 transition-opacity", !store.fakeTransRemoval && "opacity-20 pointer-events-none")}>
+                        <input type="range" min="0" max="100" value={store.fakeTransTolerance} onChange={e => store.setOption('fakeTransTolerance', Number(e.target.value))} className="range-slider w-full" />
+                        <span className="text-xs font-bold text-indigo-400 w-8">{store.fakeTransTolerance}</span>
+                      </div>
+                    </div>
+
+                    <div className="card-sub">
+                      <div className="flex justify-between items-center mb-4">
+                        <span className="text-xs font-bold text-neutral-400">이미지 내부 배경 제거</span>
+                        <ToggleSwitch checked={store.removeMatchBg} onChange={c => store.setOption('removeMatchBg', c)} size="small" />
+                      </div>
+                      <div className={cn("flex items-center gap-4 transition-opacity", !store.removeMatchBg && "opacity-20 pointer-events-none")}>
+                        <input type="range" min="0" max="100" value={store.removeMatchBgTolerance} onChange={e => store.setOption('removeMatchBgTolerance', Number(e.target.value))} className="range-slider w-full" />
+                        <span className="text-xs font-bold text-indigo-400 w-8">{store.removeMatchBgTolerance}</span>
                       </div>
                     </div>
                   </div>
                 </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="bg-[#16161f] rounded-lg border border-[#2a2a35] p-4">
-                    <div className="flex justify-between items-center mb-3">
-                      <span className="text-sm font-bold text-neutral-200">가짜 패턴 지우기</span>
-                      <ToggleSwitch checked={store.fakeTransRemoval} onChange={c => store.setOption('fakeTransRemoval', c)} size="small" />
-                    </div>
-                    <div className={cn("flex items-center gap-2 transition-opacity", !store.fakeTransRemoval && "opacity-50 pointer-events-none")}>
-                      <input type="range" min="0" max="100" value={store.fakeTransTolerance} onChange={e => store.setOption('fakeTransTolerance', Number(e.target.value))} className="flex-1 h-1 accent-indigo-500 bg-[#14141d]" />
-                      <span className="text-xs font-mono text-indigo-400 w-6 text-right">{store.fakeTransTolerance}</span>
-                    </div>
-                  </div>
-
-                  <div className="bg-[#16161f] rounded-lg border border-[#2a2a35] p-4">
-                    <div className="flex justify-between items-center mb-3">
-                      <span className="text-sm font-bold text-neutral-200">이미지 내부 배경 제거</span>
-                      <ToggleSwitch checked={store.removeMatchBg} onChange={c => store.setOption('removeMatchBg', c)} size="small" />
-                    </div>
-                    <div className={cn("flex items-center gap-2 transition-opacity", !store.removeMatchBg && "opacity-50 pointer-events-none")}>
-                      <span className="text-xs text-neutral-500 w-8">감도</span>
-                      <input type="range" min="0" max="100" value={store.removeMatchBgTolerance} onChange={e => store.setOption('removeMatchBgTolerance', Number(e.target.value))} className="flex-1 h-1 accent-indigo-500 bg-[#14141d]" />
-                      <span className="text-xs font-mono text-indigo-400 w-6 text-right">{store.removeMatchBgTolerance}</span>
-                    </div>
-                  </div>
-                </div>
-
               </div>
             </div>
+          </div>
 
+          {/* Floating Actions */}
+          <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 flex items-center gap-4">
+            <button onClick={handleStartProcessing} disabled={store.images.filter(i => i.status === 'pending').length === 0} className="px-10 py-3.5 rounded-full bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-black hover:scale-105 active:scale-95 transition-all shadow-2xl disabled:opacity-30 uppercase tracking-tighter italic">변환 시작</button>
+            {store.images.filter(i => i.status === 'done' && !i.isDownloaded).length > 0 && (
+              <button onClick={handleDownloadAll} className="px-10 py-3.5 rounded-full bg-white text-indigo-600 font-black hover:scale-105 active:scale-95 transition-all shadow-2xl uppercase tracking-tighter italic border border-indigo-100 flex items-center gap-2">
+                <Download className="w-5 h-5" /> 일괄 다운로드
+              </button>
+            )}
           </div>
         </div>
+      </main >
 
-      </main>
-
-      {/* Footer / Action Bar */}
-      <footer className="fixed bottom-0 left-0 right-0 h-16 bg-[#16161f] border-t border-[#2a2a35] flex items-center justify-between px-6 z-20">
+      {/* Footer */}
+      < footer className="fixed bottom-0 w-full h-12 flex items-center justify-between px-10 z-40" >
         <div className="flex items-center gap-4">
-          <span className="text-sm text-neutral-400">
-            {store.images.length === 0 ? "이미지를 추가하고 변환을 시작하세요" : `대기: ${store.images.filter(i => i.status === 'pending').length}건 | 완료: ${store.images.filter(i => i.status === 'done').length}건`}
-          </span>
-          {store.enableCompress && store.images.filter(i => i.status === 'done' && i.processedSize).length > 1 && (() => {
-            const doneImages = store.images.filter(i => i.status === 'done' && i.processedSize);
-            const totalOrig = doneImages.reduce((acc, curr) => acc + curr.originalSize, 0);
-            const totalProc = doneImages.reduce((acc, curr) => acc + (curr.processedSize || 0), 0);
-            if (totalProc < totalOrig) {
-              const savedPercent = Math.round((1 - totalProc / totalOrig) * 100);
-              return (
-                <div className="flex items-center gap-2 px-3 py-1 bg-emerald-500/10 rounded-full border border-emerald-500/20">
-                  <span className="text-xs font-bold text-emerald-400">최적화 완료</span>
-                  <span className="text-xs text-emerald-500">총 {formatBytes(totalOrig - totalProc)} 절감 (-{savedPercent}%)</span>
-                </div>
-              );
-            }
-            return null;
-          })()}
+
+
         </div>
-        <div className="flex items-center gap-4">
-          <label className="flex items-center gap-2 cursor-pointer text-sm font-medium text-neutral-300 hover:text-white transition group mr-2">
-            <div className={cn("w-4 h-4 rounded-sm border flex items-center justify-center transition-colors", store.autoDownloadAfterProcessing ? "bg-indigo-500 border-indigo-500" : "bg-transparent border-neutral-600 group-hover:border-neutral-400")}>
-              {store.autoDownloadAfterProcessing && <span className="text-white text-[10px] leading-none">✓</span>}
-            </div>
-            변환 완료 시 자동 다운로드
-            <input type="checkbox" className="hidden" checked={store.autoDownloadAfterProcessing} onChange={e => store.setOption('autoDownloadAfterProcessing', e.target.checked)} />
-          </label>
-
-          <button onClick={store.resetOptions} className="px-6 py-2.5 rounded text-sm font-medium text-neutral-400 bg-[#1e1e28] hover:bg-[#252532] border border-[#2a2a35] transition">초기화</button>
-
-          <button
-            onClick={handleDownloadAll}
-            disabled={store.images.filter(i => i.status === 'done' && !i.isDownloaded).length === 0}
-            className="px-8 py-2.5 rounded text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-500 disabled:bg-neutral-800 disabled:text-neutral-500 transition-colors shadow-sm">
-            일괄 다운로드
-          </button>
-
-          <button
-            onClick={handleStartProcessing}
-            disabled={store.images.filter(i => i.status === 'pending').length === 0}
-            className="px-8 py-2.5 rounded text-sm font-bold text-white bg-indigo-500 hover:bg-indigo-400 disabled:bg-neutral-800 disabled:text-neutral-500 transition-colors shadow-[0_0_15px_rgba(99,102,241,0.3)]">
-            변환 시작
-          </button>
-        </div>
-      </footer>
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" className="hidden" checked={store.autoDownloadAfterProcessing} onChange={e => store.setOption('autoDownloadAfterProcessing', e.target.checked)} />
+          <div className={cn("w-4 h-4 rounded border flex items-center justify-center", store.autoDownloadAfterProcessing ? "bg-indigo-500 border-indigo-500" : "border-white/60")}>{store.autoDownloadAfterProcessing && <Check className="w-3 h-3 text-white" />}</div>
+          <span className="text-[10px] font-bold text-white/80">AUTO DOWNLOAD</span>
+        </label>
+      </footer >
 
       <style dangerouslySetInnerHTML={{
         __html: `
-        .checkered-bg {
-          background-image: 
-            linear-gradient(45deg, #181822 25%, transparent 25%), 
-            linear-gradient(-45deg, #181822 25%, transparent 25%), 
-            linear-gradient(45deg, transparent 75%, #181822 75%), 
-            linear-gradient(-45deg, transparent 75%, #181822 75%);
-          background-size: 16px 16px;
-          background-position: 0 0, 0 8px, 8px -8px, -8px 0px;
-        }
-        .custom-scrollbar::-webkit-scrollbar {
-          width: 8px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-track {
-          background: #14141d;
-          border-radius: 4px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb {
-          background: #2a2a35;
-          border-radius: 4px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-          background: #3a3a46;
-        }
+        .custom-scrollbar::-webkit-scrollbar { width: 5px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
+        .range-slider { -webkit-appearance: none; height: 4px; background: rgba(255,255,255,0.05); border-radius: 2px; outline: none; }
+        .range-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; background: white; border-radius: 50%; cursor: pointer; border: 2px solid #6366f1; box-shadow: 0 0 10px rgba(99,102,241,0.5); }
       `}} />
-    </div>
+    </div >
   );
 }
 
-// Reusable Toggle Switch Component
 function ToggleSwitch({ checked, onChange, size = 'default' }: { checked: boolean, onChange: (val: boolean) => void, size?: 'default' | 'small' }) {
-  const w = size === 'small' ? 'w-8' : 'w-10';
-  const h = size === 'small' ? 'h-4' : 'h-5';
-  const tw = size === 'small' ? 'w-3 h-3' : 'w-4 h-4';
-  const tx = size === 'small' ? 'translate-x-4' : 'translate-x-5';
-
   return (
-    <div
-      onClick={() => onChange(!checked)}
-      className={cn(
-        "relative rounded-full cursor-pointer transition-colors duration-200 ease-in-out flex items-center",
-        w, h,
-        checked ? "bg-indigo-500" : "bg-[#2a2a35]"
-      )}
-    >
-      <div className={cn(
-        "bg-white rounded-full shadow-sm transform transition-transform duration-200 ease-in-out ml-0.5",
-        tw,
-        checked ? tx : "translate-x-0"
-      )} />
+    <div onClick={() => onChange(!checked)} className={cn("relative rounded-full cursor-pointer transition-all flex items-center shadow-inner", size === 'small' ? 'w-8 h-4' : 'w-10 h-5', checked ? "bg-indigo-500" : "bg-white/5")}>
+      <div className={cn("bg-white rounded-full transition-all shadow-md", size === 'small' ? 'w-3 h-3 ml-0.5' : 'w-4 h-4 ml-0.5', checked ? (size === 'small' ? 'translate-x-4' : 'translate-x-5') : 'translate-x-0')} />
     </div>
   );
 }

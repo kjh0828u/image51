@@ -35,8 +35,11 @@ export interface AppOptions {
     enableBgRemoval: boolean;
     detailRemoval: boolean;
     alphaMatting: boolean;
+    enableFgThreshold: boolean;
     fgThreshold: number;
+    enableBgThreshold: boolean;
     bgThreshold: number;
+    enableErodeSize: boolean;
     erodeSize: number;
 
     fakeTransRemoval: boolean;
@@ -48,6 +51,7 @@ export interface AppOptions {
     openFolderAfterProcessing: boolean; // 다운로드 완료 시 폴더 열기
     autoDownloadAfterProcessing: boolean; // 모든 변환 완료 후 자동 다운로드
     downloadMode: 'default' | 'custom';
+    outputFormat: 'WEBP' | 'PNG' | 'JPG';
 }
 
 export interface Profile {
@@ -60,10 +64,10 @@ const defaultOptions: AppOptions = {
     enableAutoCrop: false,
     autoCropMargin: 0,
 
-    enableCompress: false,
+    enableCompress: true,
     quality: 60,
 
-    enableResize: false,
+    enableResize: true,
     resizeWidth: '200',
     resizeHeight: '',
     keepRatio: true,
@@ -74,8 +78,11 @@ const defaultOptions: AppOptions = {
     enableBgRemoval: false,
     detailRemoval: false,
     alphaMatting: true,
+    enableFgThreshold: false,
     fgThreshold: 240,
+    enableBgThreshold: false,
     bgThreshold: 5,
+    enableErodeSize: false,
     erodeSize: 5,
 
     fakeTransRemoval: false,
@@ -87,7 +94,23 @@ const defaultOptions: AppOptions = {
     openFolderAfterProcessing: true,
     autoDownloadAfterProcessing: false,
     downloadMode: 'default',
+    outputFormat: 'WEBP',
 };
+
+// 프로파일(프리셋)에 저장할 이미지 처리 관련 옵션 키들
+const imageOptionKeys = [
+    'enableAutoCrop', 'autoCropMargin',
+    'enableCompress', 'quality',
+    'enableResize', 'resizeWidth', 'resizeHeight', 'keepRatio',
+    'enableGrayscale', 'grayscale',
+    'enableBgRemoval', 'detailRemoval', 'alphaMatting',
+    'enableFgThreshold', 'fgThreshold',
+    'enableBgThreshold', 'bgThreshold',
+    'enableErodeSize', 'erodeSize',
+    'fakeTransRemoval', 'fakeTransTolerance',
+    'removeMatchBg', 'removeMatchBgTolerance',
+    'outputFormat'
+] as const;
 
 export interface AppState extends AppOptions {
     images: ImageItem[];
@@ -107,6 +130,7 @@ export interface AppState extends AppOptions {
 
     // Profile Actions
     saveProfile: (name: string) => void;
+    updateProfile: (id: string) => void;
     loadProfile: (id: string) => void;
     deleteProfile: (id: string) => void;
     renameProfile: (id: string, newName: string) => void;
@@ -171,11 +195,10 @@ export const useAppStore = create<AppState>()(
 
             saveProfile: (name) => {
                 const state = get();
-                const curOptions = Object.keys(defaultOptions).reduce((acc, k) => {
-                    const key = k as keyof AppOptions;
-                    (acc as any)[key] = state[key];
-                    return acc;
-                }, {} as AppOptions);
+                const curOptions = {} as any;
+                imageOptionKeys.forEach(key => {
+                    curOptions[key] = state[key as keyof AppOptions];
+                });
 
                 const newProfile: Profile = {
                     id: Date.now().toString(),
@@ -185,11 +208,30 @@ export const useAppStore = create<AppState>()(
                 set({ profiles: [...state.profiles, newProfile], activeProfileId: newProfile.id });
             },
 
+            updateProfile: (id: string) => {
+                const state = get();
+                const curOptions = {} as any;
+                imageOptionKeys.forEach(key => {
+                    curOptions[key] = state[key as keyof AppOptions];
+                });
+
+                set({
+                    profiles: state.profiles.map((p: Profile) => p.id === id ? { ...p, options: curOptions } : p)
+                });
+            },
+
             loadProfile: (id) => {
                 const state = get();
                 const profile = state.profiles.find(p => p.id === id);
                 if (profile) {
-                    set({ ...profile.options, activeProfileId: id });
+                    // 환경 설정(전역)은 건드리지 않고 이미지 처리 옵션만 필터링해서 로드
+                    const filteredOptions = {} as any;
+                    imageOptionKeys.forEach(key => {
+                        if (profile.options[key as keyof AppOptions] !== undefined) {
+                            filteredOptions[key] = profile.options[key as keyof AppOptions];
+                        }
+                    });
+                    set({ ...filteredOptions, activeProfileId: id });
                 }
             },
 
@@ -211,6 +253,7 @@ export const useAppStore = create<AppState>()(
         }),
         {
             name: 'image51-storage',
+            version: 1,
             // images, customDirectoryHandle 상태는 저장하지 않고(메모리 참조 에러 방지), 옵션과 프로파일만 로컬 스토리지에 유지
             partialize: (state) => {
                 const { images, customDirectoryHandle, ...rest } = state;
@@ -219,6 +262,10 @@ export const useAppStore = create<AppState>()(
                 if (result.openFolderAfterProcessing === undefined) result.openFolderAfterProcessing = true;
                 return result;
             },
+            merge: (persistedState: any, currentState: any) => {
+                // 기존 상태에 로컬스토리지 데이터를 병합 (디폴트 설정 유실 방지)
+                return { ...currentState, ...persistedState };
+            }
         }
     )
 );

@@ -125,10 +125,11 @@ export async function processImage(file: File, options: AppOptions): Promise<str
         // Custom Alpha Matting / Thresholding / Erosion 알고리즘 직접 구현
         if (maskIdata) {
             const data = maskIdata.data;
+            const { detailRemoval, alphaMatting, enableFgThreshold, fgThreshold, enableBgThreshold, bgThreshold, enableErodeSize, erodeSize } = options;
             const useAlpha = detailRemoval ? alphaMatting : true;
-            const fgT = detailRemoval ? (fgThreshold !== undefined ? fgThreshold : 240) : 240;
-            const bgT = detailRemoval ? (bgThreshold !== undefined ? bgThreshold : 10) : 5;
-            const eSize = detailRemoval ? (erodeSize !== undefined ? erodeSize : 0) : 5;
+            const fgT = detailRemoval && enableFgThreshold ? fgThreshold : 240;
+            const bgT = detailRemoval && enableBgThreshold ? bgThreshold : 5;
+            const eSize = detailRemoval && enableErodeSize ? erodeSize : 5;
 
             // 1. Threshold 처리
             if (useAlpha) {

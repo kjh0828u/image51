@@ -1,8 +1,19 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #0d0d15;
+  --foreground: #ededed;
+
+  /* Unified Glass Design System - Restored Original Strengths */
+  --glass-surface: rgba(255, 255, 255, 0.05);
+  --glass-surface-bright: rgba(255, 255, 255, 0.1);
+  --glass-surface-bright-s: rgba(255, 255, 255, 0.07);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-border-bright: rgba(139, 92, 246, 0.25);
+  --glass-blur: 16px;
+
+  --accent-primary: #8b5cf6;
+  --accent-secondary: #d946ef;
 }
 
 @theme inline {
@@ -12,45 +23,149 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  overflow-x: hidden;
+}
+
+/* Base Glass Class */
+@utility glass {
+  background: var(--glass-surface);
+  backdrop-filter: blur(var(--glass-blur)) saturate(180%);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(180%);
+  border: 1px solid var(--glass-border);
+}
+
+@utility glass-bright {
+  background: var(--glass-surface-bright);
+  backdrop-filter: blur(20px) saturate(200%);
+  border: 1px solid var(--glass-border-bright);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
+}
+
+
+@utility glass-bright-s {
+  background: var(--glass-surface-bright-s);
+  backdrop-filter: blur(20px) saturate(200%);
+  border: 1px solid var(--glass-border-bright);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
+}
+
+@utility glass-thick {
+  background: rgba(255, 255, 255, 0.07);
+  backdrop-filter: blur(25px) saturate(210%);
+  border: 1px solid rgba(255, 255, 255, 0.15);
 }
 
 @layer components {
   .panel {
-    @apply bg-[#1e1e28] rounded-xl border border-[#2a2a35] shadow-lg p-5;
+    @apply glass rounded-2xl p-6 transition-all duration-300;
   }
 
   .card {
-    @apply bg-[#1e1e28] rounded-xl border border-[#2a2a35] p-4 shadow-sm;
+    @apply glass-bright-s p-5 rounded-2xl transition-all duration-300;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  }
+
+  /* Sub-container for nested elements - Restored to original black/20 strength */
+  .card-sub {
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    @apply rounded-3xl p-6;
+  }
+
+  .card:hover {
+    border-color: rgba(255, 255, 255, 0.2);
+    background: var(--glass-surface-bright);
   }
 
   .card-header {
-    @apply flex justify-between items-center mb-3 text-sm font-bold text-white;
+    @apply flex justify-between items-center mb-5 text-sm font-semibold text-white/90;
   }
 
   .card-content {
-    @apply space-y-3 transition-opacity;
+    @apply space-y-4 transition-all duration-300;
   }
 
   .card-content-disabled {
-    @apply opacity-50 pointer-events-none;
+    @apply opacity-30 pointer-events-none grayscale-[0.5];
   }
 
   .input-label {
-    @apply text-[11px] font-medium text-neutral-400;
+    @apply text-[11px] font-bold text-neutral-400 uppercase tracking-widest mb-1 opacity-70;
   }
 
   .range-slider {
-    @apply flex-1 accent-indigo-500 h-1 bg-[#14141d] rounded-lg appearance-none cursor-pointer;
+    @apply flex-1 accent-indigo-500 h-1.5 bg-black/50 rounded-full appearance-none cursor-pointer;
   }
+
+  .btn-glass {
+    @apply glass border-white/10 hover:bg-white/10 active:scale-95 transition-all text-sm font-medium px-4 py-2 rounded-xl flex items-center gap-2;
+  }
+}
+
+.bg-galaxy {
+  background-image:
+    linear-gradient(rgba(13, 13, 21, 0.9), rgba(13, 13, 21, 0.9)),
+    url('/bg.jpg');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+  background-color: #0d0d15;
+}
+
+@media (max-aspect-ratio: 16/9) {
+  .bg-galaxy {
+    background-size: cover;
+  }
+}
+
+
+/* Custom Checkered Background for preview */
+.checkered-bg {
+  background-image:
+    linear-gradient(45deg, rgba(0, 0, 0, 0.1) 25%, transparent 25%),
+    linear-gradient(-45deg, rgba(0, 0, 0, 0.1) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, rgba(0, 0, 0, 0.1) 75%),
+    linear-gradient(-45deg, transparent 75%, rgba(0, 0, 0, 0.1) 75%);
+  background-size: 16px 16px;
+  background-position: 0 0, 0 8px, 8px -8px, -8px 0px;
+  background-color: rgba(255, 255, 255, 0.03);
+}
+
+/* Animations */
+@keyframes glow {
+
+  0%,
+  100% {
+    box-shadow: 0 0 10px rgba(139, 92, 246, 0.2);
+  }
+
+  50% {
+    box-shadow: 0 0 25px rgba(139, 92, 246, 0.5);
+  }
+}
+
+.animate-glow {
+  animation: glow 3s ease-in-out infinite;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
 }

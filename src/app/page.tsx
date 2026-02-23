@@ -286,9 +286,7 @@ export default function Home() {
     }
 
     if (useAppStore.getState().autoDownloadAfterProcessing) {
-      setTimeout(() => {
-        handleDownloadAll();
-      }, 500);
+      await handleDownloadAll();
     }
   };
 

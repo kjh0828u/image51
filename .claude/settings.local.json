@@ -1,11 +1,43 @@
 {
   "permissions": {
     "allow": [
-      "Bash(git add:*)",
-      "Bash(git commit:*)",
-      "Bash(git push)",
-      "Bash(npx vercel:*)",
-      "Bash(git config:*)"
+      "Bash(npm install:*)",
+      "Bash(npm run dev:*)",
+      "Bash(npm uninstall:*)",
+      "Bash(npm view:*)",
+      "WebFetch(domain:www.behance.net)",
+      "Bash(node:*)",
+      "Bash(npm --version)",
+      "Bash(npm run build:*)",
+      "Bash(curl:*)",
+      "Bash(npx:*)",
+      "Read(//tmp/**)",
+      "Bash(ls:*)",
+      "Read(//c/Users/kjh08/.claude/**)",
+      "Bash(pkill:*)",
+      "Bash(lsof:*)",
+      "Bash(xargs kill:*)",
+      "Bash(netstat:*)",
+      "Bash(taskkill:*)",
+      "Bash(kill:*)",
+      "Bash(powershell -Command:*)",
+      "Bash(\"c:/workspace/test/routine-tracker/README.md\":*)",
+      "Bash(\"c:/workspace/test/routine-tracker/DOCUMENTATION_GUIDE.md\":*)",
+      "Bash(wc:*)",
+      "Bash(npx tsc:*)"
+    ],
+    "deny": [
+      "Read(node_modules/**)",
+      "Read(**/node_modules/**",
+      "Read(dist/**)",
+      "Read(build/**)",
+      "Glob(node_modules/**)",
+      "Glob(**/node_modules/**)",
+      "Glob(dist/**)",
+      "Glob(build/**)"
+    ],
+    "additionalDirectories": [
+      "\\tmp"
     ]
   }
 }

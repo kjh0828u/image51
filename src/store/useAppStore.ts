@@ -48,7 +48,6 @@ export interface AppOptions {
     removeMatchBg: boolean;
     removeMatchBgTolerance: number;
 
-    openFolderAfterProcessing: boolean; // 다운로드 완료 시 폴더 열기
     autoDownloadAfterProcessing: boolean; // 모든 변환 완료 후 자동 다운로드
     downloadMode: 'default' | 'custom';
     outputFormat: 'WEBP' | 'PNG' | 'JPG';
@@ -91,7 +90,6 @@ const defaultOptions: AppOptions = {
     removeMatchBg: false,
     removeMatchBgTolerance: 30,
 
-    openFolderAfterProcessing: true,
     autoDownloadAfterProcessing: false,
     downloadMode: 'default',
     outputFormat: 'WEBP',
@@ -259,7 +257,6 @@ export const useAppStore = create<AppState>()(
                 const { images, customDirectoryHandle, ...rest } = state;
                 const result = rest as any;
                 if (result.autoDownloadAfterProcessing === undefined) result.autoDownloadAfterProcessing = false;
-                if (result.openFolderAfterProcessing === undefined) result.openFolderAfterProcessing = true;
                 return result;
             },
             merge: (persistedState: any, currentState: any) => {

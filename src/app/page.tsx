@@ -122,6 +122,52 @@ function SortablePresetItem({ p, isActive, onLoad, onUpdate, onRename, onDelete 
   );
 }
 
+// 파일명에서 확장자를 제외한 기본 이름과 확장자를 분리하여 반환
+function getFilenameParts(filename: string) {
+  const dotIndex = filename.lastIndexOf('.');
+  if (dotIndex === -1) return { base: filename, ext: '' };
+  return {
+    base: filename.substring(0, dotIndex),
+    ext: filename.substring(dotIndex)
+  };
+}
+
+// 저장 공간에 동일한 이름이 있을 경우 숫자를 붙여 유니크한 파일 핸들을 반환
+async function getUniqueFileHandle(dirHandle: FileSystemDirectoryHandle, filename: string): Promise<FileSystemFileHandle> {
+  const { base, ext } = getFilenameParts(filename);
+  let currentName = filename;
+  let counter = 1;
+
+  while (true) {
+    try {
+      // 해당 이름의 파일이 이미 있는지 확인
+      await dirHandle.getFileHandle(currentName);
+      // 에러가 발생하지 않으면 파일이 존재하는 것이므로 이름 변경
+      currentName = `${base}_${counter}${ext}`;
+      counter++;
+    } catch (e: any) {
+      // NotFoundError인 경우 해당 이름을 사용할 수 있음
+      if (e.name === 'NotFoundError') {
+        return await dirHandle.getFileHandle(currentName, { create: true });
+      }
+      throw e;
+    }
+  }
+}
+
+// 파일 타입에 따른 확장자 결정 및 기본 파일명 생성
+function getDownloadFilename(originalName: string, blobType: string): string {
+  const { base } = getFilenameParts(originalName);
+  const extMap: Record<string, string> = {
+    'image/png': 'png',
+    'image/jpeg': 'jpg',
+    'image/webp': 'webp',
+    'image/gif': 'gif'
+  };
+  const ext = extMap[blobType] || originalName.split('.').pop() || 'png';
+  return `${base}.${ext}`;
+}
+
 function Glass({ children, className, contentClassName, variant = 'default' }: { children: React.ReactNode, className?: string, contentClassName?: string, variant?: 'default' | 'bright' | 'thick' | 'card' }) {
   const variantClass = variant === 'default' ? 'glass' : `glass-${variant}`;
   return (
@@ -267,7 +313,11 @@ export default function Home() {
         try {
           const response = await fetch(img.processedUrl);
           const blob = await response.blob();
-          const fileHandle = await dirHandle.getFileHandle(getDownloadFilename(img.file.name, blob.type), { create: true });
+          const baseName = getDownloadFilename(img.file.name, blob.type);
+
+          // 중복 확인 및 유니크한 핸들 획득
+          const fileHandle = await getUniqueFileHandle(dirHandle, baseName);
+
           const writable = await fileHandle.createWritable();
           await writable.write(blob);
           await writable.close();
@@ -282,23 +332,31 @@ export default function Home() {
         return;
       }
       const zip = new JSZip();
+      const nameCounts: Record<string, number> = {};
+
       for (const img of targetImages) {
         if (!img.processedUrl) continue;
         const response = await fetch(img.processedUrl);
         const blob = await response.blob();
-        zip.file(getDownloadFilename(img.file.name, blob.type), blob);
+
+        let filename = getDownloadFilename(img.file.name, blob.type);
+
+        // Zip 내파일명 중복 체크
+        if (nameCounts[filename]) {
+          const { base, ext } = getFilenameParts(filename);
+          const newName = `${base}_${nameCounts[filename]}${ext}`;
+          nameCounts[filename]++;
+          filename = newName;
+        } else {
+          nameCounts[filename] = 1;
+        }
+
+        zip.file(filename, blob);
       }
       const content = await zip.generateAsync({ type: 'blob' });
       saveAs(content, 'image51_converted.zip');
       targetImages.forEach(img => useAppStore.getState().updateImageStatus(img.id, { isDownloaded: true }));
     }
-  };
-
-  const getDownloadFilename = (originalName: string, blobType: string): string => {
-    const base = originalName.split('.').slice(0, -1).join('.');
-    const extMap: Record<string, string> = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/gif': 'gif' };
-    const ext = extMap[blobType] || originalName.split('.').pop() || 'png';
-    return `${base}.${ext}`;
   };
 
   const handleSingleDownload = async (img: any) => {
@@ -383,7 +441,7 @@ export default function Home() {
 
                 {/* Custom Folder Picker */}
                 {store.downloadMode === 'custom' && (
-                  <div className="bg-white/3 rounded-2xl border border-white/8 p-4 space-y-3">
+                  <div className="bg-white/3 rounded-2xl border border-white/8 p-4 mb-4">
                     <button onClick={async () => {
                       const handle = await (window as any).showDirectoryPicker({ mode: 'readwrite' });
                       store.setCustomDirectoryHandle(handle);
@@ -392,7 +450,7 @@ export default function Home() {
                       📁 저장 폴더 지정하기
                     </button>
                     {store.customDirectoryHandle && (
-                      <p className="text-emerald-400 text-xs font-bold flex items-center gap-2">
+                      <p className="text-emerald-400 text-[11px] font-bold flex items-center gap-2 px-1 mt-3">
                         <Check className="w-3.5 h-3.5" />지정됨: {store.customDirectoryHandle.name}
                       </p>
                     )}

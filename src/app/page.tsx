@@ -2,7 +2,7 @@
 
 import { useAppStore } from '@/store/useAppStore';
 import { useCallback, useRef, useState, useEffect } from 'react';
-import { Plus, Save, Trash2, Download, Pencil, GripVertical, Check, Settings } from 'lucide-react';
+import { Plus, Trash2, Download, Check, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { processImage } from '@/lib/imageProcessor';
 import JSZip from 'jszip';
@@ -21,10 +21,8 @@ import {
   SortableContext,
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
-  useSortable,
 } from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
-import { Profile } from '@/store/useAppStore';
+import { Glass, ToggleSwitch, SortablePresetItem } from '@/components';
 
 async function verifyPermission(fileHandle: any, readWrite: boolean = true) {
   const options = { mode: readWrite ? 'readwrite' : 'read' };
@@ -50,76 +48,6 @@ function formatBytes(bytes: number, decimals = 1) {
   const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
-}
-
-interface SortablePresetItemProps {
-  p: Profile;
-  isActive: boolean;
-  onLoad: (id: string) => void;
-  onUpdate: (id: string, name: string) => void;
-  onRename: (id: string, oldName: string) => void;
-  onDelete: (id: string, name: string) => void;
-}
-
-function SortablePresetItem({ p, isActive, onLoad, onUpdate, onRename, onDelete }: SortablePresetItemProps) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging
-  } = useSortable({ id: p.id });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    zIndex: isDragging ? 50 : undefined,
-    position: 'relative' as const,
-  };
-
-  return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className={cn(
-        "preset-item glass",
-        isActive && "preset-item-active",
-        isDragging && "preset-item-dragging"
-      )}
-      onClick={() => onLoad(p.id)}
-    >
-      <div className="preset-item-content">
-        <div {...attributes} {...listeners} className="preset-drag-handle">
-          <GripVertical className="w-3.5 h-3.5" />
-        </div>
-        <span className="preset-name">{p.name}</span>
-      </div>
-      <div className="preset-actions">
-        <button
-          onClick={(e) => { e.stopPropagation(); onUpdate(p.id, p.name); }}
-          className="preset-action-btn"
-          title="현재 설정 저장 (덮어쓰기)"
-        >
-          <Save className="w-3.5 h-3.5" />
-        </button>
-        <button
-          onClick={(e) => { e.stopPropagation(); onRename(p.id, p.name); }}
-          className="preset-action-btn preset-action-btn-edit"
-          title="이름 수정"
-        >
-          <Pencil className="w-3.5 h-3.5" />
-        </button>
-        <button
-          onClick={(e) => { e.stopPropagation(); onDelete(p.id, p.name); }}
-          className="preset-action-btn preset-action-btn-delete"
-          title="삭제"
-        >
-          <Trash2 className="w-3.5 h-3.5" />
-        </button>
-      </div>
-    </div>
-  );
 }
 
 // 파일명에서 확장자를 제외한 기본 이름과 확장자를 분리하여 반환
@@ -166,18 +94,6 @@ function getDownloadFilename(originalName: string, blobType: string): string {
   };
   const ext = extMap[blobType] || originalName.split('.').pop() || 'png';
   return `${base}.${ext}`;
-}
-
-function Glass({ children, className, contentClassName, variant = 'default', style }: { children: React.ReactNode, className?: string, contentClassName?: string, variant?: 'default' | 'bright' | 'thick' | 'card', style?: React.CSSProperties }) {
-  const variantClass = variant === 'default' ? 'glass' : `glass-${variant}`;
-  return (
-    <div className={cn("glass-container", variantClass, className)} style={style}>
-      <div className="glass-filter" />
-      <div className="glass-overlay" />
-      <div className="glass-specular" />
-      <div className={cn("glass-content", contentClassName)}>{children}</div>
-    </div>
-  );
 }
 
 export default function Home() {
@@ -407,7 +323,7 @@ export default function Home() {
       {isSettingsOpen && (
         <div className="modal-overlay" onClick={() => setIsSettingsOpen(false)}>
           <div className="modal-container" onClick={(e) => e.stopPropagation()}>
-            <Glass variant="thick" className="modal-content" contentClassName="glass-content p-0">
+            <Glass variant="thick" className="modal-content" contentClassName="glass-content modal-glass-content">
               {/* Header */}
               <div className="modal-header">
                 <div className="modal-header-left">
@@ -568,25 +484,25 @@ export default function Home() {
           <h2 className="section-title">변환 옵션</h2>
           <div className="options-grid">
             {/* 1. Auto Crop */}
-            <Glass variant="card" contentClassName="glass-content h-full">
+            <Glass variant="card" contentClassName="glass-content glass-content-full">
               <div className="card-header"><span className="card-header-title">여백 제거<span className="card-header-subtitle">(Auto Crop)</span></span><ToggleSwitch checked={store.enableAutoCrop} onChange={c => store.setOption('enableAutoCrop', c)} /></div>
               <div className={cn("card-content", !store.enableAutoCrop && "card-content-disabled")}>
                 <div className="option-row"><span className="input-label">여백을 없애고 사물에 맞게 조정</span><span className="option-value">{store.autoCropMargin}</span></div>
-                <input type="range" min="0" max="100" value={store.autoCropMargin} onChange={e => store.setOption('autoCropMargin', Number(e.target.value))} className="range-slider w-full" />
+                <input type="range" min="0" max="100" value={store.autoCropMargin} onChange={e => store.setOption('autoCropMargin', Number(e.target.value))} className="range-slider" />
               </div>
             </Glass>
 
             {/* 2. Compression */}
-            <Glass variant="card" contentClassName="glass-content h-full">
+            <Glass variant="card" contentClassName="glass-content glass-content-full">
               <div className="card-header"><span className="card-header-title">이미지 압축<span className="card-header-subtitle">(Compress)</span></span><ToggleSwitch checked={store.enableCompress} onChange={c => store.setOption('enableCompress', c)} /></div>
               <div className={cn("card-content", !store.enableCompress && "card-content-disabled")}>
                 <div className="option-row"><span className="input-label">품질 (%)</span><span className="option-value">{store.quality}</span></div>
-                <input type="range" min="1" max="100" value={store.quality} onChange={e => store.setOption('quality', Number(e.target.value))} className="range-slider w-full" />
+                <input type="range" min="1" max="100" value={store.quality} onChange={e => store.setOption('quality', Number(e.target.value))} className="range-slider" />
               </div>
             </Glass>
 
             {/* 3. Resize */}
-            <Glass variant="card" className="resize-card" contentClassName="glass-content h-full">
+            <Glass variant="card" className="resize-card" contentClassName="glass-content glass-content-full">
               <div className="card-header"><span className="card-header-title">이미지 크기 조절<span className="card-header-subtitle">(Resize)</span></span><ToggleSwitch checked={store.enableResize} onChange={c => store.setOption('enableResize', c)} /></div>
               <div className={cn("card-content grid-cols-2-gap", !store.enableResize && "card-content-disabled")}>
 
@@ -603,20 +519,20 @@ export default function Home() {
             </Glass>
 
             {/* 4. Grayscale */}
-            <Glass variant="card" contentClassName="glass-content h-full">
+            <Glass variant="card" contentClassName="glass-content glass-content-full">
               <div className="card-header"><span className="card-header-title">흑백 처리<span className="card-header-subtitle">(Grayscale)</span></span><ToggleSwitch checked={store.enableGrayscale} onChange={c => store.setOption('enableGrayscale', c)} /></div>
               <div className={cn("card-content", !store.enableGrayscale && "card-content-disabled")}>
                 <div className="option-row">
                   <span className="input-label">강도 (%)</span>
                   <span className="option-value">{store.grayscale}%</span>
                 </div>
-                <input type="range" min="0" max="100" value={store.grayscale} onChange={e => store.setOption('grayscale', Number(e.target.value))} className="range-slider w-full" />
+                <input type="range" min="0" max="100" value={store.grayscale} onChange={e => store.setOption('grayscale', Number(e.target.value))} className="range-slider" />
               </div>
             </Glass>
 
 
             {/* 6. AI BG Removal (Detailed) */}
-            <Glass variant="card" className="options-grid-full" contentClassName="glass-content h-full">
+            <Glass variant="card" className="options-grid-full" contentClassName="glass-content glass-content-full">
               <div className="card-header">
                 <div className="card-header-with-icon">
                   <span className="card-header-title">배경 제거 </span>
@@ -647,7 +563,7 @@ export default function Home() {
                             <span className="option-value-small">{store.enableFgThreshold ? store.fgThreshold : 'AUTO'}</span>
                           </div>
                           <div className="slider-row">
-                            <input type="range" min="0" max="255" disabled={!store.enableFgThreshold} value={store.fgThreshold} onChange={e => store.setOption('fgThreshold', Number(e.target.value))} className="range-slider w-full" />
+                            <input type="range" min="0" max="255" disabled={!store.enableFgThreshold} value={store.fgThreshold} onChange={e => store.setOption('fgThreshold', Number(e.target.value))} className="range-slider" />
                             <ToggleSwitch checked={store.enableFgThreshold} onChange={c => store.setOption('enableFgThreshold', c)} size="small" />
                           </div>
                         </div>
@@ -659,7 +575,7 @@ export default function Home() {
                             <span className="option-value-small">{store.enableBgThreshold ? store.bgThreshold : 'AUTO'}</span>
                           </div>
                           <div className="slider-row">
-                            <input type="range" min="0" max="50" disabled={!store.enableBgThreshold} value={store.bgThreshold} onChange={e => store.setOption('bgThreshold', Number(e.target.value))} className="range-slider w-full" />
+                            <input type="range" min="0" max="50" disabled={!store.enableBgThreshold} value={store.bgThreshold} onChange={e => store.setOption('bgThreshold', Number(e.target.value))} className="range-slider" />
                             <ToggleSwitch checked={store.enableBgThreshold} onChange={c => store.setOption('enableBgThreshold', c)} size="small" />
                           </div>
                         </div>
@@ -671,7 +587,7 @@ export default function Home() {
                             <span className="option-value-small">{store.enableErodeSize ? store.erodeSize : 'AUTO'}</span>
                           </div>
                           <div className="slider-row">
-                            <input type="range" min="0" max="20" disabled={!store.enableErodeSize} value={store.erodeSize} onChange={e => store.setOption('erodeSize', Number(e.target.value))} className="range-slider w-full" />
+                            <input type="range" min="0" max="20" disabled={!store.enableErodeSize} value={store.erodeSize} onChange={e => store.setOption('erodeSize', Number(e.target.value))} className="range-slider" />
                             <ToggleSwitch checked={store.enableErodeSize} onChange={c => store.setOption('enableErodeSize', c)} size="small" />
                           </div>
                         </div>
@@ -686,7 +602,7 @@ export default function Home() {
                         <ToggleSwitch checked={store.fakeTransRemoval} onChange={c => store.setOption('fakeTransRemoval', c)} size="small" />
                       </div>
                       <div className={cn(!store.fakeTransRemoval && "opacity-20 pointer-events-none", "slider-row-wide disabled-transition")}>
-                        <input type="range" min="0" max="100" value={store.fakeTransTolerance} onChange={e => store.setOption('fakeTransTolerance', Number(e.target.value))} className="range-slider w-full" />
+                        <input type="range" min="0" max="100" value={store.fakeTransTolerance} onChange={e => store.setOption('fakeTransTolerance', Number(e.target.value))} className="range-slider" />
                         <span className="slider-value">{store.fakeTransTolerance}</span>
                       </div>
                     </div>
@@ -697,7 +613,7 @@ export default function Home() {
                         <ToggleSwitch checked={store.removeMatchBg} onChange={c => store.setOption('removeMatchBg', c)} size="small" />
                       </div>
                       <div className={cn(!store.removeMatchBg && "opacity-20 pointer-events-none", "slider-row-wide disabled-transition")}>
-                        <input type="range" min="0" max="100" value={store.removeMatchBgTolerance} onChange={e => store.setOption('removeMatchBgTolerance', Number(e.target.value))} className="range-slider w-full" />
+                        <input type="range" min="0" max="100" value={store.removeMatchBgTolerance} onChange={e => store.setOption('removeMatchBgTolerance', Number(e.target.value))} className="range-slider" />
                         <span className="slider-value">{store.removeMatchBgTolerance}</span>
                       </div>
                     </div>
@@ -732,14 +648,6 @@ export default function Home() {
         </label>
       </footer>
 
-    </div>
-  );
-}
-
-function ToggleSwitch({ checked, onChange, size = 'default' }: { checked: boolean, onChange: (val: boolean) => void, size?: 'default' | 'small' }) {
-  return (
-    <div onClick={() => onChange(!checked)} className={cn("toggle", size === 'small' ? 'toggle-small' : 'toggle-default', checked ? "toggle-on" : "toggle-off")}>
-      <div className={cn("toggle-thumb", size === 'small' ? 'toggle-thumb-small' : 'toggle-thumb-default', checked && (size === 'small' ? 'toggle-thumb-on-small' : 'toggle-thumb-on-default'))} />
     </div>
   );
 }

@@ -54,7 +54,7 @@
 /* ========== 베이스 스타일 ========== */
 body {
   background-image:
-    linear-gradient(rgba(13, 13, 21, 0.9), rgba(13, 13, 21, 0.9)),
+    linear-gradient(rgba(13, 13, 21, 0.7), rgba(13, 13, 21, 0.9)),
     url('/bg.jpg');
   background-size: cover;
   background-position: center;
@@ -67,7 +67,7 @@ body {
 .app-container {
   min-height: 100vh;
   background-image:
-    linear-gradient(rgba(13, 13, 21, 0.9), rgba(13, 13, 21, 0.9)),
+    linear-gradient(rgba(13, 13, 21, 0.45), rgba(13, 13, 21, 0.9)),
     url('/bg.jpg');
   background-size: cover;
   background-position: center;
@@ -106,10 +106,10 @@ body {
 }
 
 .header-logo {
-  width: 2.5rem;
-  height: 2.5rem;
+  width: 3.5rem;
+  height: 3.5rem;
   object-fit: contain;
-  filter: drop-shadow(0 0 12px rgba(139, 92, 246, 0.6));
+  filter: drop-shadow(0 3px 5px rgba(177, 255, 249, 0.897));
 }
 
 .header-title {
@@ -326,17 +326,17 @@ body {
 
 .glass-bright {
   border-radius: var(--radius-3xl);
-  --lg-bg-color: rgba(255, 255, 255, 0.02);
+  --lg-bg-color: rgba(255, 255, 255, 0.08);
 }
 
 .glass-card {
   border-radius: var(--radius-3xl);
-  --lg-bg-color: rgba(255, 255, 255, 0.02);
+  --lg-bg-color: rgba(255, 255, 255, 0.08);
 }
 
 .glass-thick {
   border-radius: var(--radius-3xl);
-  --lg-bg-color: rgba(255, 255, 255, 0.02);
+  --lg-bg-color: rgba(255, 255, 255, 0.08);
 }
 
 /* Glass Interactions */
@@ -390,9 +390,9 @@ body {
 
 .card-header-title {
   font-weight: 700;
-  color: white;
+  color: rgb(255, 255, 255);
   letter-spacing: normal;
-  font-size: 13px;
+  font-size: 15px;
 }
 
 .card-header-subtitle {

@@ -24,11 +24,11 @@
       "Bash(\"c:/workspace/test/routine-tracker/README.md\":*)",
       "Bash(\"c:/workspace/test/routine-tracker/DOCUMENTATION_GUIDE.md\":*)",
       "Bash(wc:*)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "WebFetch(domain:github.com)"
     ],
     "deny": [
       "Read(node_modules/**)",
-      "Read(**/node_modules/**",
       "Read(dist/**)",
       "Read(build/**)",
       "Glob(node_modules/**)",

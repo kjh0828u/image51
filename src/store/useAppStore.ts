@@ -48,6 +48,10 @@ export interface AppOptions {
     removeMatchBg: boolean;
     removeMatchBgTolerance: number;
 
+    // U2Net 배경 제거 (새 기능)
+    enableU2NetRemoval: boolean;
+    u2netModel: 'general' | 'human';
+
     autoDownloadAfterProcessing: boolean; // 모든 변환 완료 후 자동 다운로드
     downloadMode: 'default' | 'custom';
     outputFormat: 'WEBP' | 'PNG' | 'JPG';
@@ -90,6 +94,9 @@ const defaultOptions: AppOptions = {
     removeMatchBg: false,
     removeMatchBgTolerance: 30,
 
+    enableU2NetRemoval: false,
+    u2netModel: 'general',
+
     autoDownloadAfterProcessing: false,
     downloadMode: 'default',
     outputFormat: 'WEBP',
@@ -107,6 +114,7 @@ const imageOptionKeys = [
     'enableErodeSize', 'erodeSize',
     'fakeTransRemoval', 'fakeTransTolerance',
     'removeMatchBg', 'removeMatchBgTolerance',
+    'enableU2NetRemoval', 'u2netModel',
     'outputFormat'
 ] as const;
 

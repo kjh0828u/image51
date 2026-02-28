@@ -24,12 +24,12 @@ import {
 } from '@dnd-kit/sortable';
 import { Glass, ToggleSwitch, SortablePresetItem } from '@/components';
 
-async function verifyPermission(fileHandle: any, readWrite: boolean = true) {
+async function verifyPermission(fileHandle: any, readWrite: boolean = true, requestIfNeeded = true) {
   const options = { mode: readWrite ? 'readwrite' : 'read' };
   if ((await fileHandle.queryPermission(options)) === 'granted') {
     return true;
   }
-  if ((await fileHandle.requestPermission(options)) === 'granted') {
+  if (requestIfNeeded && (await fileHandle.requestPermission(options)) === 'granted') {
     return true;
   }
   return false;
@@ -202,18 +202,18 @@ export default function Home() {
     }
 
     if (useAppStore.getState().autoDownloadAfterProcessing) {
-      await handleDownloadAll();
+      await handleDownloadAll({ skipPermissionRequest: true });
     }
   };
 
-  const handleDownloadAll = async () => {
+  const handleDownloadAll = async ({ skipPermissionRequest = false }: { skipPermissionRequest?: boolean } = {}) => {
     const targetImages = useAppStore.getState().images.filter(img => img.status === 'done' && img.processedUrl && !img.isDownloaded);
     if (targetImages.length === 0) return;
 
     // Check custom directory handle
     let dirHandle = null;
     if (store.downloadMode === 'custom' && store.customDirectoryHandle) {
-      const hasPerm = await verifyPermission(store.customDirectoryHandle, true);
+      const hasPerm = await verifyPermission(store.customDirectoryHandle, true, !skipPermissionRequest);
       if (hasPerm) {
         const d = new Date();
         const folderName = `${String(d.getFullYear()).slice(2)}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -306,7 +306,7 @@ export default function Home() {
       <header className="header">
         <div className="header-inner">
           <div className="header-brand">
-            <img src="/logo.webp" alt="Image51" className="header-logo" />
+            <img src="/logo.png" alt="Image51" className="header-logo" />
             <div>
               <h1 className="header-title">Image51</h1>
             </div>
@@ -530,6 +530,41 @@ export default function Home() {
               </div>
             </Glass>
 
+
+            {/* 5. U2Net 배경 제거 (새 기능) */}
+            <Glass variant="card" className="options-grid-full" contentClassName="glass-content glass-content-full">
+              <div className="card-header">
+                <div className="card-header-with-icon">
+                  <span className="card-header-title">배경 제거 v2</span>
+                  <span className="card-header-subtitle">(U2-Net)</span>
+                </div>
+                <ToggleSwitch checked={store.enableU2NetRemoval} onChange={c => store.setOption('enableU2NetRemoval', c)} />
+              </div>
+              <div className={cn(!store.enableU2NetRemoval && "card-content-disabled", "bg-removal-content")}>
+                <p className="input-label" style={{ marginBottom: '10px' }}>
+                  u2net / u2net_human_seg 모델 기반 배경 제거. 사람 사진엔 <b>인물 특화</b> 모드를 권장합니다.
+                </p>
+                <div className="grid-cols-2-gap">
+                  {(['general', 'human'] as const).map((m) => (
+                    <label key={m} className="modal-option-item" style={{ cursor: 'pointer' }}>
+                      <input
+                        type="radio"
+                        className="hidden"
+                        checked={store.u2netModel === m}
+                        onChange={() => store.setOption('u2netModel', m)}
+                        disabled={!store.enableU2NetRemoval}
+                      />
+                      <div className={cn("radio-custom", store.u2netModel === m && "radio-custom-checked")}>
+                        {store.u2netModel === m && <div className="radio-custom-inner" />}
+                      </div>
+                      <span className="modal-option-text">
+                        {m === 'general' ? '범용 (U2-Net)' : '인물 특화 (U2-Net Human)'}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </Glass>
 
             {/* 6. AI BG Removal (Detailed) */}
             <Glass variant="card" className="options-grid-full" contentClassName="glass-content glass-content-full">

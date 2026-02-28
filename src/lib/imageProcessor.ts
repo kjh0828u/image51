@@ -37,6 +37,125 @@ async function getModel() {
     return bgRemover;
 }
 
+// U2Net 모델 캐시 (general / human 각각 따로)
+const u2netModels: Record<string, unknown> = {};
+
+async function getU2NetModel(modelType: 'general' | 'human') {
+    const modelId = modelType === 'human'
+        ? 'BritishWerewolf/U-2-Net-Human-Seg'
+        : 'BritishWerewolf/U-2-Net';
+
+    if (!u2netModels[modelType]) {
+        const { AutoModel } = await import('@huggingface/transformers');
+        u2netModels[modelType] = await AutoModel.from_pretrained(modelId, { dtype: 'fp32' });
+    }
+    return u2netModels[modelType];
+}
+
+// U2Net 전처리: Canvas로 320×320 리사이즈 후 ImageNet 정규화 Float32 텐서 생성
+function u2netPreprocess(blob: ImageBitmap): Float32Array {
+    const SIZE = 320;
+    const canvas = document.createElement('canvas');
+    canvas.width = SIZE;
+    canvas.height = SIZE;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
+    ctx.drawImage(blob, 0, 0, SIZE, SIZE);
+    const { data } = ctx.getImageData(0, 0, SIZE, SIZE);
+
+    // ImageNet mean/std 정규화
+    const mean = [0.485, 0.456, 0.406];
+    const std  = [0.229, 0.224, 0.225];
+    const tensor = new Float32Array(3 * SIZE * SIZE);
+    for (let i = 0; i < SIZE * SIZE; i++) {
+        tensor[0 * SIZE * SIZE + i] = (data[i * 4 + 0] / 255 - mean[0]) / std[0]; // R
+        tensor[1 * SIZE * SIZE + i] = (data[i * 4 + 1] / 255 - mean[1]) / std[1]; // G
+        tensor[2 * SIZE * SIZE + i] = (data[i * 4 + 2] / 255 - mean[2]) / std[2]; // B
+    }
+    return tensor;
+}
+
+// U2Net으로 배경 제거 수행 → 투명 PNG Blob 반환
+export async function removeBackgroundU2Net(
+    blob: Blob,
+    modelType: 'general' | 'human'
+): Promise<Blob> {
+    const { Tensor } = await import('@huggingface/transformers');
+    const model = await getU2NetModel(modelType);
+
+    const origBmp = await createImageBitmap(blob);
+    const origW = origBmp.width;
+    const origH = origBmp.height;
+
+    // 전처리: [1, 3, 320, 320] Float32 텐서
+    const SIZE = 320;
+    const pixelData = u2netPreprocess(origBmp);
+    const inputTensor = new Tensor('float32', pixelData, [1, 3, SIZE, SIZE]);
+
+    // 입력 키: "input.1" (ONNX config 확인)
+    const output = await (model as any)({ 'input.1': inputTensor });
+
+    // 출력 키: "1959" (primary composite output), 없으면 첫 번째 키로 폴백
+    const outTensor = output['1959'] ?? output[Object.keys(output)[0]];
+    const rawData = outTensor.data as Float32Array;
+    const outH = outTensor.dims[outTensor.dims.length - 2] as number;
+    const outW = outTensor.dims[outTensor.dims.length - 1] as number;
+
+    // 디버그: rawData 범위 확인
+    let dbgMin = Infinity, dbgMax = -Infinity, dbgPos = 0, dbgNeg = 0;
+    for (let i = 0; i < rawData.length; i++) {
+        if (rawData[i] < dbgMin) dbgMin = rawData[i];
+        if (rawData[i] > dbgMax) dbgMax = rawData[i];
+        if (rawData[i] > 0) dbgPos++; else dbgNeg++;
+    }
+    console.log('[U2Net] rawData min:', dbgMin.toFixed(3), 'max:', dbgMax.toFixed(3), 'pos(>0):', dbgPos, 'neg(<=0):', dbgNeg, 'total:', rawData.length);
+
+    // rawData < 0 → foreground(유지), rawData > 0 → background(제거)
+    // 완전 이진화 후 원본 해상도로 nearest-neighbor 스케일링 (흐림 방지)
+    const maskRgba = new Uint8ClampedArray(outW * outH * 4);
+    for (let i = 0; i < outW * outH; i++) {
+        const v = rawData[i] < 0 ? 255 : 0;
+        maskRgba[i * 4 + 0] = v;
+        maskRgba[i * 4 + 1] = v;
+        maskRgba[i * 4 + 2] = v;
+        maskRgba[i * 4 + 3] = v;
+    }
+
+    // 마스크를 원본 해상도로 nearest-neighbor 업스케일 (이진 마스크가 흐려지지 않도록)
+    const scaledMaskCanvas = document.createElement('canvas');
+    scaledMaskCanvas.width = origW;
+    scaledMaskCanvas.height = origH;
+    const scaledCtx = scaledMaskCanvas.getContext('2d')!;
+    const scaledMaskData = new Uint8ClampedArray(origW * origH * 4);
+    for (let y = 0; y < origH; y++) {
+        for (let x = 0; x < origW; x++) {
+            const srcX = Math.floor(x * outW / origW);
+            const srcY = Math.floor(y * outH / origH);
+            const srcIdx = (srcY * outW + srcX) * 4;
+            const dstIdx = (y * origW + x) * 4;
+            scaledMaskData[dstIdx + 0] = maskRgba[srcIdx + 0];
+            scaledMaskData[dstIdx + 1] = maskRgba[srcIdx + 1];
+            scaledMaskData[dstIdx + 2] = maskRgba[srcIdx + 2];
+            scaledMaskData[dstIdx + 3] = maskRgba[srcIdx + 3];
+        }
+    }
+    scaledCtx.putImageData(new ImageData(scaledMaskData, origW, origH), 0, 0);
+
+    // 원본 캔버스에 destination-in으로 마스크 합성
+    const fgCanvas = document.createElement('canvas');
+    fgCanvas.width = origW;
+    fgCanvas.height = origH;
+    const fgCtx = fgCanvas.getContext('2d')!;
+    fgCtx.drawImage(origBmp, 0, 0);
+    fgCtx.globalCompositeOperation = 'destination-in';
+    fgCtx.imageSmoothingEnabled = false;
+    fgCtx.drawImage(scaledMaskCanvas, 0, 0);
+    fgCtx.globalCompositeOperation = 'source-over';
+
+    return new Promise<Blob>((resolve) =>
+        fgCanvas.toBlob((b) => resolve(b!), 'image/png')
+    );
+}
+
 // 캔버스에 이미지를 그리고 ImageData를 반환하는 헬퍼 함수
 async function getImageDataFromBlob(blob: Blob): Promise<{ imgData: ImageData, canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D }> {
     const bmp = await createImageBitmap(blob);
@@ -57,10 +176,16 @@ export async function processImage(file: File, options: AppOptions): Promise<str
         enableGrayscale, grayscale,
         enableBgRemoval, detailRemoval, alphaMatting, fgThreshold, bgThreshold, erodeSize,
         fakeTransRemoval, fakeTransTolerance,
-        removeMatchBg, removeMatchBgTolerance
+        removeMatchBg, removeMatchBgTolerance,
+        enableU2NetRemoval, u2netModel,
     } = options;
 
     let currentBlob: Blob = file;
+
+    // 0. U2Net 배경 제거 (기존 RMBG와 독립적으로 먼저 실행)
+    if (enableU2NetRemoval) {
+        currentBlob = await removeBackgroundU2Net(currentBlob, u2netModel);
+    }
 
     // 원본 이미지 크기 파악
     const origBmp = await createImageBitmap(file);
@@ -358,8 +483,8 @@ export async function processImage(file: File, options: AppOptions): Promise<str
     }
 
     // 6. 결과물 인코딩 준비
-    // 배경제거 ON → PNG, 그 외 → 입력 파일 포맷 유지
-    let mimeType = enableBgRemoval ? 'image/png' : (file.type || 'image/png');
+    // 배경제거(RMBG 또는 U2Net) ON → PNG (투명도 보존), 그 외 → 입력 파일 포맷 유지
+    let mimeType = (enableBgRemoval || enableU2NetRemoval) ? 'image/png' : (file.type || 'image/png');
 
     // JPG는 투명 부분 렌더링 시 흰색 배경 추가 (형식 유지)
     if (mimeType === 'image/jpeg' || mimeType === 'image/jpg') {

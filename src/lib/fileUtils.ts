@@ -1,8 +1,14 @@
+/**
+ * fileUtils.ts
+ * 
+ * 파일 처리와 관련된 유틸리티 함수 모음입니다.
+ * 브라우저 파일 시스템 API 접근 권한 확인, 고유 파일명 생성, Zip 압축 다운로드 등을 담당합니다.
+ */
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 
 /**
- * 브라우저 파일 시스템 권한 확인
+ * 브라우저 네이티브 파일 시스템 API의 권한(읽기/쓰기)을 확인하고 요청합니다.
  */
 export async function verifyPermission(fileHandle: any, readWrite: boolean = true, requestIfNeeded = true) {
     const options = { mode: readWrite ? 'readwrite' : 'read' };
@@ -16,7 +22,7 @@ export async function verifyPermission(fileHandle: any, readWrite: boolean = tru
 }
 
 /**
- * 파일명에서 기본 이름과 확장자 분리
+ * 파일 경로명에서 파일 본체 이름(base)과 확장자(ext)를 분리합니다.
  */
 export function getFilenameParts(filename: string) {
     const dotIndex = filename.lastIndexOf('.');
@@ -28,7 +34,7 @@ export function getFilenameParts(filename: string) {
 }
 
 /**
- * 저장 공간 내 중복 방지 ( (1), (2) 등 추가 )
+ * 지정된 디렉토리 내에서 파일명이 중복되지 않도록 (1), (2) 번호를 붙여 고유한 핸들을 반환합니다.
  */
 export async function getUniqueFileHandle(dirHandle: FileSystemDirectoryHandle, filename: string): Promise<FileSystemFileHandle> {
     const { base, ext } = getFilenameParts(filename);
@@ -50,7 +56,7 @@ export async function getUniqueFileHandle(dirHandle: FileSystemDirectoryHandle, 
 }
 
 /**
- * 다운로드될 파일명 결정
+ * 변환된 이미지의 원본 파일명과 Blob 타입을 기반으로 적절한 다운로드 파일명을 결정합니다.
  */
 export function getDownloadFilename(originalName: string, blobType: string): string {
     const { base } = getFilenameParts(originalName);
@@ -65,7 +71,7 @@ export function getDownloadFilename(originalName: string, blobType: string): str
 }
 
 /**
- * 단일 이미지 다운로드 (브라우저 방식)
+ * 브라우저의 기본 기능을 사용하여 단일 이미지를 다운로드합니다.
  */
 export async function downloadSingleImage(img: { file: File, processedUrl?: string | null }, updateStatus?: (id: string, state: any) => void) {
     if (!img.processedUrl) return;
@@ -83,7 +89,7 @@ export async function downloadSingleImage(img: { file: File, processedUrl?: stri
 }
 
 /**
- * 다수 이미지 Zip 압축 다운로드
+ * 여러 개의 변환된 이미지를 하나의 Zip 파일로 압축하여 다운로드합니다.
  */
 export async function downloadAsZip(targetImages: any[]) {
     const zip = new JSZip();
@@ -95,6 +101,7 @@ export async function downloadAsZip(targetImages: any[]) {
         const blob = await response.blob();
         let filename = getDownloadFilename(img.file.name, blob.type);
 
+        // Zip 내부 파일명 중복 방지
         if (nameCounts[filename]) {
             const { base, ext } = getFilenameParts(filename);
             const newName = `${base}_${nameCounts[filename]}${ext}`;
@@ -111,7 +118,7 @@ export async function downloadAsZip(targetImages: any[]) {
 }
 
 /**
- * 바이트 단위를 읽기 쉬운 단위로 변환 (KB, MB 등)
+ * 파일 크기(Byte)를 읽기 쉬운 단위(KB, MB 등)의 문자열로 변환합니다.
  */
 export function formatBytes(bytes: number, decimals = 1) {
     if (!+bytes) return '0 B';

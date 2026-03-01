@@ -1,9 +1,12 @@
 /**
- * Canvas 관련 유틸리티 함수들
+ * canvasUtils.ts
+ * 
+ * 브라우저 캔버스(Canvas API)를 이용한 이미지 조작 유틸리티 모음입니다.
+ * 필터 적용, 크기 조절, 여백 제거 등 픽셀 단위의 연산을 수행합니다.
  */
 
 /**
- * Blob이나 ImageBitmap으로부터 캔버스를 생성하고 이미지 데이터를 반환합니다.
+ * 소스(Blob, Bitmap, Canvas, ImageData)로부터 캔버스와 2D 컨텍스트를 생성합니다.
  */
 export async function getCanvasAndContext(source: Blob | ImageBitmap | HTMLCanvasElement | ImageData): Promise<{
     canvas: HTMLCanvasElement,
@@ -32,14 +35,14 @@ export async function getCanvasAndContext(source: Blob | ImageBitmap | HTMLCanva
 }
 
 /**
- * 캔버스에서 ImageData를 추출합니다.
+ * 캔버스의 현재 상태에서 ImageData(픽셀 데이터)를 추출합니다.
  */
 export function getImageData(canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D): ImageData {
     return ctx.getImageData(0, 0, canvas.width, canvas.height);
 }
 
 /**
- * 캔버스를 Blob으로 변환합니다.
+ * 캔버스를 지정된 포맷의 Blob 객체로 변환합니다.
  */
 export async function canvasToBlob(canvas: HTMLCanvasElement, mimeType: string = 'image/png', quality: number = 1.0): Promise<Blob> {
     return new Promise((resolve, reject) => {
@@ -51,7 +54,7 @@ export async function canvasToBlob(canvas: HTMLCanvasElement, mimeType: string =
 }
 
 /**
- * 그레이스케일 필터를 적용합니다.
+ * 이미지에 그레이스케일(흑백) 필터를 적용합니다.
  */
 export function applyGrayscale(data: Uint8ClampedArray, factor: number) {
     for (let i = 0; i < data.length; i += 4) {
@@ -65,7 +68,7 @@ export function applyGrayscale(data: Uint8ClampedArray, factor: number) {
 }
 
 /**
- * 가짜 투명도(체크무늬)를 제거합니다.
+ * 이미지 내부의 체크무늬 배경(가짜 투명도)을 감지하여 제거합니다.
  */
 export function removeFakeTransparency(data: Uint8ClampedArray, tolerance: number) {
     for (let i = 0; i < data.length; i += 4) {
@@ -82,13 +85,14 @@ export function removeFakeTransparency(data: Uint8ClampedArray, tolerance: numbe
 }
 
 /**
- * 이미지의 투명 여백을 자동으로 제거하고 크롭합니다.
+ * 이미지의 투명 여백을 감지하여 자동으로 크롭합니다.
  */
 export function autoCropCanvas(canvas: HTMLCanvasElement, margin: number): HTMLCanvasElement {
     const ctx = canvas.getContext('2d')!;
     const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height);
     let minX = canvas.width, minY = canvas.height, maxX = 0, maxY = 0, found = false;
 
+    // 투명하지 않은 픽셀의 경계 계산
     for (let y = 0; y < canvas.height; y++) {
         for (let x = 0; x < canvas.width; x++) {
             if (data[(y * canvas.width + x) * 4 + 3] > 0) {
@@ -103,6 +107,8 @@ export function autoCropCanvas(canvas: HTMLCanvasElement, margin: number): HTMLC
 
     const cW = maxX - minX + 1, cH = maxY - minY + 1;
     const nW = cW + margin * 2, nH = cH + margin * 2;
+
+    // 크롭된 영역을 새 캔버스에 그리기
     const cropCanvas = document.createElement("canvas");
     cropCanvas.width = nW; cropCanvas.height = nH;
     cropCanvas.getContext("2d")!.drawImage(canvas, minX, minY, cW, cH, margin, margin, cW, cH);
@@ -110,7 +116,7 @@ export function autoCropCanvas(canvas: HTMLCanvasElement, margin: number): HTMLC
 }
 
 /**
- * 이미지를 지정된 크기로 조절합니다.
+ * 이미지를 지정된 크기로 리사이징합니다. 비율 유지가 활성화된 경우 Math.min 비율을 적용합니다.
  */
 export function resizeCanvas(canvas: HTMLCanvasElement, targetW: string, targetH: string, keepRatio: boolean): HTMLCanvasElement {
     let nW = parseInt(targetW, 10) || canvas.width;
@@ -134,17 +140,18 @@ export function resizeCanvas(canvas: HTMLCanvasElement, targetW: string, targetH
 }
 
 /**
- * 알파 채널에 부드러운 임계값(Matting)을 적용합니다.
+ * 알파 채널에 부드러운 임계값(Soft Threshold)을 적용하여 외곽선을 보정합니다.
  */
 export function applyAlphaMatting(data: Uint8ClampedArray, fgT: number, bgT: number) {
     for (let i = 0; i < data.length; i += 4) {
         const a = data[i + 3];
+        // fgT 이상은 완전 불투명, bgT 이하는 완전 투명, 그 사이는 보간 적용
         data[i + 3] = a >= fgT ? 255 : (a <= bgT ? 0 : Math.round(((a - bgT) / (fgT - bgT)) * 255));
     }
 }
 
 /**
- * 알파 채널 부식(Erosion) 처리를 수행합니다.
+ * 알파 채널 부식(Erosion) 필터를 적용하여 불필요한 외곽선 잔상을 제거합니다.
  */
 export function erodeAlpha(data: Uint8ClampedArray, width: number, height: number, size: number) {
     const temp = new Uint8ClampedArray(data);
@@ -153,6 +160,7 @@ export function erodeAlpha(data: Uint8ClampedArray, width: number, height: numbe
             const idx = (y * width + x) * 4;
             if (temp[idx + 3] > 0) {
                 let minA = 255;
+                // 커널 크기만큼 주변 픽셀 마스킹
                 for (let dy = -size; dy <= size; dy++) {
                     for (let dx = -size; dx <= size; dx++) {
                         const ny = y + dy, nx = x + dx;
@@ -170,12 +178,12 @@ export function erodeAlpha(data: Uint8ClampedArray, width: number, height: numbe
 }
 
 /**
- * 원본 이미지의 배경 색상과 유사한 부분을 찾아 제거합니다.
+ * 원본 배경 색상과 유사한 픽셀을 찾아 투명하게 만듭니다. 컬러 매칭 및 제거용입니다.
  */
 export function removeColorMatch(data: Uint8ClampedArray, originalData: Uint8ClampedArray, tolerance: number) {
     let sumR = 0, sumG = 0, sumB = 0, cnt = 0;
 
-    // 제거된 영역에서 원본의 평균 배경색을 추출
+    // 제거된 영역에서 원본 이미지의 평균 배경색을 추출
     for (let i = 0; i < data.length; i += 4) {
         if (originalData[i + 3] > 200 && data[i + 3] < 50) {
             sumR += originalData[i];
@@ -194,6 +202,7 @@ export function removeColorMatch(data: Uint8ClampedArray, originalData: Uint8Cla
                 const dR = data[i] - avgR;
                 const dG = data[i + 1] - avgG;
                 const dB = data[i + 2] - avgB;
+                // 유클리드 거리 기반 컬러 매칭
                 if (dR * dR + dG * dG + dB * dB < tolSq) {
                     data[i + 3] = 0;
                 }

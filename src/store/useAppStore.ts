@@ -1,6 +1,16 @@
+/**
+ * useAppStore.ts
+ * 
+ * Zustand를 사용한 전역 상태 관리 파일입니다.
+ * 이미지 목록, 처리 옵션, 사용자 프로필(프리셋) 등을 관리하며, 이미지 처리 파이프라인의 흐름을 제어합니다.
+ * 'persist' 미들웨어를 사용하여 브라우저 새로고침 후에도 설정과 프로필이 유지됩니다.
+ */
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
+/**
+ * 개별 이미지 객체의 상태와 정보를 정의합니다.
+ */
 export interface ImageItem {
     id: string;
     file: File;
@@ -12,6 +22,9 @@ export interface ImageItem {
     isDownloaded?: boolean;
 }
 
+/**
+ * 이미지 처리 엔진에 전달될 설정 옵션들을 정의합니다.
+ */
 export interface AppOptions {
     // 여백 제거 (Auto Crop)
     enableAutoCrop: boolean;
@@ -48,7 +61,7 @@ export interface AppOptions {
     removeMatchBg: boolean;
     removeMatchBgTolerance: number;
 
-    // U2Net 배경 제거 (새 기능)
+    // U2Net 배경 제거
     enableU2NetRemoval: boolean;
     u2netModel: 'general' | 'human';
 
@@ -56,12 +69,18 @@ export interface AppOptions {
     downloadMode: 'default' | 'custom';
 }
 
+/**
+ * 사용자 정의 설정 프리셋(프로필) 구조입니다.
+ */
 export interface Profile {
     id: string;
     name: string;
     options: AppOptions;
 }
 
+/**
+ * 앱 초기 실행 시 적용될 기본 설정값입니다.
+ */
 const defaultOptions: AppOptions = {
     enableAutoCrop: false,
     autoCropMargin: 0,
@@ -100,7 +119,9 @@ const defaultOptions: AppOptions = {
     downloadMode: 'default',
 };
 
-// 프로파일(프리셋)에 저장할 이미지 처리 관련 옵션 키들
+/**
+ * 프로파일(프리셋)에 저장하거나 불러올 때 사용할 이미지 처리 관련 옵션 키들입니다.
+ */
 const imageOptionKeys = [
     'enableAutoCrop', 'autoCropMargin',
     'enableCompress', 'quality',

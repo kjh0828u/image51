@@ -1,3 +1,10 @@
+/**
+ * page.tsx
+ * 
+ * 애플리케이션의 메인 홈 페이지 컴포넌트입니다.
+ * 이미지 일괄 업로드, AI 배경 제거 옵션 설정, 프로필(프리셋) 관리 기능을 제공합니다.
+ * dnd-kit을 이용한 프리셋 정렬 및 인덱스드 DB 연동 폴더 저장을 지원합니다.
+ */
 'use client';
 
 import { useAppStore, type ImageItem } from '@/store/useAppStore';
@@ -43,6 +50,9 @@ import {
   formatBytes
 } from '@/lib/fileUtils';
 
+/**
+ * 클라이언트 사이드 하이드레이션 완료 여부를 체크하는 커스텀 훅입니다.
+ */
 function useHydrate() {
   const [isHydrated, setHydrated] = useState(false);
   useEffect(() => { setHydrated(true); }, []);
@@ -58,11 +68,15 @@ export default function Home() {
 
   const store = useAppStore();
 
+  // 드래그 앤 드롭 센서 설정 (터치/마우스/키보드)
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
+  /**
+   * 프리셋 아이템들의 드래그 정렬이 끝났을 때의 핸들러입니다.
+   */
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
     if (over && active.id !== over.id) {
@@ -72,6 +86,9 @@ export default function Home() {
     }
   };
 
+  /**
+   * 컴포넌트 마운트 시 초기화 작업: IDB에서 커스텀 폴더 핸들을 로드하고 ESC 키 이벤트를 등록합니다.
+   */
   useEffect(() => {
     getHandle('customDownloadDir').then(handle => {
       if (handle) store.setCustomDirectoryHandle(handle);
@@ -82,12 +99,16 @@ export default function Home() {
     return () => window.removeEventListener('keydown', handleEsc);
   }, []);
 
+  // 파일 드롭 핸들러
   const handleDragOver = useCallback((e: React.DragEvent) => e.preventDefault(), []);
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     if (e.dataTransfer.files?.length) store.addImages(Array.from(e.dataTransfer.files));
   }, [store]);
 
+  /**
+   * 이미지 가로 크기(Width) 변경 핸들러입니다. 비율 유지 시 안내 툴팁을 표시합니다.
+   */
   const handleWidthChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value.replace(/[^0-9]/g, '');
     if (store.keepRatio && store.resizeHeight.trim() !== '' && val !== '') {

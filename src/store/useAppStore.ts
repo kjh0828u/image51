@@ -54,7 +54,6 @@ export interface AppOptions {
 
     autoDownloadAfterProcessing: boolean; // 모든 변환 완료 후 자동 다운로드
     downloadMode: 'default' | 'custom';
-    outputFormat: 'WEBP' | 'PNG' | 'JPG';
 }
 
 export interface Profile {
@@ -99,7 +98,6 @@ const defaultOptions: AppOptions = {
 
     autoDownloadAfterProcessing: false,
     downloadMode: 'default',
-    outputFormat: 'WEBP',
 };
 
 // 프로파일(프리셋)에 저장할 이미지 처리 관련 옵션 키들
@@ -114,8 +112,7 @@ const imageOptionKeys = [
     'enableErodeSize', 'erodeSize',
     'fakeTransRemoval', 'fakeTransTolerance',
     'removeMatchBg', 'removeMatchBgTolerance',
-    'enableU2NetRemoval', 'u2netModel',
-    'outputFormat'
+    'enableU2NetRemoval', 'u2netModel'
 ] as const;
 
 export interface AppState extends AppOptions {

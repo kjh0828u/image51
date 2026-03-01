@@ -2,12 +2,10 @@
 
 import { useAppStore, type ImageItem } from '@/store/useAppStore';
 import { useCallback, useRef, useState, useEffect } from 'react';
-import { Plus, Trash2, Download, Check, Settings } from 'lucide-react';
+import { Plus, Download, Check, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { processImage } from '@/lib/imageProcessor';
-import JSZip from 'jszip';
-import { saveAs } from 'file-saver';
-import { getHandle, setHandle } from '@/lib/idb';
+import { getHandle } from '@/lib/idb';
 import {
   DndContext,
   closestCenter,
@@ -42,8 +40,7 @@ import {
   getDownloadFilename,
   downloadSingleImage,
   downloadAsZip,
-  formatBytes,
-  getFilenameParts
+  formatBytes
 } from '@/lib/fileUtils';
 
 function useHydrate() {

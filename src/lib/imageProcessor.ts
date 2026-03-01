@@ -6,7 +6,9 @@ import {
     getImageData,
     canvasToBlob,
     applyGrayscale,
-    removeFakeTransparency
+    removeFakeTransparency,
+    autoCropCanvas,
+    resizeCanvas
 } from './canvasUtils';
 
 env.allowLocalModels = false;
@@ -162,9 +164,7 @@ async function applyBgRemoval(currentBlob: Blob, origBmp: ImageBitmap, options: 
     }
 
     const { canvas: fgCanvas, ctx: fgCtx } = await getCanvasAndContext(origBmp);
-    const mCanvas = document.createElement("canvas");
-    mCanvas.width = maskImage.width; mCanvas.height = maskImage.height;
-    mCanvas.getContext("2d")!.putImageData(maskIdata, 0, 0);
+    const { canvas: mCanvas, ctx: mCtx } = await getCanvasAndContext(new ImageData(data, maskImage.width, maskImage.height));
 
     fgCtx.globalCompositeOperation = "destination-in";
     fgCtx.drawImage(mCanvas, 0, 0, maskImage.width, maskImage.height, 0, 0, origBmp.width, origBmp.height);
@@ -223,45 +223,16 @@ export async function processImage(file: File, options: AppOptions): Promise<str
 
     let workCanvas = canvas;
     if (options.enableAutoCrop) {
-        let minX = canvas.width, minY = canvas.height, maxX = 0, maxY = 0, found = false;
-        const curData = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-        for (let y = 0; y < canvas.height; y++) {
-            for (let x = 0; x < canvas.width; x++) {
-                if (curData[(y * canvas.width + x) * 4 + 3] > 0) {
-                    minX = Math.min(minX, x); maxX = Math.max(maxX, x); minY = Math.min(minY, y); maxY = Math.max(maxY, y); found = true;
-                }
-            }
-        }
-        if (found) {
-            const cW = maxX - minX + 1, cH = maxY - minY + 1, nW = cW + options.autoCropMargin * 2, nH = cH + options.autoCropMargin * 2;
-            const cropCanvas = document.createElement("canvas");
-            cropCanvas.width = nW; cropCanvas.height = nH;
-            cropCanvas.getContext("2d")!.drawImage(workCanvas, minX, minY, cW, cH, options.autoCropMargin, options.autoCropMargin, cW, cH);
-            workCanvas = cropCanvas;
-        }
+        workCanvas = autoCropCanvas(workCanvas, options.autoCropMargin);
     }
 
     if (options.enableResize) {
-        let nW = parseInt(options.resizeWidth, 10) || workCanvas.width, nH = parseInt(options.resizeHeight, 10) || workCanvas.height;
-        if (options.keepRatio) {
-            const ratio = Math.min(nW / workCanvas.width, nH / workCanvas.height);
-            nW = Math.max(1, Math.round(workCanvas.width * ratio)); nH = Math.max(1, Math.round(workCanvas.height * ratio));
-        }
-        if (nW !== workCanvas.width || nH !== workCanvas.height) {
-            const rCanvas = document.createElement("canvas");
-            rCanvas.width = nW; rCanvas.height = nH;
-            const rCtx = rCanvas.getContext("2d")!;
-            rCtx.imageSmoothingEnabled = true; rCtx.imageSmoothingQuality = "high";
-            rCtx.drawImage(workCanvas, 0, 0, workCanvas.width, workCanvas.height, 0, 0, nW, nH);
-            workCanvas = rCanvas;
-        }
+        workCanvas = resizeCanvas(workCanvas, options.resizeWidth, options.resizeHeight, options.keepRatio);
     }
 
     let mimeType = (options.enableBgRemoval || options.enableU2NetRemoval) ? 'image/png' : (file.type || 'image/png');
     if (mimeType.includes('jpeg') || mimeType.includes('jpg')) {
-        const fCanvas = document.createElement('canvas');
-        fCanvas.width = workCanvas.width; fCanvas.height = workCanvas.height;
-        const fCtx = fCanvas.getContext('2d')!;
+        const { canvas: fCanvas, ctx: fCtx } = await getCanvasAndContext(workCanvas);
         fCtx.fillStyle = '#FFFFFF'; fCtx.fillRect(0, 0, fCanvas.width, fCanvas.height);
         fCtx.drawImage(workCanvas, 0, 0);
         workCanvas = fCanvas;

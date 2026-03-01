@@ -13,13 +13,6 @@
   --color-red-400: #f87171;
   --color-red-500: #ef4444;
 
-  /* Spacing */
-  --spacing-xs: 0.25rem;
-  --spacing-sm: 0.5rem;
-  --spacing-md: 1rem;
-  --spacing-lg: 1.5rem;
-  --spacing-xl: 2rem;
-
   /* Border Radius */
   --radius-sm: 0.5rem;
   --radius-md: 0.75rem;
@@ -33,13 +26,6 @@
   --transition-fast: 0.2s;
   --transition-normal: 0.3s;
   --transition-slow: 0.4s;
-  --transition-bounce: cubic-bezier(0.175, 0.885, 0.32, 1.2);
-  --transition-elastic: cubic-bezier(0.175, 0.885, 0.32, 2.2);
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
 }
 
 /* ========== 베이스 스타일 ========== */

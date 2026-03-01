@@ -1,17 +1,8 @@
 @import "tailwindcss";
 
-/* ========== CSS 변수 (Design Tokens) ========== */
 :root {
-  --background: #000000;
-  --foreground: #ffffff;
-
-  /* Apple Liquid Glass Variables */
+  /* Subtle Glass Variables */
   --lg-bg-color: rgba(255, 255, 255, 0.02);
-  --lg-highlight: rgba(255, 255, 255, 0.45);
-  --lg-highlight2: rgba(255, 255, 255, 0.55);
-  --lg-text: #ffffff;
-  --lg-border-color: rgba(255, 255, 255, 0.15);
-
   --glass-blur: 24px;
 
   /* Colors */
@@ -53,31 +44,37 @@
 
 /* ========== 베이스 스타일 ========== */
 body {
+  background-color: #030305;
   background-image:
-    linear-gradient(rgba(13, 13, 21, 0.7), rgba(13, 13, 21, 0.9)),
-    url('/bg.jpg');
-  background-size: cover;
-  background-position: center;
+    radial-gradient(circle at 10% 10%, rgba(177, 255, 249, 0.117) 0%, transparent 40%),
+    radial-gradient(circle at 90% 30%, rgba(139, 92, 246, 0.13) 0%, transparent 40%),
+    radial-gradient(circle at 50% 90%, rgba(23, 112, 83, 0.1) 0%, transparent 40%),
+    radial-gradient(circle at 50% 50%, rgba(10, 10, 15, 0.5) 0%, rgba(3, 3, 5, 1) 100%);
   background-attachment: fixed;
   color: var(--foreground);
   font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  overflow-x: hidden;
+  letter-spacing: -0.025em;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3%3Ffilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.7' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+  opacity: 0.04;
+  pointer-events: none;
 }
 
 /* ========== 레이아웃 ========== */
 .app-container {
   min-height: 100vh;
-  background-image:
-    linear-gradient(rgba(13, 13, 21, 0.45), rgba(13, 13, 21, 0.9)),
-    url('/bg.jpg');
-  background-size: cover;
-  background-position: center;
-  background-repeat: no-repeat;
-  background-attachment: fixed;
-  background-color: #0d0d15;
+  position: relative;
+  background: transparent;
   color: white;
   display: flex;
   flex-direction: column;
-  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 }
 
 .app-container::selection {
@@ -265,25 +262,22 @@ body {
 /* ========== APPLE LIQUID GLASS 시스템 ========== */
 .glass-container {
   position: relative;
-  display: flex;
-  flex-direction: column;
-  background: transparent !important;
-  border-radius: var(--radius-3xl);
   overflow: hidden;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
-  transition: all var(--transition-slow) var(--transition-elastic);
+  border-radius: var(--radius-3xl);
 }
 
+/* 기존 blur 레이어 */
 .glass-filter {
   position: absolute;
   inset: 0;
   z-index: 0;
-  backdrop-filter: blur(var(--glass-blur, 24px));
-  -webkit-backdrop-filter: blur(var(--glass-blur, 24px));
-  filter: url(#lg-dist);
-  isolation: isolate;
   pointer-events: none;
+
+  /* blur 효과를 변수로부터 사용 */
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
 }
+
 
 .glass-overlay {
   position: absolute;
@@ -299,9 +293,9 @@ body {
   z-index: 2;
   border-radius: inherit;
   overflow: hidden;
-  box-shadow: inset 0.4px 0.4px 0 var(--lg-highlight2),
-    inset 0 0 0.8px var(--lg-highlight);
-  border: 1px solid var(--lg-border-color);
+  box-shadow: inset 0.5px 0.5px 1px rgba(255, 255, 255, 0.1),
+    inset -0.5px -0.5px 1px rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.05);
   pointer-events: none;
 }
 
@@ -326,17 +320,17 @@ body {
 
 .glass-bright {
   border-radius: var(--radius-3xl);
-  --lg-bg-color: rgba(255, 255, 255, 0.08);
+  --lg-bg-color: rgba(255, 255, 255, 0.07);
 }
 
 .glass-card {
-  border-radius: var(--radius-3xl);
-  --lg-bg-color: rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-lg);
+  --lg-bg-color: rgba(255, 255, 255, 0.04);
 }
 
 .glass-thick {
   border-radius: var(--radius-3xl);
-  --lg-bg-color: rgba(255, 255, 255, 0.08);
+  --lg-bg-color: rgba(255, 255, 255, 0.12);
 }
 
 /* Glass Interactions */
@@ -391,7 +385,6 @@ body {
 .card-header-title {
   font-weight: 700;
   color: rgb(255, 255, 255);
-  letter-spacing: normal;
   font-size: 15px;
 }
 
@@ -1365,17 +1358,6 @@ body {
   transition: opacity 0.3s;
 }
 
-/* ========== Utility Classes ========== */
-.bg-galaxy {
-  background-image:
-    linear-gradient(rgba(13, 13, 21, 0.9), rgba(13, 13, 21, 0.9)),
-    url('/bg.jpg');
-  background-size: cover;
-  background-position: center;
-  background-repeat: no-repeat;
-  background-attachment: fixed;
-  background-color: #0d0d15;
-}
 
 .checkered-bg {
   background-image:
@@ -1422,10 +1404,22 @@ body {
 
 @utility glass-bright {
   @apply glass;
-  --lg-bg-color: rgba(255, 255, 255, 0.35);
+  --lg-bg-color: rgba(255, 255, 255, 0.07);
 }
 
 @utility card-glass {
-  @apply glass;
-  --lg-bg-color: rgba(255, 255, 255, 0.15);
+  @apply rounded-xl;
+  --lg-bg-color: rgba(255, 255, 255, 0.04);
+}
+
+
+.liquidGlass-effect {
+  position: absolute;
+  z-index: -3;
+  inset: 0;
+
+  backdrop-filter: blur(1.7px);
+  filter: url(#glass-distortion);
+  overflow: hidden;
+  isolation: isolate;
 }

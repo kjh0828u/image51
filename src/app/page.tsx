@@ -22,78 +22,22 @@ import {
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
-import { Glass, ToggleSwitch, SortablePresetItem } from '@/components';
+import { Glass, ToggleSwitch, SortablePresetItem, GlassDistortionFilter, OptionCard, SettingsModal } from '@/components';
 
-async function verifyPermission(fileHandle: any, readWrite: boolean = true, requestIfNeeded = true) {
-  const options = { mode: readWrite ? 'readwrite' : 'read' };
-  if ((await fileHandle.queryPermission(options)) === 'granted') {
-    return true;
-  }
-  if (requestIfNeeded && (await fileHandle.requestPermission(options)) === 'granted') {
-    return true;
-  }
-  return false;
-}
+import {
+  verifyPermission,
+  getUniqueFileHandle,
+  getDownloadFilename,
+  downloadSingleImage,
+  downloadAsZip,
+  formatBytes,
+  getFilenameParts
+} from '@/lib/fileUtils';
 
 function useHydrate() {
   const [isHydrated, setHydrated] = useState(false);
   useEffect(() => { setHydrated(true); }, []);
   return isHydrated;
-}
-
-function formatBytes(bytes: number, decimals = 1) {
-  if (!+bytes) return '0 B';
-  const k = 1024;
-  const dm = decimals < 0 ? 0 : decimals;
-  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
-}
-
-// 파일명에서 확장자를 제외한 기본 이름과 확장자를 분리하여 반환
-function getFilenameParts(filename: string) {
-  const dotIndex = filename.lastIndexOf('.');
-  if (dotIndex === -1) return { base: filename, ext: '' };
-  return {
-    base: filename.substring(0, dotIndex),
-    ext: filename.substring(dotIndex)
-  };
-}
-
-// 저장 공간에 동일한 이름이 있을 경우 숫자를 붙여 유니크한 파일 핸들을 반환
-async function getUniqueFileHandle(dirHandle: FileSystemDirectoryHandle, filename: string): Promise<FileSystemFileHandle> {
-  const { base, ext } = getFilenameParts(filename);
-  let currentName = filename;
-  let counter = 1;
-
-  while (true) {
-    try {
-      // 해당 이름의 파일이 이미 있는지 확인
-      await dirHandle.getFileHandle(currentName);
-      // 에러가 발생하지 않으면 파일이 존재하는 것이므로 이름 변경
-      currentName = `${base}_${counter}${ext}`;
-      counter++;
-    } catch (e: any) {
-      // NotFoundError인 경우 해당 이름을 사용할 수 있음
-      if (e.name === 'NotFoundError') {
-        return await dirHandle.getFileHandle(currentName, { create: true });
-      }
-      throw e;
-    }
-  }
-}
-
-// 파일 타입에 따른 확장자 결정 및 기본 파일명 생성
-function getDownloadFilename(originalName: string, blobType: string): string {
-  const { base } = getFilenameParts(originalName);
-  const extMap: Record<string, string> = {
-    'image/png': 'png',
-    'image/jpeg': 'jpg',
-    'image/webp': 'webp',
-    'image/gif': 'gif'
-  };
-  const ext = extMap[blobType] || originalName.split('.').pop() || 'png';
-  return `${base}.${ext}`;
 }
 
 export default function Home() {
@@ -293,23 +237,14 @@ export default function Home() {
 
   return (
     <div className="app-container">
-      {/* SVG Filter for Liquid Glass distortion - Top level for reliability */}
-      <svg width="0" height="0" className="svg-filter-container" aria-hidden="true">
-        <filter id="lg-dist" x="-50%" y="-50%" width="200%" height="200%" filterUnits="objectBoundingBox">
-          <feTurbulence type="fractalNoise" baseFrequency="0.012 0.012" numOctaves="4" seed="92" result="noise" />
-          <feGaussianBlur in="noise" stdDeviation="2" result="blurred" />
-          <feDisplacementMap in="SourceGraphic" in2="blurred" scale="120" xChannelSelector="R" yChannelSelector="G" />
-        </filter>
-      </svg>
+      <GlassDistortionFilter />
 
       {/* Header */}
       <header className="header">
         <div className="header-inner">
           <div className="header-brand">
             <img src="/logo.png" alt="Image51" className="header-logo" />
-            <div>
-              <h1 className="header-title">Image51</h1>
-            </div>
+            <h1 className="header-title">Image51</h1>
           </div>
 
           <button onClick={() => setIsSettingsOpen(true)} className="btn-glass">
@@ -320,61 +255,7 @@ export default function Home() {
       </header>
 
       {/* Settings Modal */}
-      {isSettingsOpen && (
-        <div className="modal-overlay" onClick={() => setIsSettingsOpen(false)}>
-          <div className="modal-container" onClick={(e) => e.stopPropagation()}>
-            <Glass variant="thick" className="modal-content" contentClassName="glass-content modal-glass-content">
-              {/* Header */}
-              <div className="modal-header">
-                <div className="modal-header-left">
-                  <div className="modal-icon-container">
-                    <Settings className="modal-icon" />
-                  </div>
-                  <h2 className="modal-title">환경 설정</h2>
-                </div>
-                <button onClick={() => setIsSettingsOpen(false)} className="modal-close-btn">✕</button>
-              </div>
-
-              {/* Content */}
-              <div className="modal-body">
-                {/* Download Mode */}
-                <div className="modal-section">
-                  <h3 className="modal-section-title">다운로드 저장 방식</h3>
-                  <div>
-                    {(['default', 'custom'] as const).map((mode) => (
-                      <label key={mode} className="modal-option-item">
-                        <input type="radio" className="hidden" checked={store.downloadMode === mode} onChange={() => store.setOption('downloadMode', mode)} />
-                        <div className={cn("radio-custom", store.downloadMode === mode && "radio-custom-checked")}>
-                          {store.downloadMode === mode && <div className="radio-custom-inner" />}
-                        </div>
-                        <span className="modal-option-text">{mode === 'default' ? '브라우저 다운로드 (Zip 압축)' : '특정 폴더에 직접 저장'}</span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Custom Folder Picker */}
-                {store.downloadMode === 'custom' && (
-                  <div className="modal-folder-section">
-                    <button onClick={async () => {
-                      const handle = await (window as any).showDirectoryPicker({ mode: 'readwrite' });
-                      store.setCustomDirectoryHandle(handle);
-                      await setHandle('customDownloadDir', handle);
-                    }} className="btn-folder">
-                      📁 저장 폴더 지정하기
-                    </button>
-                    {store.customDirectoryHandle && (
-                      <p className="modal-folder-success">
-                        <Check className="w-3.5 h-3.5" />지정됨: {store.customDirectoryHandle.name}
-                      </p>
-                    )}
-                  </div>
-                )}
-              </div>
-            </Glass>
-          </div>
-        </div>
-      )}
+      {isSettingsOpen && <SettingsModal onClose={() => setIsSettingsOpen(false)} />}
 
       <main className="main-content">
         {/* Left Sidebar */}
@@ -383,7 +264,12 @@ export default function Home() {
           <section>
             <h2 className="section-title">이미지 업로드</h2>
             <div onDragOver={handleDragOver} onDrop={handleDrop} onClick={() => fileInputRef.current?.click()}>
-              <Glass variant="bright" className={cn("glass-interactive glass-upload", store.images.length === 0 ? "upload-zone upload-zone-empty" : "upload-zone upload-zone-with-files")} contentClassName={store.images.length === 0 ? "glass-content upload-zone upload-zone-empty" : "glass-content upload-zone upload-zone-with-files"}>
+              <Glass
+                variant="bright"
+                className={cn("glass-interactive glass-upload", store.images.length === 0 ? "upload-zone upload-zone-empty" : "upload-zone upload-zone-with-files")}
+                contentClassName={store.images.length === 0 ? "glass-content upload-zone upload-zone-empty" : "glass-content upload-zone upload-zone-with-files"}
+              >
+                <div className="liquidGlass-effect"></div>
                 {store.images.length === 0 ? (
                   <>
                     <div className="upload-icon-container">
@@ -397,21 +283,27 @@ export default function Home() {
                       {store.images.map(img => (
                         <div key={img.id} className="image-item">
                           <div className="image-preview checkered-bg">
-                            <img src={img.status === 'done' ? img.processedUrl! : img.previewUrl} />
+                            <img src={img.status === 'done' ? img.processedUrl! : img.previewUrl} alt="" />
                           </div>
                           <div className="image-info">
                             <p className="image-filename">{img.file.name}</p>
                             <div className="image-meta">
-                              <span className={cn("image-status-badge", img.status === 'processing' ? 'status-processing' : img.status === 'done' ? 'status-done' : 'status-pending')}>{img.status}</span>
+                              <span className={cn("image-status-badge", img.status === 'processing' ? 'status-processing' : img.status === 'done' ? 'status-done' : 'status-pending')}>
+                                {img.status}
+                              </span>
                               {img.status === 'done' && <span className="image-size">{formatBytes(img.processedSize!)}</span>}
                               {img.isDownloaded && <span className="image-downloaded-badge"><Check className="w-2.5 h-2.5" />저장됨</span>}
                             </div>
                           </div>
                           <div className="image-actions">
                             {img.status === 'done' && img.processedUrl && (
-                              <button onClick={() => handleSingleDownload(img)} className={cn("btn-icon", img.isDownloaded ? "text-white/15 hover:text-white/30" : "")}><Download className="w-5 h-5" /></button>
+                              <button onClick={() => handleSingleDownload(img)} className={cn("btn-icon", img.isDownloaded && "text-white/15 hover:text-white/30")}>
+                                <Download className="w-5 h-5" />
+                              </button>
                             )}
-                            <button onClick={() => store.removeImage(img.id)} className="btn-icon-delete"><Trash2 className="w-5 h-5" /></button>
+                            <button onClick={() => store.removeImage(img.id)} className="btn-icon-delete">
+                              <Trash2 className="w-5 h-5" />
+                            </button>
                           </div>
                         </div>
                       ))}
@@ -422,7 +314,14 @@ export default function Home() {
                     </div>
                   </div>
                 )}
-                <input type="file" multiple accept="image/*" className="hidden" ref={fileInputRef} onChange={(e) => { if (e.target.files) store.addImages(Array.from(e.target.files)); e.target.value = ''; }} />
+                <input
+                  type="file"
+                  multiple
+                  accept="image/*"
+                  className="hidden"
+                  ref={fileInputRef}
+                  onChange={(e) => { if (e.target.files) store.addImages(Array.from(e.target.files)); e.target.value = ''; }}
+                />
               </Glass>
             </div>
           </section>
@@ -432,43 +331,28 @@ export default function Home() {
             <h2 className="section-title section-header-with-action">
               <span>프리셋 관리</span>
               <div className="section-header-actions">
-                <button onClick={() => { const n = prompt('이름:'); if (n) store.saveProfile(n) }} className="btn-icon section-header-btn"><Plus className="w-3.5 h-3.5" /></button>
+                <button onClick={() => { const n = prompt('이름:'); if (n) store.saveProfile(n) }} className="btn-icon section-header-btn">
+                  <Plus className="w-3.5 h-3.5" />
+                </button>
               </div>
             </h2>
             <Glass variant="thick" className="glass-profile-section" contentClassName="glass-content glass-profile-content">
+              <div className="liquidGlass-effect"></div>
               <div className="preset-list custom-scrollbar">
                 {store.profiles.length === 0 ? (
                   <p className="empty-state">옵션 구성을 프리셋으로 저장해 보세요.</p>
                 ) : (
-                  <DndContext
-                    sensors={sensors}
-                    collisionDetection={closestCenter}
-                    onDragEnd={handleDragEnd}
-                  >
-                    <SortableContext
-                      items={store.profiles.map(p => p.id)}
-                      strategy={verticalListSortingStrategy}
-                    >
+                  <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                    <SortableContext items={store.profiles.map(p => p.id)} strategy={verticalListSortingStrategy}>
                       {store.profiles.map(p => (
                         <SortablePresetItem
                           key={p.id}
                           p={p}
                           isActive={store.activeProfileId === p.id}
                           onLoad={store.loadProfile}
-                          onUpdate={(id, name) => {
-                            if (confirm(`현재 설정을 '${name}' 프리셋에 덮어씌우겠습니까?`)) {
-                              store.updateProfile(id);
-                            }
-                          }}
-                          onRename={(id, oldName) => {
-                            const newName = prompt('프리셋 이름 수정:', oldName);
-                            if (newName && newName.trim()) store.renameProfile(id, newName.trim());
-                          }}
-                          onDelete={(id, name) => {
-                            if (confirm(`'${name}' 프리셋을 삭제하시겠습니까?`)) {
-                              store.deleteProfile(id);
-                            }
-                          }}
+                          onUpdate={(id, name) => { if (confirm(`현재 설정을 '${name}' 프리셋에 덮어씌우겠습니까?`)) store.updateProfile(id); }}
+                          onRename={(id, oldName) => { const newName = prompt('프리셋 이름 수정:', oldName); if (newName && newName.trim()) store.renameProfile(id, newName.trim()); }}
+                          onDelete={(id, name) => { if (confirm(`'${name}' 프리셋을 삭제하시겠습니까?`)) store.deleteProfile(id); }}
                         />
                       ))}
                     </SortableContext>
@@ -483,32 +367,40 @@ export default function Home() {
         <div className="content-area custom-scrollbar">
           <h2 className="section-title">변환 옵션</h2>
           <div className="options-grid">
-            {/* 1. Auto Crop */}
-            <Glass variant="card" contentClassName="glass-content glass-content-full">
-              <div className="card-header"><span className="card-header-title">여백 제거<span className="card-header-subtitle">(Auto Crop)</span></span><ToggleSwitch checked={store.enableAutoCrop} onChange={c => store.setOption('enableAutoCrop', c)} /></div>
-              <div className={cn("card-content", !store.enableAutoCrop && "card-content-disabled")}>
-                <div className="option-row"><span className="input-label">여백을 없애고 사물에 맞게 조정</span><span className="option-value">{store.autoCropMargin}</span></div>
-                <input type="range" min="0" max="100" value={store.autoCropMargin} onChange={e => store.setOption('autoCropMargin', Number(e.target.value))} className="range-slider" />
+
+            <OptionCard
+              title="여백 제거" subtitle="Auto Crop"
+              headerAction={<ToggleSwitch checked={store.enableAutoCrop} onChange={c => store.setOption('enableAutoCrop', c)} />}
+              disabled={!store.enableAutoCrop}
+            >
+              <div className="option-row">
+                <span className="input-label">여백을 없애고 사물에 맞게 조정</span>
+                <span className="option-value">{store.autoCropMargin}</span>
               </div>
-            </Glass>
+              <input type="range" min="0" max="100" value={store.autoCropMargin} onChange={e => store.setOption('autoCropMargin', Number(e.target.value))} className="range-slider" />
+            </OptionCard>
 
-            {/* 2. Compression */}
-            <Glass variant="card" contentClassName="glass-content glass-content-full">
-              <div className="card-header"><span className="card-header-title">이미지 압축<span className="card-header-subtitle">(Compress)</span></span><ToggleSwitch checked={store.enableCompress} onChange={c => store.setOption('enableCompress', c)} /></div>
-              <div className={cn("card-content", !store.enableCompress && "card-content-disabled")}>
-                <div className="option-row"><span className="input-label">품질 (%)</span><span className="option-value">{store.quality}</span></div>
-                <input type="range" min="1" max="100" value={store.quality} onChange={e => store.setOption('quality', Number(e.target.value))} className="range-slider" />
+            <OptionCard
+              title="이미지 압축" subtitle="Compress"
+              headerAction={<ToggleSwitch checked={store.enableCompress} onChange={c => store.setOption('enableCompress', c)} />}
+              disabled={!store.enableCompress}
+            >
+              <div className="option-row">
+                <span className="input-label">품질 (%)</span>
+                <span className="option-value">{store.quality}</span>
               </div>
-            </Glass>
+              <input type="range" min="1" max="100" value={store.quality} onChange={e => store.setOption('quality', Number(e.target.value))} className="range-slider" />
+            </OptionCard>
 
-            {/* 3. Resize */}
-            <Glass variant="card" className="resize-card" contentClassName="glass-content glass-content-full">
-              <div className="card-header"><span className="card-header-title">이미지 크기 조절<span className="card-header-subtitle">(Resize)</span></span><ToggleSwitch checked={store.enableResize} onChange={c => store.setOption('enableResize', c)} /></div>
-              <div className={cn("card-content grid-cols-2-gap", !store.enableResize && "card-content-disabled")}>
-
+            <OptionCard
+              title="이미지 크기 조절" subtitle="Resize"
+              className="resize-card"
+              headerAction={<ToggleSwitch checked={store.enableResize} onChange={c => store.setOption('enableResize', c)} />}
+              disabled={!store.enableResize}
+            >
+              <div className="grid-cols-2-gap">
                 <div className="form-field"><p className="input-label">가로</p><input type="text" value={store.resizeWidth} onChange={handleWidthChange} className="input-field" placeholder="Auto" /></div>
                 <div className="form-field"><p className="input-label">세로</p><input type="text" value={store.resizeHeight} onChange={handleHeightChange} className="input-field" placeholder="Auto" /></div>
-
                 <div className="grid-span-2 option-row-items">
                   <span className="toggle-label-muted">비율 유지</span>
                   <ToggleSwitch checked={store.keepRatio} onChange={c => store.setOption('keepRatio', c)} size="small" />
@@ -516,155 +408,89 @@ export default function Home() {
               </div>
               {ratioTooltip && <div className="tooltip">⚠️ {ratioTooltip.msg}</div>}
               {resizeError && <p className="error-message">{resizeError}</p>}
-            </Glass>
+            </OptionCard>
 
-            {/* 4. Grayscale */}
-            <Glass variant="card" contentClassName="glass-content glass-content-full">
-              <div className="card-header"><span className="card-header-title">흑백 처리<span className="card-header-subtitle">(Grayscale)</span></span><ToggleSwitch checked={store.enableGrayscale} onChange={c => store.setOption('enableGrayscale', c)} /></div>
-              <div className={cn("card-content", !store.enableGrayscale && "card-content-disabled")}>
-                <div className="option-row">
-                  <span className="input-label">강도 (%)</span>
-                  <span className="option-value">{store.grayscale}%</span>
-                </div>
-                <input type="range" min="0" max="100" value={store.grayscale} onChange={e => store.setOption('grayscale', Number(e.target.value))} className="range-slider" />
+            <OptionCard
+              title="흑백 처리" subtitle="Grayscale"
+              headerAction={<ToggleSwitch checked={store.enableGrayscale} onChange={c => store.setOption('enableGrayscale', c)} />}
+              disabled={!store.enableGrayscale}
+            >
+              <div className="option-row">
+                <span className="input-label">강도 (%)</span>
+                <span className="option-value">{store.grayscale}%</span>
               </div>
-            </Glass>
+              <input type="range" min="0" max="100" value={store.grayscale} onChange={e => store.setOption('grayscale', Number(e.target.value))} className="range-slider" />
+            </OptionCard>
 
-
-            {/* 5. U2Net 배경 제거 (새 기능) */}
-            <Glass variant="card" className="options-grid-full" contentClassName="glass-content glass-content-full">
-              <div className="card-header">
-                <div className="card-header-with-icon">
-                  <span className="card-header-title">배경 제거 v2</span>
-                  <span className="card-header-subtitle">(U2-Net)</span>
-                </div>
-                <ToggleSwitch checked={store.enableU2NetRemoval} onChange={c => store.setOption('enableU2NetRemoval', c)} />
-              </div>
-              <div className={cn(!store.enableU2NetRemoval && "card-content-disabled", "bg-removal-content")}>
-                <p className="input-label" style={{ marginBottom: '10px' }}>
-                  u2net / u2net_human_seg 모델 기반 배경 제거. 사람 사진엔 <b>인물 특화</b> 모드를 권장합니다.
-                </p>
-                <div className="grid-cols-2-gap">
-                  {(['general', 'human'] as const).map((m) => (
-                    <label key={m} className="modal-option-item" style={{ cursor: 'pointer' }}>
-                      <input
-                        type="radio"
-                        className="hidden"
-                        checked={store.u2netModel === m}
-                        onChange={() => store.setOption('u2netModel', m)}
-                        disabled={!store.enableU2NetRemoval}
-                      />
-                      <div className={cn("radio-custom", store.u2netModel === m && "radio-custom-checked")}>
-                        {store.u2netModel === m && <div className="radio-custom-inner" />}
-                      </div>
-                      <span className="modal-option-text">
-                        {m === 'general' ? '범용 (U2-Net)' : '인물 특화 (U2-Net Human)'}
-                      </span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-            </Glass>
-
-            {/* 6. AI BG Removal (Detailed) */}
-            <Glass variant="card" className="options-grid-full" contentClassName="glass-content glass-content-full">
-              <div className="card-header">
-                <div className="card-header-with-icon">
-                  <span className="card-header-title">배경 제거 </span>
-                  <span className="card-header-subtitle">(Remove bg)</span>
-                </div>
-                <ToggleSwitch checked={store.enableBgRemoval} onChange={c => store.setOption('enableBgRemoval', c)} />
-              </div>
-
-              <div className={cn(!store.enableBgRemoval && "card-content-disabled", "bg-removal-content")}>
-                <div className="grid-cols-2-gap-lg">
-                  <div className="card-sub">
-                    <div className="card-sub-content">
-                      <p className="card-header-title-with-icon">고급 옵션<span className="card-header-subtitle-inline">(Advanced Options)</span></p>
-                      <ToggleSwitch checked={store.detailRemoval} onChange={c => store.setOption('detailRemoval', c)} size="small" />
+            <OptionCard
+              title="배경 제거 v2" subtitle="U2-Net" className="options-grid-full" contentClassName="bg-removal-content"
+              headerAction={<ToggleSwitch checked={store.enableU2NetRemoval} onChange={c => store.setOption('enableU2NetRemoval', c)} />}
+              disabled={!store.enableU2NetRemoval}
+            >
+              <p className="input-label" style={{ marginBottom: '10px' }}>
+                u2net / u2net_human_seg 모델 기반 배경 제거. 사람 사진엔 <b>인물 특화</b> 모드를 권장합니다.
+              </p>
+              <div className="grid-cols-2-gap">
+                {(['general', 'human'] as const).map((m) => (
+                  <label key={m} className="modal-option-item" style={{ cursor: 'pointer' }}>
+                    <input type="radio" className="hidden" checked={store.u2netModel === m} onChange={() => store.setOption('u2netModel', m)} disabled={!store.enableU2NetRemoval} />
+                    <div className={cn("radio-custom", store.u2netModel === m && "radio-custom-checked")}>
+                      {store.u2netModel === m && <div className="radio-custom-inner" />}
                     </div>
+                    <span className="modal-option-text">{m === 'general' ? '범용 (U2-Net)' : '인물 특화 (U2-Net Human)'}</span>
+                  </label>
+                ))}
+              </div>
+            </OptionCard>
 
-                    <div className={cn(!store.detailRemoval && "opacity-20 pointer-events-none", "disabled-transition")}>
-                      <div className="toggle-row">
-                        <span className="toggle-label">경계 부드럽게</span>
-                        <ToggleSwitch checked={store.alphaMatting} onChange={c => store.setOption('alphaMatting', c)} size="small" />
-                      </div>
-
-                      <div className={cn(!store.alphaMatting && "opacity-30 pointer-events-none", "advanced-section disabled-transition")}>
-                        {/* 1. 피사체 감도 */}
-                        <div className={cn(!store.enableFgThreshold && "opacity-40", "threshold-option-first disabled-transition")}>
-                          <div className="threshold-row">
-                            <p className="threshold-label">피사체 감도</p>
-                            <span className="option-value-small">{store.enableFgThreshold ? store.fgThreshold : 'AUTO'}</span>
-                          </div>
-                          <div className="slider-row">
-                            <input type="range" min="0" max="255" disabled={!store.enableFgThreshold} value={store.fgThreshold} onChange={e => store.setOption('fgThreshold', Number(e.target.value))} className="range-slider" />
-                            <ToggleSwitch checked={store.enableFgThreshold} onChange={c => store.setOption('enableFgThreshold', c)} size="small" />
-                          </div>
-                        </div>
-
-                        {/* 2. 배경 허용치 */}
-                        <div className={cn(!store.enableBgThreshold && "opacity-40", "threshold-option disabled-transition")}>
-                          <div className="threshold-row">
-                            <p className="threshold-label">배경 허용치</p>
-                            <span className="option-value-small">{store.enableBgThreshold ? store.bgThreshold : 'AUTO'}</span>
-                          </div>
-                          <div className="slider-row">
-                            <input type="range" min="0" max="50" disabled={!store.enableBgThreshold} value={store.bgThreshold} onChange={e => store.setOption('bgThreshold', Number(e.target.value))} className="range-slider" />
-                            <ToggleSwitch checked={store.enableBgThreshold} onChange={c => store.setOption('enableBgThreshold', c)} size="small" />
-                          </div>
-                        </div>
-
-                        {/* 3. 경계 정리 */}
-                        <div className={cn(!store.enableErodeSize && "opacity-40", "threshold-option disabled-transition")}>
-                          <div className="threshold-row">
-                            <p className="threshold-label">경계 정리</p>
-                            <span className="option-value-small">{store.enableErodeSize ? store.erodeSize : 'AUTO'}</span>
-                          </div>
-                          <div className="slider-row">
-                            <input type="range" min="0" max="20" disabled={!store.enableErodeSize} value={store.erodeSize} onChange={e => store.setOption('erodeSize', Number(e.target.value))} className="range-slider" />
-                            <ToggleSwitch checked={store.enableErodeSize} onChange={c => store.setOption('enableErodeSize', c)} size="small" />
-                          </div>
-                        </div>
-                      </div>
-                    </div>
+            <OptionCard
+              title="배경 제거" subtitle="Remove bg" className="options-grid-full" contentClassName="bg-removal-content"
+              headerAction={<ToggleSwitch checked={store.enableBgRemoval} onChange={c => store.setOption('enableBgRemoval', c)} />}
+              disabled={!store.enableBgRemoval}
+            >
+              <div className="grid-cols-2-gap-lg">
+                <div className="card-sub">
+                  <div className="card-sub-content">
+                    <p className="card-header-title-with-icon">고급 옵션<span className="card-header-subtitle-inline">(Advanced)</span></p>
+                    <ToggleSwitch checked={store.detailRemoval} onChange={c => store.setOption('detailRemoval', c)} size="small" />
                   </div>
-
-                  <div className="sub-options-container">
-                    <div className="card-sub">
-                      <div className="option-toggle-card">
-                        <span className="toggle-label-muted">가짜 투명 패턴 제거</span>
-                        <ToggleSwitch checked={store.fakeTransRemoval} onChange={c => store.setOption('fakeTransRemoval', c)} size="small" />
-                      </div>
-                      <div className={cn(!store.fakeTransRemoval && "opacity-20 pointer-events-none", "slider-row-wide disabled-transition")}>
-                        <input type="range" min="0" max="100" value={store.fakeTransTolerance} onChange={e => store.setOption('fakeTransTolerance', Number(e.target.value))} className="range-slider" />
-                        <span className="slider-value">{store.fakeTransTolerance}</span>
-                      </div>
+                  <div className={cn(!store.detailRemoval && "opacity-20 pointer-events-none", "disabled-transition")}>
+                    <div className="toggle-row">
+                      <span className="toggle-label">경계 부드럽게</span>
+                      <ToggleSwitch checked={store.alphaMatting} onChange={c => store.setOption('alphaMatting', c)} size="small" />
                     </div>
-
-                    <div className="card-sub">
-                      <div className="option-toggle-card">
-                        <span className="toggle-label-muted">이미지 내부 배경 제거</span>
-                        <ToggleSwitch checked={store.removeMatchBg} onChange={c => store.setOption('removeMatchBg', c)} size="small" />
-                      </div>
-                      <div className={cn(!store.removeMatchBg && "opacity-20 pointer-events-none", "slider-row-wide disabled-transition")}>
-                        <input type="range" min="0" max="100" value={store.removeMatchBgTolerance} onChange={e => store.setOption('removeMatchBgTolerance', Number(e.target.value))} className="range-slider" />
-                        <span className="slider-value">{store.removeMatchBgTolerance}</span>
-                      </div>
+                    <div className={cn(!store.alphaMatting && "opacity-30 pointer-events-none", "advanced-section disabled-transition")}>
+                      <ThresholdSlider label="피사체 감도" value={store.fgThreshold} enabled={store.enableFgThreshold} onChange={v => store.setOption('fgThreshold', v)} onToggle={c => store.setOption('enableFgThreshold', c)} max={255} />
+                      <ThresholdSlider label="배경 허용치" value={store.bgThreshold} enabled={store.enableBgThreshold} onChange={v => store.setOption('bgThreshold', v)} onToggle={c => store.setOption('enableBgThreshold', c)} max={50} />
+                      <ThresholdSlider label="경계 정리" value={store.erodeSize} enabled={store.enableErodeSize} onChange={v => store.setOption('erodeSize', v)} onToggle={c => store.setOption('enableErodeSize', c)} max={20} />
                     </div>
                   </div>
                 </div>
+
+                <div className="sub-options-container">
+                  <OptionToggleCard label="가짜 투명 패턴 제거" checked={store.fakeTransRemoval} onChange={c => store.setOption('fakeTransRemoval', c)}>
+                    <div className={cn(!store.fakeTransRemoval && "opacity-20 pointer-events-none", "slider-row-wide disabled-transition")}>
+                      <input type="range" min="0" max="100" value={store.fakeTransTolerance} onChange={e => store.setOption('fakeTransTolerance', Number(e.target.value))} className="range-slider" />
+                      <span className="slider-value">{store.fakeTransTolerance}</span>
+                    </div>
+                  </OptionToggleCard>
+                  <OptionToggleCard label="이미지 내부 배경 제거" checked={store.removeMatchBg} onChange={c => store.setOption('removeMatchBg', c)}>
+                    <div className={cn(!store.removeMatchBg && "opacity-20 pointer-events-none", "slider-row-wide disabled-transition")}>
+                      <input type="range" min="0" max="100" value={store.removeMatchBgTolerance} onChange={e => store.setOption('removeMatchBgTolerance', Number(e.target.value))} className="range-slider" />
+                      <span className="slider-value">{store.removeMatchBgTolerance}</span>
+                    </div>
+                  </OptionToggleCard>
+                </div>
               </div>
-            </Glass>
+            </OptionCard>
+
           </div>
 
           {/* Floating Actions */}
           <div className="floating-actions">
             <button onClick={handleStartProcessing} disabled={store.images.filter(i => i.status === 'pending').length === 0} className="btn-primary">변환 시작</button>
             {store.images.filter(i => i.status === 'done' && !i.isDownloaded).length > 0 && (
-              <button onClick={handleDownloadAll} className="btn-secondary">
-                <Download className="w-5 h-5" /> 일괄 다운로드
-              </button>
+              <button onClick={handleDownloadAll} className="btn-secondary"><Download className="w-5 h-5" /> 일괄 다운로드</button>
             )}
           </div>
         </div>
@@ -672,17 +498,40 @@ export default function Home() {
 
       {/* Footer */}
       <footer className="app-footer">
-        <div className="footer-left">
-
-
-        </div>
         <label className="auto-download-label">
           <input type="checkbox" className="hidden" checked={store.autoDownloadAfterProcessing} onChange={e => store.setOption('autoDownloadAfterProcessing', e.target.checked)} />
           <div className={cn("checkbox-custom", store.autoDownloadAfterProcessing && "checkbox-custom-checked")}>{store.autoDownloadAfterProcessing && <Check className="w-3 h-3 text-white" />}</div>
           <span className="auto-download-text">AUTO DOWNLOAD</span>
         </label>
       </footer>
+    </div>
+  );
+}
 
+// Helper components for the refactored JSX
+function ThresholdSlider({ label, value, enabled, onChange, onToggle, max }: { label: string, value: number, enabled: boolean, onChange: (v: number) => void, onToggle: (c: boolean) => void, max: number }) {
+  return (
+    <div className={cn(!enabled && "opacity-40", label.includes('피사체') ? "threshold-option-first" : "threshold-option", "disabled-transition")}>
+      <div className="threshold-row">
+        <p className="threshold-label">{label}</p>
+        <span className="option-value-small">{enabled ? value : 'AUTO'}</span>
+      </div>
+      <div className="slider-row">
+        <input type="range" min="0" max={max} disabled={!enabled} value={value} onChange={e => onChange(Number(e.target.value))} className="range-slider" />
+        <ToggleSwitch checked={enabled} onChange={onToggle} size="small" />
+      </div>
+    </div>
+  );
+}
+
+function OptionToggleCard({ label, checked, onChange, children }: { label: string, checked: boolean, onChange: (c: boolean) => void, children: React.ReactNode }) {
+  return (
+    <div className="card-sub">
+      <div className="option-toggle-card">
+        <span className="toggle-label-muted">{label}</span>
+        <ToggleSwitch checked={checked} onChange={onChange} size="small" />
+      </div>
+      {children}
     </div>
   );
 }

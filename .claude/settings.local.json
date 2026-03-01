@@ -31,10 +31,15 @@
       "Read(node_modules/**)",
       "Read(dist/**)",
       "Read(build/**)",
+      "Read(.next/**)",
+      "Read(out/**)",
+      "Read(.vercel/**)",
       "Glob(node_modules/**)",
       "Glob(**/node_modules/**)",
       "Glob(dist/**)",
-      "Glob(build/**)"
+      "Glob(build/**)",
+      "Glob(.next/**)",
+      "Glob(out/**)"
     ],
     "additionalDirectories": [
       "\\tmp"

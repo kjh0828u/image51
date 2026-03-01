@@ -6,3 +6,6 @@
 export { Glass } from './Glass';
 export { ToggleSwitch } from './ToggleSwitch';
 export { SortablePresetItem } from './SortablePresetItem';
+export { GlassDistortionFilter } from './GlassDistortionFilter';
+export { OptionCard } from './OptionCard';
+export { SettingsModal } from './SettingsModal';

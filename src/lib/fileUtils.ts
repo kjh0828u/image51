@@ -67,7 +67,7 @@ export function getDownloadFilename(originalName: string, blobType: string): str
 /**
  * 단일 이미지 다운로드 (브라우저 방식)
  */
-export async function downloadSingleImage(img: { file: File, processedUrl?: string }, updateStatus: (id: string, state: any) => void) {
+export async function downloadSingleImage(img: { file: File, processedUrl?: string | null }, updateStatus?: (id: string, state: any) => void) {
     if (!img.processedUrl) return;
     const response = await fetch(img.processedUrl);
     const blob = await response.blob();

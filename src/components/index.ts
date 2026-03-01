@@ -9,3 +9,8 @@ export { SortablePresetItem } from './SortablePresetItem';
 export { GlassDistortionFilter } from './GlassDistortionFilter';
 export { OptionCard } from './OptionCard';
 export { SettingsModal } from './SettingsModal';
+export { Header } from './Header';
+export { Footer } from './Footer';
+export { ImageList } from './ImageList';
+export { ThresholdSlider } from './ThresholdSlider';
+export { OptionToggleCard } from './OptionToggleCard';

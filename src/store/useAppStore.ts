@@ -143,6 +143,25 @@ export interface AppState extends AppOptions {
     reorderProfiles: (startIndex: number, endIndex: number) => void;
 }
 
+/**
+ * 헬퍼: 이미지의 URL 메모리를 해제합니다.
+ */
+function revokeImageUrls(img: ImageItem) {
+    if (img.previewUrl) URL.revokeObjectURL(img.previewUrl);
+    if (img.processedUrl) URL.revokeObjectURL(img.processedUrl);
+}
+
+/**
+ * 헬퍼: 현재 상태에서 이미지 처리와 관련된 옵션들만 추출합니다.
+ */
+function extractImageOptions(state: AppState): AppOptions {
+    const options = {} as any;
+    imageOptionKeys.forEach(key => {
+        options[key] = state[key as keyof AppOptions];
+    });
+    return options as AppOptions;
+}
+
 export const useAppStore = create<AppState>()(
     persist(
         (set, get) => ({
@@ -157,8 +176,7 @@ export const useAppStore = create<AppState>()(
                 // 기존에 변환이 완료된(done) 상태이면서 다운로드까지 완료된 이미지만 새 이미지가 추가될 때 자동 삭제
                 const remainingImages = state.images.filter(img => {
                     if (img.status === 'done' && img.isDownloaded) {
-                        if (img.previewUrl) URL.revokeObjectURL(img.previewUrl);
-                        if (img.processedUrl) URL.revokeObjectURL(img.processedUrl);
+                        revokeImageUrls(img);
                         return false;
                     }
                     return true;
@@ -174,83 +192,61 @@ export const useAppStore = create<AppState>()(
                 return { images: [...remainingImages, ...newItems] };
             }),
 
-            removeImage: (id) => set((state) => {
+            removeImage: (id: string) => set((state: AppState) => {
                 const img = state.images.find(i => i.id === id);
-                if (img?.previewUrl) URL.revokeObjectURL(img.previewUrl);
-                if (img?.processedUrl) URL.revokeObjectURL(img.processedUrl);
-
+                if (img) revokeImageUrls(img);
                 return { images: state.images.filter(img => img.id !== id) };
             }),
 
-            clearImages: () => set((state) => {
-                state.images.forEach(img => {
-                    if (img.previewUrl) URL.revokeObjectURL(img.previewUrl);
-                    if (img?.processedUrl) URL.revokeObjectURL(img.processedUrl);
-                });
+            clearImages: () => set((state: AppState) => {
+                state.images.forEach(revokeImageUrls);
                 return { images: [] };
             }),
 
-            updateImageStatus: (id, updates) => set((state) => ({
+            updateImageStatus: (id: string, updates: Partial<ImageItem>) => set((state: AppState) => ({
                 images: state.images.map(img => img.id === id ? { ...img, ...updates } : img)
             })),
 
-            setOption: (key, value) => set({ [key]: value }),
-            setCustomDirectoryHandle: (handle) => set({ customDirectoryHandle: handle }),
+            setOption: <K extends keyof AppOptions>(key: K, value: AppOptions[K]) => set({ [key]: value } as any),
+            setCustomDirectoryHandle: (handle: FileSystemDirectoryHandle | null) => set({ customDirectoryHandle: handle }),
 
             resetOptions: () => set({ ...defaultOptions, activeProfileId: null }),
 
-            saveProfile: (name) => {
+            saveProfile: (name: string) => {
                 const state = get();
-                const curOptions = {} as any;
-                imageOptionKeys.forEach(key => {
-                    curOptions[key] = state[key as keyof AppOptions];
-                });
-
                 const newProfile: Profile = {
                     id: Date.now().toString(),
                     name,
-                    options: curOptions,
+                    options: extractImageOptions(state),
                 };
                 set({ profiles: [...state.profiles, newProfile], activeProfileId: newProfile.id });
             },
 
             updateProfile: (id: string) => {
                 const state = get();
-                const curOptions = {} as any;
-                imageOptionKeys.forEach(key => {
-                    curOptions[key] = state[key as keyof AppOptions];
-                });
-
                 set({
-                    profiles: state.profiles.map((p: Profile) => p.id === id ? { ...p, options: curOptions } : p)
+                    profiles: state.profiles.map((p: Profile) => p.id === id ? { ...p, options: extractImageOptions(state) } : p)
                 });
             },
 
-            loadProfile: (id) => {
+            loadProfile: (id: string) => {
                 const state = get();
                 const profile = state.profiles.find(p => p.id === id);
                 if (profile) {
-                    // 환경 설정(전역)은 건드리지 않고 이미지 처리 옵션만 필터링해서 로드
-                    const filteredOptions = {} as any;
-                    imageOptionKeys.forEach(key => {
-                        if (profile.options[key as keyof AppOptions] !== undefined) {
-                            filteredOptions[key] = profile.options[key as keyof AppOptions];
-                        }
-                    });
-                    set({ ...filteredOptions, activeProfileId: id });
+                    set({ ...profile.options, activeProfileId: id });
                 }
             },
 
-            deleteProfile: (id) => set((state) => ({
+            deleteProfile: (id: string) => set((state: AppState) => ({
                 profiles: state.profiles.filter(p => p.id !== id),
                 activeProfileId: state.activeProfileId === id ? null : state.activeProfileId
             })),
 
-            renameProfile: (id, newName) => set((state) => ({
+            renameProfile: (id: string, newName: string) => set((state: AppState) => ({
                 profiles: state.profiles.map(p => p.id === id ? { ...p, name: newName } : p)
             })),
 
-            reorderProfiles: (startIndex, endIndex) => set((state) => {
+            reorderProfiles: (startIndex: number, endIndex: number) => set((state: AppState) => {
                 const result = Array.from(state.profiles);
                 const [removed] = result.splice(startIndex, 1);
                 result.splice(endIndex, 0, removed);
@@ -260,16 +256,14 @@ export const useAppStore = create<AppState>()(
         {
             name: 'image51-storage',
             version: 1,
-            // images, customDirectoryHandle 상태는 저장하지 않고(메모리 참조 에러 방지), 옵션과 프로파일만 로컬 스토리지에 유지
-            partialize: (state) => {
+            partialize: (state: AppState) => {
                 const { images, customDirectoryHandle, ...rest } = state;
                 const result = rest as any;
                 if (result.autoDownloadAfterProcessing === undefined) result.autoDownloadAfterProcessing = false;
                 return result;
             },
-            merge: (persistedState: any, currentState: any) => {
-                // 기존 상태에 로컬스토리지 데이터를 병합 (디폴트 설정 유실 방지)
-                return { ...currentState, ...persistedState };
+            merge: (persistedState: any, currentState: AppState) => {
+                return { ...currentState, ...(persistedState as Partial<AppState>) };
             }
         }
     )

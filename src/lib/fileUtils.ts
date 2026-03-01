@@ -73,7 +73,7 @@ export function getDownloadFilename(originalName: string, blobType: string): str
 /**
  * 브라우저의 기본 기능을 사용하여 단일 이미지를 다운로드합니다.
  */
-export async function downloadSingleImage(img: { file: File, processedUrl?: string | null }, updateStatus?: (id: string, state: any) => void) {
+export async function downloadSingleImage(img: { file: File, processedUrl?: string | null }) {
     if (!img.processedUrl) return;
     const response = await fetch(img.processedUrl);
     const blob = await response.blob();

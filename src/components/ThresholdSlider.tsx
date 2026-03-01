@@ -9,13 +9,14 @@ interface ThresholdSliderProps {
     onChange: (v: number) => void;
     onToggle: (c: boolean) => void;
     max: number;
+    isFirst?: boolean;
 }
 
-export function ThresholdSlider({ label, value, enabled, onChange, onToggle, max }: ThresholdSliderProps) {
+export function ThresholdSlider({ label, value, enabled, onChange, onToggle, max, isFirst }: ThresholdSliderProps) {
     return (
         <div className={cn(
             !enabled && "opacity-40",
-            label.includes('피사체') ? "threshold-option-first" : "threshold-option",
+            isFirst ? "threshold-option-first" : "threshold-option",
             "disabled-transition"
         )}>
             <div className="threshold-row">

@@ -36,12 +36,10 @@ export function OptionCard({
             <div className="liquidGlass-effect"></div>
 
             <div className="card-header">
-                <div className="card-header-with-icon">
-                    <span className="card-header-title">
-                        {title}
-                        {subtitle && <span className="card-header-subtitle">({subtitle})</span>}
-                    </span>
-                </div>
+                <span className="card-header-title">
+                    {title}
+                    {subtitle && <span className="card-header-subtitle">({subtitle})</span>}
+                </span>
                 {headerAction}
             </div>
 

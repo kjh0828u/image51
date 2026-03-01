@@ -6,9 +6,12 @@
   --glass-blur: 24px;
 
   /* Colors */
-  --color-indigo-500: #6366f1;
-  --color-indigo-400: #818cf8;
-  --color-indigo-600: #4f46e5;
+  --color-indigo-400: rgb(110, 212, 197);
+  /* --color-indigo-500: #77c0b6; */
+  --color-indigo-500: #4fa39c;
+  /* --color-indigo-600: #08a093; */
+  /* --color-indigo-600: #17cabb; */
+  --color-indigo-600: #5bb4ad;
   --color-emerald-400: #34d399;
   --color-red-400: #f87171;
   --color-red-500: #ef4444;
@@ -52,7 +55,7 @@ body {
     radial-gradient(circle at 50% 50%, rgba(10, 10, 15, 0.5) 0%, rgba(3, 3, 5, 1) 100%);
   background-attachment: fixed;
   color: var(--foreground);
-  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-family: var(--font-noto-sans-kr), ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   overflow-x: hidden;
   letter-spacing: -0.025em;
 }
@@ -385,7 +388,7 @@ body::before {
 .card-header-title {
   font-weight: 700;
   color: rgb(255, 255, 255);
-  font-size: 15px;
+  font-size: 16px;
 }
 
 .card-header-subtitle {

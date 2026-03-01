@@ -1,15 +1,10 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Noto_Sans_KR } from "next/font/google";
 import { Analytics } from "@vercel/analytics/react";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const notoSansKr = Noto_Sans_KR({
+  variable: "--font-noto-sans-kr",
   subsets: ["latin"],
 });
 
@@ -25,9 +20,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ko">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
+      <body className={`${notoSansKr.variable} antialiased`}>
         {children}
         <Analytics />
       </body>

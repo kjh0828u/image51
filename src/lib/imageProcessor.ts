@@ -8,7 +8,10 @@ import {
     applyGrayscale,
     removeFakeTransparency,
     autoCropCanvas,
-    resizeCanvas
+    resizeCanvas,
+    applyAlphaMatting,
+    erodeAlpha,
+    removeColorMatch
 } from './canvasUtils';
 
 env.allowLocalModels = false;
@@ -16,7 +19,6 @@ env.useBrowserCache = true;
 
 // 전역(Global) 기반으로 ONNX/WebGPU 관련 안내성 경고 로그를 완전히 차단
 if (typeof window !== 'undefined') {
-    const noop = () => { };
     const filters = [
         'VerifyEachNodeIsAssignedToAnEp',
         'powerPreference option is currently ignored',
@@ -138,33 +140,14 @@ async function applyBgRemoval(currentBlob: Blob, origBmp: ImageBitmap, options: 
     const eSize = detailRemoval && enableErodeSize ? erodeSize : 5;
 
     if (useAlpha) {
-        for (let i = 0; i < data.length; i += 4) {
-            const a = data[i + 3];
-            data[i + 3] = a >= fgT ? 255 : (a <= bgT ? 0 : Math.round(((a - bgT) / (fgT - bgT)) * 255));
-        }
+        applyAlphaMatting(data, fgT, bgT);
         if (eSize > 0) {
-            const temp = new Uint8ClampedArray(data);
-            for (let y = 0; y < maskImage.height; y++) {
-                for (let x = 0; x < maskImage.width; x++) {
-                    const idx = (y * maskImage.width + x) * 4;
-                    if (temp[idx + 3] > 0) {
-                        let minA = 255;
-                        for (let dy = -eSize; dy <= eSize; dy++) {
-                            for (let dx = -eSize; dx <= eSize; dx++) {
-                                const ny = y + dy, nx = x + dx;
-                                if (ny >= 0 && ny < maskImage.height && nx >= 0 && nx < maskImage.width) minA = Math.min(minA, temp[(ny * maskImage.width + nx) * 4 + 3]);
-                                else minA = 0;
-                            }
-                        }
-                        data[idx + 3] = minA;
-                    }
-                }
-            }
+            erodeAlpha(data, maskImage.width, maskImage.height, eSize);
         }
     }
 
     const { canvas: fgCanvas, ctx: fgCtx } = await getCanvasAndContext(origBmp);
-    const { canvas: mCanvas, ctx: mCtx } = await getCanvasAndContext(new ImageData(data, maskImage.width, maskImage.height));
+    const { canvas: mCanvas } = await getCanvasAndContext(new ImageData(data, maskImage.width, maskImage.height));
 
     fgCtx.globalCompositeOperation = "destination-in";
     fgCtx.drawImage(mCanvas, 0, 0, maskImage.width, maskImage.height, 0, 0, origBmp.width, origBmp.height);
@@ -202,18 +185,8 @@ export async function processImage(file: File, options: AppOptions): Promise<str
     }
 
     if (options.enableBgRemoval && options.removeMatchBg && originalImageData) {
-        let sumR = 0, sumG = 0, sumB = 0, cnt = 0;
-        const origData = originalImageData.data;
-        for (let i = 0; i < data.length; i += 4) {
-            if (origData[i + 3] > 200 && data[i + 3] < 50) { sumR += origData[i]; sumG += origData[i + 1]; sumB += origData[i + 2]; cnt++; }
-        }
-        if (cnt > 0) {
-            const avgR = sumR / cnt, avgG = sumG / cnt, avgB = sumB / cnt, tolSq = options.removeMatchBgTolerance ** 2;
-            for (let i = 0; i < data.length; i += 4) {
-                if (data[i + 3] > 0 && ((data[i] - avgR) ** 2 + (data[i + 1] - avgG) ** 2 + (data[i + 2] - avgB) ** 2 < tolSq)) data[i + 3] = 0;
-            }
-            ctx.putImageData(imgData, 0, 0);
-        }
+        removeColorMatch(data, originalImageData.data, options.removeMatchBgTolerance);
+        ctx.putImageData(imgData, 0, 0);
     }
 
     if (options.enableGrayscale && options.grayscale > 0) {

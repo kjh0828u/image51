@@ -44,9 +44,10 @@ export interface AppOptions {
     enableGrayscale: boolean;
     grayscale: number;
 
-    // 배경 제거 (MediaPipe Selfie Segmentation)
+    // 배경 제거 통합 옵션
     enableBgRemoval: boolean;
-    mediaPipeModel: 'general' | 'landscape';
+    bgRemovalType: 'person' | 'object1' | 'object2' | 'object3' | 'object4' | 'object5' | 'object6' | 'object7' | 'object8';
+    mediaPipeModel: 'general' | 'landscape'; // 인물용 (MediaPipe)
 
     autoDownloadAfterProcessing: boolean; // 모든 변환 완료 후 자동 다운로드
     downloadMode: 'default' | 'custom';
@@ -80,6 +81,7 @@ const defaultOptions: AppOptions = {
     grayscale: 50,
 
     enableBgRemoval: false,
+    bgRemovalType: 'person',
     mediaPipeModel: 'general',
 
     autoDownloadAfterProcessing: false,
@@ -94,7 +96,7 @@ const imageOptionKeys = [
     'enableCompress', 'quality',
     'enableResize', 'resizeWidth', 'resizeHeight', 'keepRatio',
     'enableGrayscale', 'grayscale',
-    'enableBgRemoval', 'mediaPipeModel'
+    'enableBgRemoval', 'bgRemovalType', 'mediaPipeModel'
 ] as const;
 
 export interface AppState extends AppOptions {

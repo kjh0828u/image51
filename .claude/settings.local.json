@@ -25,7 +25,10 @@
       "Bash(\"c:/workspace/test/routine-tracker/DOCUMENTATION_GUIDE.md\":*)",
       "Bash(wc:*)",
       "Bash(npx tsc:*)",
-      "WebFetch(domain:github.com)"
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:cdn.jsdelivr.net)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:discuss.huggingface.co)"
     ],
     "deny": [
       "Read(node_modules/**)",

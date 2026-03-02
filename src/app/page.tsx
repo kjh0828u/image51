@@ -172,9 +172,9 @@ export default function Home() {
           </div>
 
           <div className="floating-actions">
-            <button onClick={() => handleStartProcessing(setResizeError)} disabled={pendingCount === 0} className="btn-primary">변환 시작</button>
+            <button onClick={() => handleStartProcessing(setResizeError)} disabled={pendingCount === 0} className="btn-floating-primary">변환 시작</button>
             {downloadableCount > 0 && (
-              <button onClick={() => handleDownloadAll()} className="btn-secondary"><Download className="w-5 h-5" /> 일괄 다운로드</button>
+              <button onClick={() => handleDownloadAll()} className="btn-floating-secondary"><Download className="w-4 h-4" /> 일괄 다운로드</button>
             )}
           </div>
         </div>

@@ -1066,6 +1066,64 @@ body::before {
   gap: 1rem;
 }
 
+.btn-floating-primary {
+  padding: 0.625rem 1.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: rgba(20, 77, 72, 0.95);
+  border: 1px solid rgba(110, 212, 197, 0.35);
+  border-radius: var(--radius-full);
+  color: rgb(194, 223, 221);
+  font-size: 1.075rem;
+  font-weight: 700;
+  cursor: pointer;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  transition: all var(--transition-normal) ease;
+  letter-spacing: -0.025em;
+}
+
+.btn-floating-primary:hover {
+  transform: scale(1.04);
+}
+
+.btn-floating-primary:active {
+  transform: scale(0.97);
+}
+
+.btn-floating-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.btn-floating-secondary {
+  padding: 0.625rem 1.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: rgba(63, 63, 63, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: var(--radius-full);
+  color: rgba(255, 255, 255, 0.75);
+  font-size: 1.075rem;
+  font-weight: 700;
+  cursor: pointer;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  transition: all var(--transition-normal) ease;
+  letter-spacing: -0.025em;
+}
+
+.btn-floating-secondary:hover {
+  transform: scale(1.04);
+}
+
+.btn-floating-secondary:active {
+  transform: scale(0.97);
+}
+
 /* ========== Tooltip ========== */
 .tooltip {
   position: absolute;

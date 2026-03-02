@@ -15,5 +15,4 @@ export { Footer } from './Footer';
 export { ImageList } from './ImageList';
 export { ThresholdSlider } from './ThresholdSlider';
 export { ResizeOptionsCard } from './ResizeOptionsCard';
-export { U2NetOptionsCard } from './U2NetOptionsCard';
-export { BgRemovalOptionsCard } from './BgRemovalOptionsCard';
+export { MediaPipeBgRemovalOptionsCard } from './MediaPipeBgRemovalOptionsCard';

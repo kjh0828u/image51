@@ -44,26 +44,9 @@ export interface AppOptions {
     enableGrayscale: boolean;
     grayscale: number;
 
-    // 배경 제거 (Background Removal)
+    // 배경 제거 (MediaPipe Selfie Segmentation)
     enableBgRemoval: boolean;
-    detailRemoval: boolean;
-    alphaMatting: boolean;
-    enableFgThreshold: boolean;
-    fgThreshold: number;
-    enableBgThreshold: boolean;
-    bgThreshold: number;
-    enableErodeSize: boolean;
-    erodeSize: number;
-
-    fakeTransRemoval: boolean;
-    fakeTransTolerance: number;
-
-    removeMatchBg: boolean;
-    removeMatchBgTolerance: number;
-
-    // U2Net 배경 제거
-    enableU2NetRemoval: boolean;
-    u2netModel: 'general' | 'human';
+    mediaPipeModel: 'general' | 'landscape';
 
     autoDownloadAfterProcessing: boolean; // 모든 변환 완료 후 자동 다운로드
     downloadMode: 'default' | 'custom';
@@ -97,23 +80,7 @@ const defaultOptions: AppOptions = {
     grayscale: 50,
 
     enableBgRemoval: false,
-    detailRemoval: false,
-    alphaMatting: true,
-    enableFgThreshold: false,
-    fgThreshold: 240,
-    enableBgThreshold: false,
-    bgThreshold: 5,
-    enableErodeSize: false,
-    erodeSize: 5,
-
-    fakeTransRemoval: false,
-    fakeTransTolerance: 20,
-
-    removeMatchBg: false,
-    removeMatchBgTolerance: 30,
-
-    enableU2NetRemoval: false,
-    u2netModel: 'general',
+    mediaPipeModel: 'general',
 
     autoDownloadAfterProcessing: false,
     downloadMode: 'default',
@@ -127,13 +94,7 @@ const imageOptionKeys = [
     'enableCompress', 'quality',
     'enableResize', 'resizeWidth', 'resizeHeight', 'keepRatio',
     'enableGrayscale', 'grayscale',
-    'enableBgRemoval', 'detailRemoval', 'alphaMatting',
-    'enableFgThreshold', 'fgThreshold',
-    'enableBgThreshold', 'bgThreshold',
-    'enableErodeSize', 'erodeSize',
-    'fakeTransRemoval', 'fakeTransTolerance',
-    'removeMatchBg', 'removeMatchBgTolerance',
-    'enableU2NetRemoval', 'u2netModel'
+    'enableBgRemoval', 'mediaPipeModel'
 ] as const;
 
 export interface AppState extends AppOptions {

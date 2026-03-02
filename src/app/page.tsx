@@ -18,8 +18,7 @@ import {
   Footer,
   ImageList,
   ResizeOptionsCard,
-  U2NetOptionsCard,
-  BgRemovalOptionsCard,
+  MediaPipeBgRemovalOptionsCard,
 } from '@/components';
 import { useImageProcessing } from '@/hooks/useImageProcessing';
 import { usePresetDragDrop } from '@/hooks/usePresetDragDrop';
@@ -166,9 +165,7 @@ export default function Home() {
               <input type="range" min="0" max="100" value={store.grayscale} onChange={e => store.setOption('grayscale', Number(e.target.value))} className="range-slider" />
             </OptionCard>
 
-            <U2NetOptionsCard />
-
-            <BgRemovalOptionsCard />
+            <MediaPipeBgRemovalOptionsCard />
           </div>
 
           <div className="floating-actions">

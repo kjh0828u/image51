@@ -48,6 +48,7 @@ export interface AppOptions {
     enableBgRemoval: boolean;
     bgRemovalType: 'person' | 'object1' | 'object2' | 'object3' | 'object4' | 'object5' | 'object6' | 'object7' | 'object8';
     mediaPipeModel: 'general' | 'landscape'; // 인물용 (MediaPipe)
+    onnxThreshold: number; // ONNX 모델 알파 임계값 (0~1, 사물 7·8)
 
     autoDownloadAfterProcessing: boolean; // 모든 변환 완료 후 자동 다운로드
     downloadMode: 'default' | 'custom';
@@ -83,6 +84,7 @@ const defaultOptions: AppOptions = {
     enableBgRemoval: false,
     bgRemovalType: 'person',
     mediaPipeModel: 'general',
+    onnxThreshold: 0.15,
 
     autoDownloadAfterProcessing: false,
     downloadMode: 'default',
@@ -96,7 +98,7 @@ const imageOptionKeys = [
     'enableCompress', 'quality',
     'enableResize', 'resizeWidth', 'resizeHeight', 'keepRatio',
     'enableGrayscale', 'grayscale',
-    'enableBgRemoval', 'bgRemovalType', 'mediaPipeModel'
+    'enableBgRemoval', 'bgRemovalType', 'mediaPipeModel', 'onnxThreshold'
 ] as const;
 
 export interface AppState extends AppOptions {

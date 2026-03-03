@@ -6,7 +6,11 @@ import { OptionCard } from './OptionCard';
 import { ToggleSwitch } from './ToggleSwitch';
 
 export function MediaPipeBgRemovalOptionsCard() {
-    const store = useAppStore();
+    const setOption = useAppStore(s => s.setOption);
+    const enableBgRemoval = useAppStore(s => s.enableBgRemoval);
+    const bgRemovalType = useAppStore(s => s.bgRemovalType);
+    const mediaPipeModel = useAppStore(s => s.mediaPipeModel);
+    const onnxThreshold = useAppStore(s => s.onnxThreshold);
 
     return (
         <OptionCard
@@ -14,105 +18,105 @@ export function MediaPipeBgRemovalOptionsCard() {
             subtitle="Remove background"
             className="options-grid-full"
             contentClassName="bg-removal-content"
-            headerAction={<ToggleSwitch checked={store.enableBgRemoval} onChange={c => store.setOption('enableBgRemoval', c)} />}
-            disabled={!store.enableBgRemoval}
+            headerAction={<ToggleSwitch checked={enableBgRemoval} onChange={c => setOption('enableBgRemoval', c)} />}
+            disabled={!enableBgRemoval}
         >
             <div className="bg-removal-tabs mb-4">
                 <div className="flex bg-white/5 p-1 rounded-xl border border-white/5">
                     <button
                         className={cn(
                             "flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all duration-200",
-                            store.bgRemovalType === 'person' ? "bg-white/10 text-white shadow-sm" : "text-white/40 hover:text-white/60"
+                            bgRemovalType === 'person' ? "bg-white/10 text-white shadow-sm" : "text-white/40 hover:text-white/60"
                         )}
-                        onClick={() => store.setOption('bgRemovalType', 'person')}
-                        disabled={!store.enableBgRemoval}
+                        onClick={() => setOption('bgRemovalType', 'person')}
+                        disabled={!enableBgRemoval}
                     >
                         인물
                     </button>
                     <button
                         className={cn(
                             "flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all duration-200",
-                            store.bgRemovalType === 'object1' ? "bg-white/10 text-white shadow-sm" : "text-white/40 hover:text-white/60"
+                            bgRemovalType === 'object1' ? "bg-white/10 text-white shadow-sm" : "text-white/40 hover:text-white/60"
                         )}
-                        onClick={() => store.setOption('bgRemovalType', 'object1')}
-                        disabled={!store.enableBgRemoval}
+                        onClick={() => setOption('bgRemovalType', 'object1')}
+                        disabled={!enableBgRemoval}
                     >
                         사물 1
                     </button>
                     <button
                         className={cn(
                             "flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all duration-200",
-                            store.bgRemovalType === 'object2' ? "bg-white/10 text-white shadow-sm" : "text-white/40 hover:text-white/60"
+                            bgRemovalType === 'object2' ? "bg-white/10 text-white shadow-sm" : "text-white/40 hover:text-white/60"
                         )}
-                        onClick={() => store.setOption('bgRemovalType', 'object2')}
-                        disabled={!store.enableBgRemoval}
+                        onClick={() => setOption('bgRemovalType', 'object2')}
+                        disabled={!enableBgRemoval}
                     >
                         사물 2
                     </button>
                     <button
                         className={cn(
                             "flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all duration-200",
-                            store.bgRemovalType === 'object3' ? "bg-white/10 text-white shadow-sm" : "text-white/40 hover:text-white/60"
+                            bgRemovalType === 'object3' ? "bg-white/10 text-white shadow-sm" : "text-white/40 hover:text-white/60"
                         )}
-                        onClick={() => store.setOption('bgRemovalType', 'object3')}
-                        disabled={!store.enableBgRemoval}
+                        onClick={() => setOption('bgRemovalType', 'object3')}
+                        disabled={!enableBgRemoval}
                     >
                         사물 3
                     </button>
                     <button
                         className={cn(
                             "flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all duration-200",
-                            store.bgRemovalType === 'object4' ? "bg-white/10 text-white shadow-sm" : "text-white/40 hover:text-white/60"
+                            bgRemovalType === 'object4' ? "bg-white/10 text-white shadow-sm" : "text-white/40 hover:text-white/60"
                         )}
-                        onClick={() => store.setOption('bgRemovalType', 'object4')}
-                        disabled={!store.enableBgRemoval}
+                        onClick={() => setOption('bgRemovalType', 'object4')}
+                        disabled={!enableBgRemoval}
                     >
                         사물 4
                     </button>
                     <button
                         className={cn(
                             "flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all duration-200",
-                            store.bgRemovalType === 'object5' ? "bg-white/10 text-white shadow-sm" : "text-white/40 hover:text-white/60"
+                            bgRemovalType === 'object5' ? "bg-white/10 text-white shadow-sm" : "text-white/40 hover:text-white/60"
                         )}
-                        onClick={() => store.setOption('bgRemovalType', 'object5')}
-                        disabled={!store.enableBgRemoval}
+                        onClick={() => setOption('bgRemovalType', 'object5')}
+                        disabled={!enableBgRemoval}
                     >
                         사물 5
                     </button>
                     <button
                         className={cn(
                             "flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all duration-200",
-                            store.bgRemovalType === 'object6' ? "bg-white/10 text-white shadow-sm" : "text-white/40 hover:text-white/60"
+                            bgRemovalType === 'object6' ? "bg-white/10 text-white shadow-sm" : "text-white/40 hover:text-white/60"
                         )}
-                        onClick={() => store.setOption('bgRemovalType', 'object6')}
-                        disabled={!store.enableBgRemoval}
+                        onClick={() => setOption('bgRemovalType', 'object6')}
+                        disabled={!enableBgRemoval}
                     >
                         사물 6
                     </button>
                     <button
                         className={cn(
                             "flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all duration-200",
-                            store.bgRemovalType === 'object7' ? "bg-white/10 text-white shadow-sm" : "text-white/40 hover:text-white/60"
+                            bgRemovalType === 'object7' ? "bg-white/10 text-white shadow-sm" : "text-white/40 hover:text-white/60"
                         )}
-                        onClick={() => store.setOption('bgRemovalType', 'object7')}
-                        disabled={!store.enableBgRemoval}
+                        onClick={() => setOption('bgRemovalType', 'object7')}
+                        disabled={!enableBgRemoval}
                     >
                         사물 7
                     </button>
                     <button
                         className={cn(
                             "flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all duration-200",
-                            store.bgRemovalType === 'object8' ? "bg-white/10 text-white shadow-sm" : "text-white/40 hover:text-white/60"
+                            bgRemovalType === 'object8' ? "bg-white/10 text-white shadow-sm" : "text-white/40 hover:text-white/60"
                         )}
-                        onClick={() => store.setOption('bgRemovalType', 'object8')}
-                        disabled={!store.enableBgRemoval}
+                        onClick={() => setOption('bgRemovalType', 'object8')}
+                        disabled={!enableBgRemoval}
                     >
                         사물 8
                     </button>
                 </div>
             </div>
 
-            {store.bgRemovalType === 'person' && (
+            {bgRemovalType === 'person' && (
                 <div className="bg-removal-inner animate-in fade-in slide-in-from-bottom-2">
                     <p className="input-label u2net-desc mb-3">MediaPipe Selfie Segmentation 모델을 사용합니다.</p>
                     <div className="grid-cols-2-gap">
@@ -121,12 +125,12 @@ export function MediaPipeBgRemovalOptionsCard() {
                                 <input
                                     type="radio"
                                     className="hidden"
-                                    checked={store.mediaPipeModel === m}
-                                    onChange={() => store.setOption('mediaPipeModel', m)}
-                                    disabled={!store.enableBgRemoval}
+                                    checked={mediaPipeModel === m}
+                                    onChange={() => setOption('mediaPipeModel', m)}
+                                    disabled={!enableBgRemoval}
                                 />
-                                <div className={cn("radio-custom", store.mediaPipeModel === m && "radio-custom-checked")}>
-                                    {store.mediaPipeModel === m && <div className="radio-custom-inner" />}
+                                <div className={cn("radio-custom", mediaPipeModel === m && "radio-custom-checked")}>
+                                    {mediaPipeModel === m && <div className="radio-custom-inner" />}
                                 </div>
                                 <span className="modal-option-text">
                                     {m === 'general' ? 'General (기본)' : 'Landscape (원거리)'}
@@ -137,7 +141,7 @@ export function MediaPipeBgRemovalOptionsCard() {
                 </div>
             )}
 
-            {store.bgRemovalType === 'object1' && (
+            {bgRemovalType === 'object1' && (
                 <div className="bg-removal-inner animate-in fade-in slide-in-from-bottom-2">
                     <p className="input-label u2net-desc mb-3">U²-Net (ONNX) 모델입니다. 강력한 사물 추출 성능을 제공합니다.</p>
                     <div className="p-4 rounded-xl bg-white/5 border border-white/5 text-center">
@@ -146,7 +150,7 @@ export function MediaPipeBgRemovalOptionsCard() {
                 </div>
             )}
 
-            {store.bgRemovalType === 'object2' && (
+            {bgRemovalType === 'object2' && (
                 <div className="bg-removal-inner animate-in fade-in slide-in-from-bottom-2">
                     <p className="input-label u2net-desc mb-3">Vision Segmentation(DeepLabV3) 모델입니다.</p>
                     <div className="p-4 rounded-xl bg-white/5 border border-white/5 text-center">
@@ -155,7 +159,7 @@ export function MediaPipeBgRemovalOptionsCard() {
                 </div>
             )}
 
-            {store.bgRemovalType === 'object3' && (
+            {bgRemovalType === 'object3' && (
                 <div className="bg-removal-inner animate-in fade-in slide-in-from-bottom-2">
                     <p className="input-label u2net-desc mb-3">MODNet (Portrait Matting) 모델입니다.</p>
                     <div className="p-4 rounded-xl bg-white/5 border border-white/5 text-center">
@@ -164,7 +168,7 @@ export function MediaPipeBgRemovalOptionsCard() {
                 </div>
             )}
 
-            {store.bgRemovalType === 'object4' && (
+            {bgRemovalType === 'object4' && (
                 <div className="bg-removal-inner animate-in fade-in slide-in-from-bottom-2">
                     <p className="input-label u2net-desc mb-3">MODNet (Portrait Matting) 모델입니다.</p>
                     <div className="p-4 rounded-xl bg-white/5 border border-white/5 text-center">
@@ -173,7 +177,7 @@ export function MediaPipeBgRemovalOptionsCard() {
                 </div>
             )}
 
-            {store.bgRemovalType === 'object5' && (
+            {bgRemovalType === 'object5' && (
                 <div className="bg-removal-inner animate-in fade-in slide-in-from-bottom-2">
                     <p className="input-label u2net-desc mb-3">RMBG-1.4 (briaai) 모델입니다.</p>
                     <div className="p-4 rounded-xl bg-white/5 border border-white/5 text-center">
@@ -182,7 +186,7 @@ export function MediaPipeBgRemovalOptionsCard() {
                 </div>
             )}
 
-            {store.bgRemovalType === 'object6' && (
+            {bgRemovalType === 'object6' && (
                 <div className="bg-removal-inner animate-in fade-in slide-in-from-bottom-2">
                     <p className="input-label u2net-desc mb-3">BEN2 (onnx-community) 모델입니다.</p>
                     <div className="p-4 rounded-xl bg-white/5 border border-white/5 text-center">
@@ -191,20 +195,38 @@ export function MediaPipeBgRemovalOptionsCard() {
                 </div>
             )}
 
-            {store.bgRemovalType === 'object7' && (
+            {bgRemovalType === 'object7' && (
                 <div className="bg-removal-inner animate-in fade-in slide-in-from-bottom-2">
                     <p className="input-label u2net-desc mb-3">MODNet (ONNX + onnxruntime-web) 모델입니다.</p>
-                    <div className="p-4 rounded-xl bg-white/5 border border-white/5 text-center">
-                        <span className="text-white/40 text-xs">512×512 입력으로 직접 추론하는 Portrait Matting 모델입니다.</span>
+                    <div className="slider-row-wide mt-2">
+                        <span className="input-label w-16 shrink-0 mb-0">임계값</span>
+                        <input
+                            type="range"
+                            className="range-slider"
+                            min={0} max={100} step={5}
+                            value={Math.round(onnxThreshold * 100)}
+                            onChange={e => setOption('onnxThreshold', Number(e.target.value) / 100)}
+                            disabled={!enableBgRemoval}
+                        />
+                        <span className="slider-value">{Math.round(onnxThreshold * 100)}%</span>
                     </div>
                 </div>
             )}
 
-            {store.bgRemovalType === 'object8' && (
+            {bgRemovalType === 'object8' && (
                 <div className="bg-removal-inner animate-in fade-in slide-in-from-bottom-2">
                     <p className="input-label u2net-desc mb-3">U²-Net Full (ONNX) 모델입니다.</p>
-                    <div className="p-4 rounded-xl bg-white/5 border border-white/5 text-center">
-                        <span className="text-white/40 text-xs">U²-Net Lite보다 큰 풀 버전 모델로 더 정밀한 추출을 제공합니다.</span>
+                    <div className="slider-row-wide mt-2">
+                        <span className="input-label w-16 shrink-0 mb-0">임계값</span>
+                        <input
+                            type="range"
+                            className="range-slider"
+                            min={0} max={100} step={5}
+                            value={Math.round(onnxThreshold * 100)}
+                            onChange={e => setOption('onnxThreshold', Number(e.target.value) / 100)}
+                            disabled={!enableBgRemoval}
+                        />
+                        <span className="slider-value">{Math.round(onnxThreshold * 100)}%</span>
                     </div>
                 </div>
             )}

@@ -386,8 +386,9 @@ async function applySegFormerBgRemoval(blob: Blob): Promise<Blob> {
 
 /**
  * ONNX 모델 공통 배경 제거 헬퍼 (U2-Net 계열 전처리/후처리 동일)
+ * threshold: 0~1, 이 값 이하의 알파는 완전 투명으로 처리 (기본 0 = 임계값 없음)
  */
-async function applyOnnxBgRemoval(blob: Blob, session: any, targetSize: number): Promise<Blob> {
+async function applyOnnxBgRemoval(blob: Blob, session: any, targetSize: number, threshold = 0): Promise<Blob> {
     const img = new Image();
     img.src = URL.createObjectURL(blob);
     await new Promise(res => { img.onload = res; });
@@ -426,9 +427,10 @@ async function applyOnnxBgRemoval(blob: Blob, session: any, targetSize: number):
 
     for (let i = 0; i < targetSize * targetSize; i++) {
         const v = rawOutput[i];
-        const alpha = isLogit
-            ? Math.floor(255 * (1 / (1 + Math.exp(-v))))
-            : Math.floor(255 * Math.min(1, Math.max(0, v)));
+        const raw = isLogit
+            ? (1 / (1 + Math.exp(-v)))
+            : Math.min(1, Math.max(0, v));
+        const alpha = raw < threshold ? 0 : Math.floor(255 * raw);
         maskData.data[i * 4 + 3] = alpha;
     }
     maskCtx.putImageData(maskData, 0, 0);
@@ -448,17 +450,17 @@ async function applyOnnxBgRemoval(blob: Blob, session: any, targetSize: number):
 /**
  * MODNet ONNX 배경 제거 (사물 7) - onnxruntime-web 직접 구동
  */
-async function applyModnetOnnxBgRemoval(blob: Blob): Promise<Blob> {
+async function applyModnetOnnxBgRemoval(blob: Blob, threshold: number): Promise<Blob> {
     const session = await getModnetOnnxSession();
-    return applyOnnxBgRemoval(blob, session, 512);
+    return applyOnnxBgRemoval(blob, session, 512, threshold);
 }
 
 /**
  * U2-Net Full ONNX 배경 제거 (사물 8) - 고해상도 풀 모델
  */
-async function applyU2NetFullBgRemoval(blob: Blob): Promise<Blob> {
+async function applyU2NetFullBgRemoval(blob: Blob, threshold: number): Promise<Blob> {
     const session = await getU2NetFullSession();
-    return applyOnnxBgRemoval(blob, session, 320);
+    return applyOnnxBgRemoval(blob, session, 320, threshold);
 }
 
 /**
@@ -499,9 +501,9 @@ export async function processImage(file: File, options: AppOptions): Promise<str
         } else if (options.bgRemovalType === 'object6') {
             currentBlob = await applyBEN2BgRemoval(currentBlob);
         } else if (options.bgRemovalType === 'object7') {
-            currentBlob = await applyModnetOnnxBgRemoval(currentBlob);
+            currentBlob = await applyModnetOnnxBgRemoval(currentBlob, options.onnxThreshold);
         } else if (options.bgRemovalType === 'object8') {
-            currentBlob = await applyU2NetFullBgRemoval(currentBlob);
+            currentBlob = await applyU2NetFullBgRemoval(currentBlob, options.onnxThreshold);
         }
     }
 

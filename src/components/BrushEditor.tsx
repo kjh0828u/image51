@@ -1588,7 +1588,10 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
                         <span className="brush-value">{brushSize}px</span>
                       </div>
                       <input
-                        type="range" min={5} max={150} value={brushSize}
+                        type="range"
+                        min={5}
+                        max={300}
+                        value={brushSize}
                         onChange={(e) => setBrushSize(Number(e.target.value))}
                         className="range-slider brush-range"
                       />

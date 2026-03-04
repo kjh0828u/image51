@@ -22,10 +22,10 @@ export function MediaPipeBgRemovalOptionsCard() {
             disabled={!enableBgRemoval}
         >
             <div className="bg-removal-tabs mb-4">
-                <div className="flex bg-white/5 p-1 rounded-xl border border-white/5">
+                <div className="flex bg-white/5 p-1 rounded-xl border border-white/5 custom-scrollbar overflow-x-auto">
                     <button
                         className={cn(
-                            "flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all duration-200",
+                            "flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all duration-200 whitespace-nowrap",
                             bgRemovalType === 'person' ? "bg-white/10 text-white shadow-sm" : "text-white/40 hover:text-white/60"
                         )}
                         onClick={() => setOption('bgRemovalType', 'person')}
@@ -35,83 +35,83 @@ export function MediaPipeBgRemovalOptionsCard() {
                     </button>
                     <button
                         className={cn(
-                            "flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all duration-200",
+                            "flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all duration-200 whitespace-nowrap",
                             bgRemovalType === 'object1' ? "bg-white/10 text-white shadow-sm" : "text-white/40 hover:text-white/60"
                         )}
                         onClick={() => setOption('bgRemovalType', 'object1')}
                         disabled={!enableBgRemoval}
                     >
-                        사물 1
+                        기본 사물
                     </button>
                     <button
                         className={cn(
-                            "flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all duration-200",
+                            "flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all duration-200 whitespace-nowrap",
                             bgRemovalType === 'object2' ? "bg-white/10 text-white shadow-sm" : "text-white/40 hover:text-white/60"
                         )}
                         onClick={() => setOption('bgRemovalType', 'object2')}
                         disabled={!enableBgRemoval}
                     >
-                        사물 2
+                        사물 (DeepLab)
                     </button>
                     <button
                         className={cn(
-                            "flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all duration-200",
+                            "flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all duration-200 whitespace-nowrap",
                             bgRemovalType === 'object3' ? "bg-white/10 text-white shadow-sm" : "text-white/40 hover:text-white/60"
                         )}
                         onClick={() => setOption('bgRemovalType', 'object3')}
                         disabled={!enableBgRemoval}
                     >
-                        사물 3
+                        인물 (MODNet)
                     </button>
                     <button
                         className={cn(
-                            "flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all duration-200",
+                            "flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all duration-200 whitespace-nowrap",
                             bgRemovalType === 'object4' ? "bg-white/10 text-white shadow-sm" : "text-white/40 hover:text-white/60"
                         )}
                         onClick={() => setOption('bgRemovalType', 'object4')}
                         disabled={!enableBgRemoval}
                     >
-                        사물 4
+                        사물 (MODNet)
                     </button>
                     <button
                         className={cn(
-                            "flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all duration-200",
+                            "flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all duration-200 whitespace-nowrap",
                             bgRemovalType === 'object5' ? "bg-white/10 text-white shadow-sm" : "text-white/40 hover:text-white/60"
                         )}
                         onClick={() => setOption('bgRemovalType', 'object5')}
                         disabled={!enableBgRemoval}
                     >
-                        사물 5
+                        제품 (RMBG)
                     </button>
                     <button
                         className={cn(
-                            "flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all duration-200",
+                            "flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all duration-200 whitespace-nowrap",
                             bgRemovalType === 'object6' ? "bg-white/10 text-white shadow-sm" : "text-white/40 hover:text-white/60"
                         )}
                         onClick={() => setOption('bgRemovalType', 'object6')}
                         disabled={!enableBgRemoval}
                     >
-                        사물 6
+                        범용 (BEN2)
                     </button>
                     <button
                         className={cn(
-                            "flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all duration-200",
+                            "flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all duration-200 whitespace-nowrap",
                             bgRemovalType === 'object7' ? "bg-white/10 text-white shadow-sm" : "text-white/40 hover:text-white/60"
                         )}
                         onClick={() => setOption('bgRemovalType', 'object7')}
                         disabled={!enableBgRemoval}
                     >
-                        사물 7
+                        정밀 (MODNet)
                     </button>
                     <button
                         className={cn(
-                            "flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all duration-200",
+                            "flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all duration-200 whitespace-nowrap",
                             bgRemovalType === 'object8' ? "bg-white/10 text-white shadow-sm" : "text-white/40 hover:text-white/60"
                         )}
                         onClick={() => setOption('bgRemovalType', 'object8')}
                         disabled={!enableBgRemoval}
                     >
-                        사물 8
+                        고성능 (U²Net)
                     </button>
                 </div>
             </div>

@@ -1059,8 +1059,6 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
     if (!rect || rect.w < 2 || rect.h < 2) return;
     if (!canvasRef.current || !originalRef.current || !maskRef.current) return;
 
-    saveMaskSnapshot('Crop');
-
     const sx = Math.round(rect.x);
     const sy = Math.round(rect.y);
     const sw = Math.round(rect.w);
@@ -1108,7 +1106,6 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
     const bounds = getAutoCropBounds(canvasRef.current, cropMargin);
     if (!bounds) return;
 
-    saveMaskSnapshot('Auto Crop');
     const { x, y, w, h } = bounds;
 
     const origCropped = document.createElement('canvas');
@@ -1163,6 +1160,7 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
 
     setShowFillPanel(false);
     compositeAndRender();
+    saveMaskSnapshot('Fill Bg');
   }, [fillColor, compositeAndRender, saveMaskSnapshot]);
 
   // 투명한 영역 전체만 현재 선택한 배경색으로 채우는 기능
@@ -1196,6 +1194,7 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
 
     setShowFillPanel(false);
     compositeAndRender();
+    saveMaskSnapshot('Fill Transp.');
   }, [fillColor, compositeAndRender, saveMaskSnapshot]);
 
   // 투명 영역 전체를 현재 브러시 색상으로 채우는 기능

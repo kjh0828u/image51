@@ -2034,7 +2034,7 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
         {/* Right Sidebar Panels */}
         <div className="brush-editor-sidebar-right flex flex-col min-w-[240px]">
           {/* History */}
-          <div className="flex-1 flex flex-col border-b border-[#111]">
+          <div className="h-[250px] flex-shrink-0 flex flex-col border-b border-[#111]">
             <div className="brush-panel-title px-3 py-2 bg-[#333] text-white font-black italic flex justify-between items-center">
               <span>HISTORY</span><Activity size={12} className="text-gray-500" />
             </div>

@@ -24,10 +24,11 @@ import {
   Minus,
   GripVertical,
   Brush,
-  PaintBucket
+  PaintBucket,
+  Pipette
 } from 'lucide-react';
 
-type Tool = 'erase' | 'restore' | 'wand' | 'crop' | 'paint' | 'bucket';
+type Tool = 'erase' | 'restore' | 'wand' | 'crop' | 'paint' | 'bucket' | 'eyedropper';
 type BrushShape = 'circle' | 'square' | 'rect-h' | 'rect-v' | 'rect-h-thin' | 'rect-v-thin' | 'diamond';
 
 interface BrushEditorProps {
@@ -238,6 +239,7 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
   const cropStartRef = useRef<{ x: number; y: number } | null>(null);
   const cropRectRef = useRef<{ x: number; y: number; w: number; h: number } | null>(null);
   const [cropRect, setCropRect] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+  const [isDraggingHandle, setIsDraggingHandle] = useState<string | null>(null);
 
   const [tool, setTool] = useState<Tool>('wand');
   const [brushSize, setBrushSize] = useState(30);
@@ -276,6 +278,7 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
   const redoStack = useRef<{ mask: ImageData; original: ImageData }[]>([]);
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
+  const [historyVersion, setHistoryVersion] = useState(0);
 
   const compositeAndRender = useCallback(() => {
     if (!canvasRef.current || !originalRef.current || !maskRef.current) return;
@@ -303,6 +306,7 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
     redoStack.current = [];
     setCanUndo(true);
     setCanRedo(false);
+    setHistoryVersion(v => v + 1);
   }, []);
 
   const updateCanvasSize = useCallback((w: number, h: number) => {
@@ -338,6 +342,7 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
     compositeAndRender();
     setCanUndo(undoStack.current.length > 0);
     setCanRedo(true);
+    setHistoryVersion(v => v + 1);
   }, [compositeAndRender, updateCanvasSize]);
 
   const redo = useCallback(() => {
@@ -363,6 +368,7 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
     compositeAndRender();
     setCanUndo(true);
     setCanRedo(redoStack.current.length > 0);
+    setHistoryVersion(v => v + 1);
   }, [compositeAndRender, updateCanvasSize]);
 
   const drawMarching = useCallback(() => {
@@ -799,6 +805,18 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
     [brushColor, tolerance, compositeAndRender, saveMaskSnapshot]
   );
 
+  const handleEyedropper = useCallback((pos: { x: number; y: number }) => {
+    if (!canvasRef.current) return;
+    const ctx = canvasRef.current.getContext('2d', { willReadFrequently: true })!;
+    const pixel = ctx.getImageData(pos.x, pos.y, 1, 1).data;
+    const r = pixel[0]!.toString(16).padStart(2, '0');
+    const g = pixel[1]!.toString(16).padStart(2, '0');
+    const b = pixel[2]!.toString(16).padStart(2, '0');
+    const hex = `#${r}${g}${b}`;
+    setBrushColor(hex);
+    setTool('paint'); // 색상 추출 후 다시 브러시로 전환 (포토샵 스타일)
+  }, []);
+
   const drawShape = (ctx: CanvasRenderingContext2D, x: number, y: number, size: number, shape: BrushShape) => {
     const r = size / 2;
     ctx.beginPath();
@@ -914,13 +932,25 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
     }
 
     // 모서리 핸들
-    const hs = 8;
-    ctx.fillStyle = 'white';
+    const hs = 10;
     const corners = [
-      [rect.x, rect.y], [rect.x + rect.w - hs, rect.y],
-      [rect.x, rect.y + rect.h - hs], [rect.x + rect.w - hs, rect.y + rect.h - hs],
+      { id: 'tl', x: rect.x - hs / 2, y: rect.y - hs / 2 },
+      { id: 'tr', x: rect.x + rect.w - hs / 2, y: rect.y - hs / 2 },
+      { id: 'bl', x: rect.x - hs / 2, y: rect.y + rect.h - hs / 2 },
+      { id: 'br', x: rect.x + rect.w - hs / 2, y: rect.y + rect.h - hs / 2 },
+      // 변 핸들
+      { id: 't', x: rect.x + rect.w / 2 - hs / 2, y: rect.y - hs / 2 },
+      { id: 'b', x: rect.x + rect.w / 2 - hs / 2, y: rect.y + rect.h - hs / 2 },
+      { id: 'l', x: rect.x - hs / 2, y: rect.y + rect.h / 2 - hs / 2 },
+      { id: 'r', x: rect.x + rect.w - hs / 2, y: rect.y + rect.h / 2 - hs / 2 },
     ];
-    for (const [cx, cy] of corners) ctx.fillRect(cx!, cy!, hs, hs);
+    ctx.fillStyle = 'white';
+    ctx.strokeStyle = '#4f46e5';
+    ctx.lineWidth = 2;
+    for (const c of corners) {
+      ctx.fillRect(c.x, c.y, hs, hs);
+      ctx.strokeRect(c.x, c.y, hs, hs);
+    }
   }, []);
 
   const handleMouseDown = useCallback(
@@ -932,7 +962,30 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
         handleWand(pos, isCtrl);
       } else if (tool === 'bucket') {
         handleBucket(pos);
+      } else if (tool === 'eyedropper') {
+        handleEyedropper(pos);
       } else if (tool === 'crop') {
+        // 핸들 체크
+        if (cropRect) {
+          const hs = 20; // 클릭 인식 범위 확대
+          const zoomHs = hs / zoom;
+          const { x, y, w, h } = cropRect;
+          const handles = [
+            { id: 'tl', x: x, y: y }, { id: 'tr', x: x + w, y: y },
+            { id: 'bl', x: x, y: y + h }, { id: 'br', x: x + w, y: y + h },
+            { id: 't', x: x + w / 2, y: y }, { id: 'b', x: x + w / 2, y: y + h },
+            { id: 'l', x: x, y: y + h / 2 }, { id: 'r', x: x + w, y: y + h / 2 }
+          ];
+
+          for (const hnd of handles) {
+            if (Math.abs(pos.x - hnd.x) < zoomHs && Math.abs(pos.y - hnd.y) < zoomHs) {
+              setIsDraggingHandle(hnd.id);
+              isPainting.current = true;
+              return;
+            }
+          }
+        }
+
         cropStartRef.current = pos;
         cropRectRef.current = { x: pos.x, y: pos.y, w: 0, h: 0 };
         setCropRect({ x: pos.x, y: pos.y, w: 0, h: 0 });
@@ -945,13 +998,14 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
         paint(pos);
       }
     },
-    [tool, getCanvasPos, handleWand, paint, saveMaskSnapshot, drawCropOverlay]
+    [tool, getCanvasPos, handleWand, handleBucket, handleEyedropper, paint, saveMaskSnapshot, drawCropOverlay, cropRect, zoom]
   );
 
 
   const handleMouseUp = useCallback(() => {
     isPainting.current = false;
     lastPos.current = null;
+    setIsDraggingHandle(null);
   }, []);
 
   // ── 크롭 실행 ────────────────────────────────────────────
@@ -1182,6 +1236,7 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
       if (key === 'g') { setTool('bucket'); stopMarching(); cancelCrop(); }
       if (key === 'c') { setTool('crop'); stopMarching(); }
       if (key === 'r') { setTool('restore'); stopMarching(); cancelCrop(); }
+      if (key === 'i') { setTool('eyedropper'); stopMarching(); cancelCrop(); }
 
       if (e.key === 'Escape') {
         if (tool === 'crop') cancelCrop();
@@ -1224,19 +1279,44 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
         }
 
         const pos = getCanvasPos(e as any); // getCanvasPos expects React.MouseEvent | React.TouchEvent
-        if (tool === 'crop' && cropStartRef.current) {
-          const start = cropStartRef.current;
-          const newRect = {
-            x: Math.min(start.x, pos.x),
-            y: Math.min(start.y, pos.y),
-            w: Math.abs(pos.x - start.x),
-            h: Math.abs(pos.y - start.y),
-          };
-          cropRectRef.current = newRect;
-          setCropRect(newRect);
-          drawCropOverlay(newRect);
+        if (tool === 'crop') {
+          if (isDraggingHandle && cropRect) {
+            const newRect = { ...cropRect };
+            if (isDraggingHandle.includes('t')) {
+              const bottom = newRect.y + newRect.h;
+              newRect.y = Math.min(pos.y, bottom - 1);
+              newRect.h = bottom - newRect.y;
+            }
+            if (isDraggingHandle.includes('b')) {
+              newRect.h = Math.max(1, pos.y - newRect.y);
+            }
+            if (isDraggingHandle.includes('l')) {
+              const right = newRect.x + newRect.w;
+              newRect.x = Math.min(pos.x, right - 1);
+              newRect.w = right - newRect.x;
+            }
+            if (isDraggingHandle.includes('r')) {
+              newRect.w = Math.max(1, pos.x - newRect.x);
+            }
+            cropRectRef.current = newRect;
+            setCropRect(newRect);
+            drawCropOverlay(newRect);
+          } else if (cropStartRef.current) {
+            const start = cropStartRef.current;
+            const newRect = {
+              x: Math.min(start.x, pos.x),
+              y: Math.min(start.y, pos.y),
+              w: Math.abs(pos.x - start.x),
+              h: Math.abs(pos.y - start.y),
+            };
+            cropRectRef.current = newRect;
+            setCropRect(newRect);
+            drawCropOverlay(newRect);
+          }
         } else if (tool === 'erase' || tool === 'restore' || tool === 'paint') {
           paint(pos);
+        } else if (tool === 'eyedropper' && isPainting.current) {
+          handleEyedropper(pos);
         }
       }
     };
@@ -1247,7 +1327,7 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
       window.removeEventListener('mousemove', handleGlobalMove);
       window.removeEventListener('touchmove', handleGlobalMove);
     };
-  }, [getCanvasPos, paint, tool, drawCropOverlay]);
+  }, [getCanvasPos, paint, tool, drawCropOverlay, isDraggingHandle, cropRect, handleEyedropper]);
 
   // Global mouseup/touchend listener to stop painting if mouse leaves canvas
   useEffect(() => {
@@ -1372,7 +1452,79 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
       </div>
 
       <div className="brush-editor-layout">
-        {/* 좌측 메인 도구바 */}
+        {/* 좌측 메인 도구바 (툴박스) */}
+        <div className="brush-editor-sidebar-left bg-[#252526] border-r border-[#111]">
+          <button
+            onClick={() => { cancelCrop(); setTool('wand'); }}
+            className={`brush-tool-btn ${tool === 'wand' ? 'brush-tool-btn-active' : ''}`}
+            title="마법봉 (W / 스마트 선택)"
+          >
+            <Wand2 size={20} />
+          </button>
+          <button
+            onClick={() => { stopMarching(); cancelCrop(); setTool('erase'); }}
+            className={`brush-tool-btn ${tool === 'erase' ? 'brush-tool-btn-active' : ''}`}
+            title="지우개 (E / 배경 삭제)"
+          >
+            <Eraser size={20} />
+          </button>
+          <button
+            onClick={() => { stopMarching(); cancelCrop(); setTool('restore'); }}
+            className={`brush-tool-btn ${tool === 'restore' ? 'brush-tool-btn-active' : ''}`}
+            title="복구 브러시 (R)"
+          >
+            <RefreshCcw size={18} />
+          </button>
+          <button
+            onClick={() => { stopMarching(); cancelCrop(); setTool('paint'); }}
+            className={`brush-tool-btn ${tool === 'paint' ? 'brush-tool-btn-active' : ''}`}
+            title="컬러 브러시 (B)"
+          >
+            <Brush size={18} />
+          </button>
+          <button
+            onClick={() => { stopMarching(); cancelCrop(); setTool('eyedropper'); }}
+            className={`brush-tool-btn ${tool === 'eyedropper' ? 'brush-tool-btn-active' : ''}`}
+            title="스포이드 (I)"
+          >
+            <Pipette size={18} />
+          </button>
+          <button
+            onClick={() => { stopMarching(); cancelCrop(); setTool('bucket'); }}
+            className={`brush-tool-btn ${tool === 'bucket' ? 'brush-tool-btn-active' : ''}`}
+            title="페인트통 (G)"
+          >
+            <PaintBucket size={18} />
+          </button>
+          <button
+            onClick={() => { stopMarching(); setTool('crop'); setCropRect(null); cropRectRef.current = null; }}
+            className={`brush-tool-btn ${tool === 'crop' ? 'brush-tool-btn-active' : ''}`}
+            title="자르기 도구 (C)"
+          >
+            <Crop size={20} />
+          </button>
+
+          <div className="w-8 h-[1px] bg-[#333] my-2" />
+
+          <button onClick={() => setZoom(z => Math.min(8, z + 0.2))} className="brush-tool-btn" title="확대">
+            <PlusCircle size={18} />
+          </button>
+          <button onClick={() => setZoom(z => Math.max(0.1, z - 0.2))} className="brush-tool-btn" title="축소">
+            <MinusCircle size={18} />
+          </button>
+          <button
+            onClick={() => {
+              const containerW = containerRef.current?.clientWidth ?? 800;
+              const containerH = containerRef.current?.clientHeight ?? 600;
+              setZoom(Math.min((containerW - 40) / imageSize.w, (containerH - 40) / imageSize.h, 1));
+            }}
+            className="brush-tool-btn"
+            title="화면에 맞추기"
+          >
+            <Maximize2 size={18} />
+          </button>
+        </div>
+
         {/* 중앙 편집 공간 */}
         <div className="flex-1 flex flex-col min-w-0 bg-[#1e1e1e]">
           {/* 포토샵 스타일 도구 옵션 바 */}
@@ -1475,7 +1627,7 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
                 style={{
                   position: 'absolute', top: 0, left: 0,
                   width: displayWidth, height: displayHeight,
-                  cursor: tool === 'wand' ? 'crosshair' : tool === 'crop' ? 'crosshair' : 'none',
+                  cursor: (tool === 'wand' || tool === 'crop' || tool === 'bucket' || tool === 'eyedropper') ? 'crosshair' : 'none',
                   touchAction: 'none',
                 }}
               />

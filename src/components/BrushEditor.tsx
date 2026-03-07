@@ -646,6 +646,11 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
           tCtx.drawImage(tipCanvas, 0, 0);
           origCtx.globalAlpha = tool === 'heal' ? alpha * 0.7 : alpha;
           origCtx.drawImage(tCanvas, px - offset, py - offset);
+
+          // 투명 배경일 경우 그려진 위치가 보여야 하므로 마스크에도 그려 줌 (불투명하게)
+          maskCtx.globalCompositeOperation = 'source-over';
+          maskCtx.globalAlpha = 1;
+          maskCtx.drawImage(tipCanvas, px - offset, py - offset);
         }
       }
 

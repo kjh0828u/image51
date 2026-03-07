@@ -382,6 +382,81 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
     setHistoryVersion(v => v + 1);
   }, [compositeAndRender, updateCanvasSize]);
 
+  // ── 크롭 오버레이 그리기 ──────────────────────────────────
+  const drawCropOverlay = useCallback((rect: { x: number; y: number; w: number; h: number } | null) => {
+    const overlay = overlayRef.current;
+    if (!overlay) return;
+    const ctx = overlay.getContext('2d')!;
+    const W = overlay.width;
+    const H = overlay.height;
+    ctx.clearRect(0, 0, W, H);
+    if (!rect || rect.w <= 0 || rect.h <= 0) return;
+
+    // 어두운 오버레이 (선택 영역 밖)
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.clearRect(rect.x, rect.y, rect.w, rect.h);
+
+    // 힙한 애니메이션 테두리 (Marching Ants)
+    const t = (marchingOffset.current * 20);
+    ctx.setLineDash([6, 4]);
+    ctx.lineDashOffset = -t;
+
+    // 외곽 그림자 (대비용)
+    ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(rect.x + 0.5, rect.y + 0.5, rect.w - 1, rect.h - 1);
+
+    // 요술봉과 동일한 컬러 팔레트
+    const colors = [[168, 85, 247], [255, 255, 255], [56, 189, 248], [236, 72, 153], [255, 255, 255]];
+    const steps = colors.length - 1;
+    const colorPos = marchingOffset.current * steps;
+    const idx = Math.floor(colorPos);
+    const frac = colorPos - idx;
+    const [r1, g1, b1] = colors[idx]!;
+    const [r2, g2, b2] = colors[idx + 1]!;
+    const r = Math.round(r1 + (r2 - r1) * frac);
+    const g = Math.round(g1 + (g2 - g1) * frac);
+    const b = Math.round(b1 + (b2 - b1) * frac);
+
+    ctx.strokeStyle = `rgb(${r},${g},${b})`;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(rect.x + 0.5, rect.y + 0.5, rect.w - 1, rect.h - 1);
+    ctx.setLineDash([]);
+    ctx.lineDashOffset = 0;
+
+    // 3x3 그리드 가이드라인
+    ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+    ctx.lineWidth = 1;
+    for (let i = 1; i < 3; i++) {
+      const gx = rect.x + (rect.w / 3) * i;
+      const gy = rect.y + (rect.h / 3) * i;
+      ctx.beginPath(); ctx.moveTo(gx, rect.y); ctx.lineTo(gx, rect.y + rect.h); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(rect.x, gy); ctx.lineTo(rect.x + rect.w, gy); ctx.stroke();
+    }
+
+    // 모서리 핸들
+    const hs = 10;
+    const corners = [
+      { id: 'tl', x: rect.x - hs / 2, y: rect.y - hs / 2 },
+      { id: 'tr', x: rect.x + rect.w - hs / 2, y: rect.y - hs / 2 },
+      { id: 'bl', x: rect.x - hs / 2, y: rect.y + rect.h - hs / 2 },
+      { id: 'br', x: rect.x + rect.w - hs / 2, y: rect.y + rect.h - hs / 2 },
+      // 변 핸들
+      { id: 't', x: rect.x + rect.w / 2 - hs / 2, y: rect.y - hs / 2 },
+      { id: 'b', x: rect.x + rect.w / 2 - hs / 2, y: rect.y + rect.h - hs / 2 },
+      { id: 'l', x: rect.x - hs / 2, y: rect.y + rect.h / 2 - hs / 2 },
+      { id: 'r', x: rect.x + rect.w - hs / 2, y: rect.y + rect.h / 2 - hs / 2 },
+    ];
+    ctx.fillStyle = 'white';
+    ctx.strokeStyle = '#4f46e5';
+    ctx.lineWidth = 2;
+    for (const c of corners) {
+      ctx.fillRect(c.x, c.y, hs, hs);
+      ctx.strokeRect(c.x, c.y, hs, hs);
+    }
+  }, []);
+
   const drawMarching = useCallback(() => {
     const overlay = overlayRef.current;
     const sel = selectionRef.current;
@@ -500,11 +575,17 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
       if (!isSliding.current) {
         const dt = (now - lastTime) / 1000;
         marchingOffset.current = (marchingOffset.current + 0.2 * dt) % 1;
-        drawMarching();
+
+        const currentTool = toolRef.current;
+        if (currentTool === 'wand' && selectionRef.current) {
+          drawMarching();
+        } else if (currentTool === 'crop' && cropRectRef.current) {
+          drawCropOverlay(cropRectRef.current);
+        }
       }
       lastTime = now;
     }, 40);
-  }, [drawMarching]);
+  }, [drawMarching, drawCropOverlay]);
 
   const stopMarching = useCallback(() => {
     if (marchingTimer.current) {
@@ -910,59 +991,6 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
     [tool, brushSize, brushOpacity, brushShape, brushColor, compositeAndRender]
   );
 
-  // ── 크롭 오버레이 그리기 ──────────────────────────────────
-  const drawCropOverlay = useCallback((rect: { x: number; y: number; w: number; h: number } | null) => {
-    const overlay = overlayRef.current;
-    if (!overlay) return;
-    const ctx = overlay.getContext('2d')!;
-    const W = overlay.width;
-    const H = overlay.height;
-    ctx.clearRect(0, 0, W, H);
-    if (!rect || rect.w <= 0 || rect.h <= 0) return;
-
-    // 어두운 오버레이 (선택 영역 밖)
-    ctx.fillStyle = 'rgba(0,0,0,0.55)';
-    ctx.fillRect(0, 0, W, H);
-    ctx.clearRect(rect.x, rect.y, rect.w, rect.h);
-
-    // 선택 테두리
-    ctx.strokeStyle = 'rgba(255,255,255,0.9)';
-    ctx.lineWidth = 1.5;
-    ctx.setLineDash([6, 4]);
-    ctx.strokeRect(rect.x + 0.5, rect.y + 0.5, rect.w - 1, rect.h - 1);
-    ctx.setLineDash([]);
-
-    // 3x3 그리드 가이드라인
-    ctx.strokeStyle = 'rgba(255,255,255,0.25)';
-    ctx.lineWidth = 1;
-    for (let i = 1; i < 3; i++) {
-      const gx = rect.x + (rect.w / 3) * i;
-      const gy = rect.y + (rect.h / 3) * i;
-      ctx.beginPath(); ctx.moveTo(gx, rect.y); ctx.lineTo(gx, rect.y + rect.h); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(rect.x, gy); ctx.lineTo(rect.x + rect.w, gy); ctx.stroke();
-    }
-
-    // 모서리 핸들
-    const hs = 10;
-    const corners = [
-      { id: 'tl', x: rect.x - hs / 2, y: rect.y - hs / 2 },
-      { id: 'tr', x: rect.x + rect.w - hs / 2, y: rect.y - hs / 2 },
-      { id: 'bl', x: rect.x - hs / 2, y: rect.y + rect.h - hs / 2 },
-      { id: 'br', x: rect.x + rect.w - hs / 2, y: rect.y + rect.h - hs / 2 },
-      // 변 핸들
-      { id: 't', x: rect.x + rect.w / 2 - hs / 2, y: rect.y - hs / 2 },
-      { id: 'b', x: rect.x + rect.w / 2 - hs / 2, y: rect.y + rect.h - hs / 2 },
-      { id: 'l', x: rect.x - hs / 2, y: rect.y + rect.h / 2 - hs / 2 },
-      { id: 'r', x: rect.x + rect.w - hs / 2, y: rect.y + rect.h / 2 - hs / 2 },
-    ];
-    ctx.fillStyle = 'white';
-    ctx.strokeStyle = '#4f46e5';
-    ctx.lineWidth = 2;
-    for (const c of corners) {
-      ctx.fillRect(c.x, c.y, hs, hs);
-      ctx.strokeRect(c.x, c.y, hs, hs);
-    }
-  }, []);
 
   const handleMouseDown = useCallback(
     (e: React.MouseEvent | React.TouchEvent) => {
@@ -1245,7 +1273,7 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
       if (key === 'b') { setTool('paint'); stopMarching(); cancelCrop(); }
       if (key === 'e') { setTool('erase'); stopMarching(); cancelCrop(); }
       if (key === 'g') { setTool('bucket'); stopMarching(); cancelCrop(); }
-      if (key === 'c') { setTool('crop'); stopMarching(); }
+      if (key === 'c') { setTool('crop'); stopMarching(); startMarching(); }
       if (key === 'r') { setTool('restore'); stopMarching(); cancelCrop(); }
       if (key === 'i') { setTool('eyedropper'); stopMarching(); cancelCrop(); }
 
@@ -1545,7 +1573,7 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
             <PaintBucket size={18} />
           </button>
           <button
-            onClick={() => { stopMarching(); setTool('crop'); setCropRect(null); cropRectRef.current = null; }}
+            onClick={() => { stopMarching(); setTool('crop'); setCropRect(null); cropRectRef.current = null; startMarching(); }}
             className={`brush-tool-btn ${tool === 'crop' ? 'brush-tool-btn-active' : ''}`}
             title="자르기 도구 (C)"
           >

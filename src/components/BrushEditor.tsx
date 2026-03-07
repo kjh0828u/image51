@@ -505,27 +505,24 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
     const center = tip.width / 2;
     const r = size / 2;
 
-    // 도구별 기본 색상/스타일 결정
-    if (tool === 'erase' || tool === 'restore') {
-      tCtx.fillStyle = 'black';
-    } else if (tool === 'paint') {
+    const shape = brushShape;
+    const hardness = brushHardness / 100;
+
+    tCtx.save();
+
+    // 기본 스타일 설정
+    if (tool === 'paint') {
       tCtx.fillStyle = brushColor;
     } else {
-      // 복제/복구 등은 마스크용 원형 그라데이션만 필요
       tCtx.fillStyle = 'black';
     }
 
     if (['paint', 'clone', 'heal', 'blur-brush', 'erase', 'restore'].includes(tool)) {
-      const hardness = brushHardness / 100;
-      const grad = tCtx.createRadialGradient(center, center, r * hardness, center, center, r);
-      grad.addColorStop(0, 'rgba(0,0,0,1)');
-      grad.addColorStop(1, 'rgba(0,0,0,0)');
+      if (shape === 'circle') {
+        const grad = tCtx.createRadialGradient(center, center, r * hardness, center, center, r);
+        grad.addColorStop(0, 'rgba(0,0,0,1)');
+        grad.addColorStop(1, 'rgba(0,0,0,0)');
 
-      tCtx.save();
-      if (tool === 'paint' || tool === 'erase' || tool === 'restore') {
-        tCtx.fillStyle = grad;
-        // paint인 경우 색상을 유지하면서 투명도만 그라데이션 적용하고 싶으므로
-        // globalCompositeOperation을 활용하거나 수동으로 처리
         if (tool === 'paint') {
           tCtx.globalCompositeOperation = 'source-over';
           tCtx.fillStyle = brushColor;
@@ -543,16 +540,29 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
           tCtx.arc(center, center, r, 0, Math.PI * 2);
           tCtx.fill();
         }
-      } else {
-        // 복제/블러 등은 마스크로만 쓰임
-        tCtx.fillStyle = grad;
+      } else if (shape === 'square') {
+        if (hardness < 1) {
+          // 사각형 페더링(Hardness) 시뮬레이션
+          const feather = (1 - hardness) * r;
+          tCtx.filter = `blur(${feather}px)`;
+        }
+        tCtx.fillRect(center - r, center - r, size, size);
+      } else if (shape === 'diamond') {
+        if (hardness < 1) {
+          const feather = (1 - hardness) * r;
+          tCtx.filter = `blur(${feather}px)`;
+        }
         tCtx.beginPath();
-        tCtx.arc(center, center, r, 0, Math.PI * 2);
+        tCtx.moveTo(center, center - r);
+        tCtx.lineTo(center + r, center);
+        tCtx.lineTo(center, center + r);
+        tCtx.lineTo(center - r, center);
+        tCtx.closePath();
         tCtx.fill();
       }
-      tCtx.restore();
     }
-  }, [brushSize, brushHardness, brushColor, tool]);
+    tCtx.restore();
+  }, [brushSize, brushHardness, brushColor, tool, brushShape]);
 
   // 브러시 설정 변경 시 팁 업데이트
   useEffect(() => {

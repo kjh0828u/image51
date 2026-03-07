@@ -308,7 +308,9 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
   const [showAdjustPanel, setShowAdjustPanel] = useState(false);
 
   // 상태바 및 눈금자 정보
-  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+  // 상태바 정보 전용 Ref (리렌더링 방지)
+  const statusBarXRef = useRef<HTMLSpanElement>(null);
+  const statusBarYRef = useRef<HTMLSpanElement>(null);
   // 뒤로가기 컨펌 모달
   const [showExitConfirm, setShowExitConfirm] = useState(false);
 
@@ -502,6 +504,12 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
     if (cachedSelKey.current !== sel) {
       cachedSelKey.current = sel;
 
+      // 다운샘플링 배수 계산 (최대 너비를 800px 정도로 제한하여 성능 확보)
+      const MAX_CALC_SIZE = 800;
+      const calcScale = Math.min(1, MAX_CALC_SIZE / Math.max(w, h));
+      const sw = Math.floor(w * calcScale);
+      const sh = Math.floor(h * calcScale);
+
       const highlight = new ImageData(w, h);
       const buf = highlight.data;
       for (let i = 0; i < sel.length; i++) {
@@ -514,11 +522,14 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
       overlayCache.current = highlight;
 
       const segs: number[] = [];
-      const s = (x: number, y: number) =>
-        x >= 0 && x < w && y >= 0 && y < h ? sel[y * w + x] : 0;
+      const s = (x: number, y: number) => {
+        const ox = Math.min(w - 1, Math.floor(x / calcScale));
+        const oy = Math.min(h - 1, Math.floor(y / calcScale));
+        return sel[oy * w + ox] || 0;
+      };
 
-      for (let cy = 0; cy < h; cy++) {
-        for (let cx = 0; cx < w; cx++) {
+      for (let cy = 0; cy < sh; cy++) {
+        for (let cx = 0; cx < sw; cx++) {
           const tl = s(cx, cy);
           const tr = s(cx + 1, cy);
           const br = s(cx + 1, cy + 1);
@@ -526,10 +537,10 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
           const idx = (tl << 3) | (tr << 2) | (br << 1) | bl;
           if (idx === 0 || idx === 15) continue;
 
-          const tx = cx + 0.5, ty = cy;
-          const rx = cx + 1, ry = cy + 0.5;
-          const bx = cx + 0.5, by = cy + 1;
-          const lx = cx, ly = cy + 0.5;
+          const tx = (cx + 0.5) / calcScale, ty = cy / calcScale;
+          const rx = (cx + 1) / calcScale, ry = (cy + 0.5) / calcScale;
+          const bx = (cx + 0.5) / calcScale, by = (cy + 1) / calcScale;
+          const lx = cx / calcScale, ly = (cy + 0.5) / calcScale;
 
           switch (idx) {
             case 1: segs.push(bx, by, lx, ly); break;
@@ -599,14 +610,16 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
     ctx.restore();
   }, []);
 
-  const startMarching = useCallback(() => {
-    if (marchingTimer.current) clearInterval(marchingTimer.current);
-    let lastTime = performance.now();
+  const marchingRafId = useRef<number | null>(null);
+  const lastMarchingTime = useRef<number>(0);
 
-    marchingTimer.current = setInterval(() => {
-      const now = performance.now();
+  const startMarching = useCallback(() => {
+    const loop = (time: number) => {
+      if (!lastMarchingTime.current) lastMarchingTime.current = time;
+      const dt = (time - lastMarchingTime.current) / 1000;
+      lastMarchingTime.current = time;
+
       if (!isSliding.current) {
-        const dt = (now - lastTime) / 1000;
         marchingOffset.current = (marchingOffset.current + 0.2 * dt) % 1;
 
         const currentTool = toolRef.current;
@@ -615,18 +628,19 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
         } else if (currentTool === 'crop' && cropRectRef.current) {
           drawCropOverlay(cropRectRef.current);
         } else if ((currentTool === 'marquee-rect' || currentTool === 'marquee-circle') && cropRectRef.current) {
-          // 드래그 중인 영역 그리기 (크롭 오버레이 재활용하되 핸들 없는 단순 버전 가능)
           drawCropOverlay(cropRectRef.current);
         }
       }
-      lastTime = now;
-    }, 40);
+      marchingRafId.current = requestAnimationFrame(loop);
+    };
+    if (marchingRafId.current) cancelAnimationFrame(marchingRafId.current);
+    marchingRafId.current = requestAnimationFrame(loop);
   }, [drawMarching, drawCropOverlay]);
 
   const stopMarching = useCallback(() => {
-    if (marchingTimer.current) {
-      clearInterval(marchingTimer.current);
-      marchingTimer.current = null;
+    if (marchingRafId.current) {
+      cancelAnimationFrame(marchingRafId.current);
+      marchingRafId.current = null;
     }
     if (overlayRef.current) {
       overlayRef.current.getContext('2d')!.clearRect(
@@ -743,7 +757,7 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
 
   const getCanvasPos = useCallback((e: React.MouseEvent | React.TouchEvent) => {
     const canvas = canvasRef.current!;
-    const rect = canvas.getBoundingClientRect();
+    const rect = containerRectRef.current || canvas.getBoundingClientRect();
     const clientX = 'touches' in e ? e.touches[0]!.clientX : e.clientX;
     const clientY = 'touches' in e ? e.touches[0]!.clientY : e.clientY;
     return {
@@ -987,59 +1001,101 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
     ctx.fill();
   };
 
+  // ── 성능 최적화용 캐시 및 Ref ──────────────────────────────────
+  const brushTipRef = useRef<HTMLCanvasElement | null>(null);
+  const containerRectRef = useRef<DOMRect | null>(null);
+
+  // 브러시 팁 캐시 생성 (모양/크기/색상이 바뀔 때만 업데이트)
+  const updateBrushTip = useCallback(() => {
+    if (!brushTipRef.current) brushTipRef.current = document.createElement('canvas');
+    const tip = brushTipRef.current;
+
+    // 브러시 크기에 여유 공간을 조금 더 줌 (안티앨리어싱 대비)
+    const size = Math.ceil(brushSize);
+    const padding = 2;
+    tip.width = size + padding * 2;
+    tip.height = size + padding * 2;
+
+    const tCtx = tip.getContext('2d')!;
+    tCtx.clearRect(0, 0, tip.width, tip.height);
+
+    const center = tip.width / 2;
+    const r = size / 2;
+
+    // 도구별 기본 색상/스타일 결정
+    if (tool === 'erase' || tool === 'restore') {
+      tCtx.fillStyle = 'black';
+    } else if (tool === 'paint') {
+      tCtx.fillStyle = brushColor;
+    } else {
+      // 복제/복구 등은 마스크용 원형 그라데이션만 필요
+      tCtx.fillStyle = 'black';
+    }
+
+    if (['paint', 'clone', 'heal', 'blur-brush', 'erase', 'restore'].includes(tool)) {
+      const hardness = brushHardness / 100;
+      const grad = tCtx.createRadialGradient(center, center, r * hardness, center, center, r);
+      grad.addColorStop(0, 'rgba(0,0,0,1)');
+      grad.addColorStop(1, 'rgba(0,0,0,0)');
+
+      tCtx.save();
+      if (tool === 'paint' || tool === 'erase' || tool === 'restore') {
+        tCtx.fillStyle = grad;
+        // paint인 경우 색상을 유지하면서 투명도만 그라데이션 적용하고 싶으므로
+        // globalCompositeOperation을 활용하거나 수동으로 처리
+        if (tool === 'paint') {
+          tCtx.globalCompositeOperation = 'source-over';
+          tCtx.fillStyle = brushColor;
+          tCtx.beginPath();
+          tCtx.arc(center, center, r, 0, Math.PI * 2);
+          tCtx.fill();
+          tCtx.globalCompositeOperation = 'destination-in';
+          tCtx.fillStyle = grad;
+          tCtx.beginPath();
+          tCtx.arc(center, center, r, 0, Math.PI * 2);
+          tCtx.fill();
+        } else {
+          tCtx.fillStyle = grad;
+          tCtx.beginPath();
+          tCtx.arc(center, center, r, 0, Math.PI * 2);
+          tCtx.fill();
+        }
+      } else {
+        // 복제/블러 등은 마스크로만 쓰임
+        tCtx.fillStyle = grad;
+        tCtx.beginPath();
+        tCtx.arc(center, center, r, 0, Math.PI * 2);
+        tCtx.fill();
+      }
+      tCtx.restore();
+    }
+  }, [brushSize, brushHardness, brushColor, tool]);
+
+  // 브러시 설정 변경 시 팁 업데이트
+  useEffect(() => {
+    updateBrushTip();
+  }, [updateBrushTip]);
+
   const paint = useCallback(
     (pos: { x: number; y: number }) => {
-      if (!maskRef.current || !originalRef.current) return;
+      if (!maskRef.current || !originalRef.current || !brushTipRef.current) return;
 
-      // 캔버스 범위 체크: 영역 밖이면 그리지 않고 stroke로 간주하지 않음
       const imgW = originalRef.current.width;
       const imgH = originalRef.current.height;
-      if (pos.x < -brushSize || pos.x > imgW + brushSize || pos.y < -brushSize || pos.y > imgH + brushSize) return;
 
       const maskCtx = maskRef.current.getContext('2d')!;
       const origCtx = originalRef.current.getContext('2d')!;
-      const from = lastPos.current ?? pos;
-
-      maskCtx.save();
-      origCtx.save();
+      const from = lastPos.current || pos;
 
       const alpha = brushOpacity / 100;
-
-      if (tool === 'erase') {
-        maskCtx.globalCompositeOperation = 'destination-out';
-        maskCtx.globalAlpha = alpha;
-        maskCtx.fillStyle = 'black';
-      } else if (tool === 'restore') {
-        maskCtx.globalCompositeOperation = 'source-over';
-        maskCtx.globalAlpha = alpha;
-        maskCtx.fillStyle = 'black';
-      } else if (tool === 'paint') {
-        // 컬러 페인팅: 원본에 그리고 마스크를 채움
-        origCtx.globalAlpha = alpha;
-        origCtx.fillStyle = brushColor;
-
-        maskCtx.globalCompositeOperation = 'source-over';
-        maskCtx.globalAlpha = 1; // 마스크는 항상 100%로 채움 (보여야 하니까)
-        maskCtx.fillStyle = 'black';
-      } else if (tool === 'blur-brush') {
-        // 흐림 도구: 현재 위치 주변 픽셀을 Blur 시켜서 원본에 덮음
-        origCtx.globalAlpha = alpha;
-        maskCtx.globalAlpha = 0; // 마스크는 변경 안함
-      } else if (tool === 'clone' || tool === 'heal') {
-        origCtx.globalAlpha = alpha;
-        maskCtx.globalAlpha = 0;
-      }
-
-      // stamping
       const dx = pos.x - from.x;
       const dy = pos.y - from.y;
       const distance = Math.sqrt(dx * dx + dy * dy);
 
-      // 최적화된 로직이므로 간격을 아주 좁혀서(질감 향상) 렉 없이 처리 가능
-      const step = Math.max(1, brushSize / 15);
-      const steps = Math.ceil(distance / step);
+      // 간격을 브러시 크기의 1/10 정도로 설정 (더 부드럽게)
+      const stepSize = Math.max(1, brushSize / 10);
+      const steps = Math.ceil(distance / stepSize);
 
-      // Aligned Offset 계산 (단일 드래그 세션 동안 고정)
       let startOffset = { x: 0, y: 0 };
       if ((tool === 'clone' || tool === 'heal') && cloneSourceRef.current && initialMousePos.current) {
         startOffset = {
@@ -1048,91 +1104,75 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
         };
       }
 
-      for (let i = 0; i <= steps; i++) {
-        const px = from.x + (dx * i) / Math.max(1, steps);
-        const py = from.y + (dy * i) / Math.max(1, steps);
+      const tipCanvas = brushTipRef.current;
+      const tipW = tipCanvas.width;
+      const tipH = tipCanvas.height;
+      const offset = tipW / 2;
 
-        // 1. 임시 캔버스에 "무엇을 그릴지" 준비
-        const tCanvas = tempCanvasRef.current;
-        if (!tCanvas) return;
-        tCanvas.width = brushSize;
-        tCanvas.height = brushSize;
-        const tCtx = tCanvas.getContext('2d')!;
-        tCtx.clearRect(0, 0, brushSize, brushSize);
+      // 루프 내부에서 컨텍스트 상태 변경 최소화
+      maskCtx.save();
+      origCtx.save();
+
+      // 도구별 공통 설정
+      if (tool === 'erase') {
+        maskCtx.globalCompositeOperation = 'destination-out';
+      } else if (tool === 'restore') {
+        maskCtx.globalCompositeOperation = 'source-over';
+      }
+
+      for (let i = 0; i <= steps; i++) {
+        const t = steps === 0 ? 0 : i / steps;
+        const px = from.x + dx * t;
+        const py = from.y + dy * t;
 
         if (tool === 'paint') {
-          tCtx.fillStyle = brushColor;
-          tCtx.fillRect(0, 0, brushSize, brushSize);
+          origCtx.globalAlpha = alpha;
+          origCtx.drawImage(tipCanvas, px - offset, py - offset);
+          maskCtx.globalAlpha = 1;
+          maskCtx.drawImage(tipCanvas, px - offset, py - offset);
+        } else if (tool === 'erase' || tool === 'restore') {
+          maskCtx.globalAlpha = alpha;
+          maskCtx.drawImage(tipCanvas, px - offset, py - offset);
         } else if (tool === 'blur-brush' && blurCacheRef.current) {
+          const tCanvas = tempCanvasRef.current!;
+          tCanvas.width = tipW;
+          tCanvas.height = tipH;
+          const tCtx = tCanvas.getContext('2d')!;
+          tCtx.clearRect(0, 0, tipW, tipH);
           tCtx.drawImage(
             blurCacheRef.current,
-            Math.round(px - brushSize / 2), Math.round(py - brushSize / 2), Math.round(brushSize), Math.round(brushSize),
-            0, 0, brushSize, brushSize
+            px - offset, py - offset, tipW, tipH,
+            0, 0, tipW, tipH
           );
+          tCtx.globalCompositeOperation = 'destination-in';
+          tCtx.drawImage(tipCanvas, 0, 0);
+          origCtx.globalAlpha = alpha;
+          origCtx.drawImage(tCanvas, px - offset, py - offset);
         } else if ((tool === 'clone' || tool === 'heal') && originalSnapshotRef.current) {
-          const finalSrcX = px + startOffset.x;
-          const finalSrcY = py + startOffset.y;
+          const tCanvas = tempCanvasRef.current!;
+          tCanvas.width = tipW;
+          tCanvas.height = tipH;
+          const tCtx = tCanvas.getContext('2d')!;
+          tCtx.clearRect(0, 0, tipW, tipH);
           tCtx.drawImage(
             originalSnapshotRef.current,
-            Math.round(finalSrcX - brushSize / 2), Math.round(finalSrcY - brushSize / 2), Math.round(brushSize), Math.round(brushSize),
-            0, 0, brushSize, brushSize
+            px + startOffset.x - offset, py + startOffset.y - offset, tipW, tipH,
+            0, 0, tipW, tipH
           );
-        }
-
-        // 2. 부드러운 마스크 적용 (자국 제거의 핵심)
-        if (['paint', 'clone', 'heal', 'blur-brush'].includes(tool)) {
-          applySoftMask(tCtx, brushSize / 2, brushSize / 2, brushSize, brushHardness);
-        }
-
-        // 3. 메인 캔버스에 합성
-        if (['paint', 'clone', 'heal', 'blur-brush'].includes(tool)) {
-          origCtx.save();
-          if (tool === 'heal') {
-            origCtx.globalAlpha = alpha * 0.7;
-          } else {
-            origCtx.globalAlpha = alpha;
-          }
-          // [해결] 임시 캔버스(부드럽게 마스킹된 상태)를 메인 캔버스에 그립니다.
-          origCtx.drawImage(tCanvas, Math.round(px - brushSize / 2), Math.round(py - brushSize / 2));
-          origCtx.restore();
-
-          // 브러시 도구인 경우 마스크도 동일하게 소프트 마스크 적용
-          if (tool === 'paint') {
-            maskCtx.save();
-            maskCtx.globalAlpha = 1;
-            maskCtx.drawImage(tCanvas, Math.round(px - brushSize / 2), Math.round(py - brushSize / 2));
-            maskCtx.restore();
-          }
-        } else if (tool === 'erase' || tool === 'restore') {
-          const tCanvas = tempCanvasRef.current;
-          if (!tCanvas) return;
-          tCanvas.width = brushSize; tCanvas.height = brushSize;
-          const tCtx = tCanvas.getContext('2d')!;
-          tCtx.clearRect(0, 0, brushSize, brushSize);
-          tCtx.fillStyle = 'black';
-          tCtx.fillRect(0, 0, brushSize, brushSize);
-
-          applySoftMask(tCtx, brushSize / 2, brushSize / 2, brushSize, brushHardness);
-
-          maskCtx.save();
-          maskCtx.globalAlpha = alpha;
-          maskCtx.globalCompositeOperation = tool === 'erase' ? 'destination-out' : 'source-over';
-          maskCtx.drawImage(tCanvas, Math.round(px - brushSize / 2), Math.round(py - brushSize / 2));
-          maskCtx.restore();
+          tCtx.globalCompositeOperation = 'destination-in';
+          tCtx.drawImage(tipCanvas, 0, 0);
+          origCtx.globalAlpha = tool === 'heal' ? alpha * 0.7 : alpha;
+          origCtx.drawImage(tCanvas, px - offset, py - offset);
         }
       }
 
       maskCtx.restore();
       origCtx.restore();
       lastPos.current = pos;
-
-      // 실제로 이미지 내부 유효 범위에서 그렸을 때만 스트로크 인정
-      if (pos.x >= 0 && pos.x < imgW && pos.y >= 0 && pos.y < imgH) {
-        hasStrokeRef.current = true;
-      }
+      hasStrokeRef.current = true;
       compositeAndRender();
     },
-    [tool, brushSize, brushOpacity, brushShape, brushColor, brushHardness, compositeAndRender, originalSnapshotRef, blurCacheRef]
+    [tool, brushSize, brushOpacity, brushHardness, brushColor, compositeAndRender, originalSnapshotRef, blurCacheRef]
   );
 
 
@@ -1141,6 +1181,7 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
   const handleMouseDown = useCallback(
     (e: React.MouseEvent | React.TouchEvent) => {
       e.preventDefault();
+      if (canvasRef.current) containerRectRef.current = canvasRef.current.getBoundingClientRect();
       const pos = getCanvasPos(e);
       const isAlt = (e as any).altKey;
 
@@ -1556,7 +1597,8 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
     }
 
     const canvasPos = getCanvasPos(e as any);
-    setMousePos(canvasPos);
+    if (statusBarXRef.current) statusBarXRef.current.innerText = Math.round(canvasPos.x).toString();
+    if (statusBarYRef.current) statusBarYRef.current.innerText = Math.round(canvasPos.y).toString();
 
     // 크롭 도구 커서 처리
     if (toolRef.current === 'crop' && cropRectRef.current && !isPainting.current) {
@@ -1659,7 +1701,7 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
         }
       });
     }
-  }, [getCanvasPos, paint, drawCropOverlay, handleEyedropper, setMousePos]);
+  }, [getCanvasPos, paint, drawCropOverlay, handleEyedropper]);
 
   useEffect(() => {
     window.addEventListener('mousemove', handleMouseMove, { passive: false });
@@ -2208,8 +2250,8 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
       {/* Status Bar */}
       <div className="editor-status-bar flex-shrink-0">
         <div className="status-item">
-          <span className="text-white/60">X:</span> {Math.round(mousePos.x)}px
-          <span className="text-white/60 ml-2">Y:</span> {Math.round(mousePos.y)}px
+          <span className="text-white/60">X:</span> <span ref={statusBarXRef}>0</span>px
+          <span className="text-white/60 ml-2">Y:</span> <span ref={statusBarYRef}>0</span>px
         </div>
         <div className="status-divider" />
         <div className="status-item">

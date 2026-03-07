@@ -4,6 +4,7 @@
  * MediaPipe Selfie Segmentation을 사용하여 이미지 변환을 수행하는 핵심 로직입니다.
  * 배경 제거, 필터링, 이미지 압축, 크기 조절 등의 파이프라인을 관리합니다.
  */
+declare function importScripts(...urls: string[]): void;
 import { AppOptions } from "../store/useAppStore";
 import Compressor from 'compressorjs';
 import { pipeline, env as hfEnv } from '@huggingface/transformers';

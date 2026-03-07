@@ -252,6 +252,17 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
   const [progress, setProgress] = useState(0);
   const [imageSize, setImageSize] = useState({ w: 0, h: 0 });
   const [zoom, setZoom] = useState(1);
+
+  // 성능 최적화용 Ref (고빈도 이벤트 처리용)
+  const toolRef = useRef<Tool>(tool);
+  const zoomRef = useRef<number>(zoom);
+  const isDraggingHandleRef = useRef<string | null>(null);
+  const rafId = useRef<number | null>(null);
+
+  useEffect(() => { toolRef.current = tool; }, [tool]);
+  useEffect(() => { zoomRef.current = zoom; }, [zoom]);
+  useEffect(() => { isDraggingHandleRef.current = isDraggingHandle; }, [isDraggingHandle]);
+
   const brushCursorRef = useRef<HTMLDivElement>(null);
   const [hasSelection, setHasSelection] = useState(false);
   const [wandExpand, setWandExpand] = useState(0);
@@ -1265,59 +1276,91 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
       const lx = clientX - rect.left;
       const ly = clientY - rect.top;
 
-      // DOM 직접 조작으로 리액트 렌더링 우회 (성능 핵심)
       if (brushCursor) {
         brushCursor.style.left = `${lx}px`;
         brushCursor.style.top = `${ly}px`;
-        brushCursor.style.display = (tool === 'erase' || tool === 'restore' || tool === 'paint') ? 'block' : 'none';
+        brushCursor.style.display = (toolRef.current === 'erase' || toolRef.current === 'restore' || toolRef.current === 'paint') ? 'block' : 'none';
+      }
+
+      const canvasPos = getCanvasPos(e as any);
+
+      // 크롭 도구 커서 처리 (Ref 사용하여 안정화)
+      if (toolRef.current === 'crop' && cropRectRef.current && !isPainting.current) {
+        const hs = 25;
+        const zoomHs = hs / zoomRef.current;
+        const { x, y, w, h } = cropRectRef.current;
+        const handles = [
+          { id: 'tl', x: x, y: y, cur: 'nwse-resize' },
+          { id: 'tr', x: x + w, y: y, cur: 'nesw-resize' },
+          { id: 'bl', x: x, y: y + h, cur: 'nesw-resize' },
+          { id: 'br', x: x + w, y: y + h, cur: 'nwse-resize' },
+          { id: 't', x: x + w / 2, y: y, cur: 'ns-resize' },
+          { id: 'b', x: x + w / 2, y: y + h, cur: 'ns-resize' },
+          { id: 'l', x: x, y: y + h / 2, cur: 'ew-resize' },
+          { id: 'r', x: x + w, y: y + h / 2, cur: 'ew-resize' }
+        ];
+        let found = '';
+        for (const hnd of handles) {
+          if (Math.abs(canvasPos.x - hnd.x) < zoomHs && Math.abs(canvasPos.y - hnd.y) < zoomHs) {
+            found = hnd.cur; break;
+          }
+        }
+        overlay.style.cursor = found || 'crosshair';
       }
 
       if (isPainting.current) {
-        // Prevent scrolling on touch devices while drawing
-        if ('touches' in e) {
-          e.preventDefault();
-        }
+        if ('touches' in e) e.preventDefault();
 
-        const pos = getCanvasPos(e as any); // getCanvasPos expects React.MouseEvent | React.TouchEvent
-        if (tool === 'crop') {
-          if (isDraggingHandle && cropRect) {
-            const newRect = { ...cropRect };
-            if (isDraggingHandle.includes('t')) {
-              const bottom = newRect.y + newRect.h;
-              newRect.y = Math.min(pos.y, bottom - 1);
-              newRect.h = bottom - newRect.y;
+        // RAF 스케줄링
+        if (rafId.current) cancelAnimationFrame(rafId.current);
+        rafId.current = requestAnimationFrame(() => {
+          const pos = canvasPos;
+          const currentTool = toolRef.current;
+          const draggingHnd = isDraggingHandleRef.current;
+          const curCropRect = cropRectRef.current;
+
+          if (currentTool === 'crop') {
+            if (draggingHnd && curCropRect) {
+              const newRect = { ...curCropRect };
+              if (draggingHnd.includes('t')) {
+                const bottom = newRect.y + newRect.h;
+                newRect.y = Math.min(pos.y, bottom - 1);
+                newRect.h = bottom - newRect.y;
+              }
+              if (draggingHnd.includes('b')) {
+                newRect.h = Math.max(1, pos.y - newRect.y);
+              }
+              if (draggingHnd.includes('l')) {
+                const right = newRect.x + newRect.w;
+                newRect.x = Math.min(pos.x, right - 1);
+                newRect.w = right - newRect.x;
+              }
+              if (draggingHnd.includes('r')) {
+                newRect.w = Math.max(1, pos.x - newRect.x);
+              }
+              cropRectRef.current = newRect;
+              // 리액트 상태 업데이트 생략 (드래그 종료 시 한 번에 수행)
+              drawCropOverlay(newRect);
+
+              const cursorMap: any = { tl: 'nwse-resize', br: 'nwse-resize', tr: 'nesw-resize', bl: 'nesw-resize', t: 'ns-resize', b: 'ns-resize', l: 'ew-resize', r: 'ew-resize' };
+              overlay.style.cursor = cursorMap[draggingHnd] || 'crosshair';
+            } else if (cropStartRef.current) {
+              const start = cropStartRef.current;
+              const newRect = {
+                x: Math.min(start.x, pos.x),
+                y: Math.min(start.y, pos.y),
+                w: Math.abs(pos.x - start.x),
+                h: Math.abs(pos.y - start.y),
+              };
+              cropRectRef.current = newRect;
+              drawCropOverlay(newRect);
             }
-            if (isDraggingHandle.includes('b')) {
-              newRect.h = Math.max(1, pos.y - newRect.y);
-            }
-            if (isDraggingHandle.includes('l')) {
-              const right = newRect.x + newRect.w;
-              newRect.x = Math.min(pos.x, right - 1);
-              newRect.w = right - newRect.x;
-            }
-            if (isDraggingHandle.includes('r')) {
-              newRect.w = Math.max(1, pos.x - newRect.x);
-            }
-            cropRectRef.current = newRect;
-            setCropRect(newRect);
-            drawCropOverlay(newRect);
-          } else if (cropStartRef.current) {
-            const start = cropStartRef.current;
-            const newRect = {
-              x: Math.min(start.x, pos.x),
-              y: Math.min(start.y, pos.y),
-              w: Math.abs(pos.x - start.x),
-              h: Math.abs(pos.y - start.y),
-            };
-            cropRectRef.current = newRect;
-            setCropRect(newRect);
-            drawCropOverlay(newRect);
+          } else if (currentTool === 'erase' || currentTool === 'restore' || currentTool === 'paint') {
+            paint(pos);
+          } else if (currentTool === 'eyedropper') {
+            handleEyedropper(pos);
           }
-        } else if (tool === 'erase' || tool === 'restore' || tool === 'paint') {
-          paint(pos);
-        } else if (tool === 'eyedropper' && isPainting.current) {
-          handleEyedropper(pos);
-        }
+        });
       }
     };
 
@@ -1326,13 +1369,18 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
     return () => {
       window.removeEventListener('mousemove', handleGlobalMove);
       window.removeEventListener('touchmove', handleGlobalMove);
+      if (rafId.current) cancelAnimationFrame(rafId.current);
     };
-  }, [getCanvasPos, paint, tool, drawCropOverlay, isDraggingHandle, cropRect, handleEyedropper]);
+  }, [getCanvasPos, paint, drawCropOverlay, handleEyedropper]);
 
   // Global mouseup/touchend listener to stop painting if mouse leaves canvas
   useEffect(() => {
     const handleGlobalUp = () => {
       if (isPainting.current) {
+        // 드래그 종료 시 최종 상태 동기화
+        if (toolRef.current === 'crop' && cropRectRef.current) {
+          setCropRect({ ...cropRectRef.current });
+        }
         handleMouseUp();
       }
     };

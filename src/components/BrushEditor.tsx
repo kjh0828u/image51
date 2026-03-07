@@ -234,6 +234,7 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
   const marchingSegs = useRef<number[]>([]);
   const cachedSelKey = useRef<Uint8Array | null>(null);
   const isSliding = useRef(false);
+  const hasStrokeRef = useRef(false);
 
   // 크롭 드래그 상태
   const cropStartRef = useRef<{ x: number; y: number } | null>(null);
@@ -274,50 +275,38 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
   const [fillColor, setFillColor] = useState('#ffffff');
   const [showFillPanel, setShowFillPanel] = useState(false);
 
-  // 압축 다운로드 관련
+  const [downloadQuality, setDownloadQuality] = useState(90);
   const [showDownloadPanel, setShowDownloadPanel] = useState(false);
   const [downloadFormat, setDownloadFormat] = useState<'png' | 'jpeg' | 'webp'>('png');
-  const [downloadQuality, setDownloadQuality] = useState(90);
 
   const [cropMargin, setCropMargin] = useState(4);
 
   // 뒤로가기 컨펌 모달
   const [showExitConfirm, setShowExitConfirm] = useState(false);
 
-  // Undo/Redo 데이터 구조 변경
-  const undoStack = useRef<{ mask: ImageData; original: ImageData }[]>([]);
-  const redoStack = useRef<{ mask: ImageData; original: ImageData }[]>([]);
-  const [canUndo, setCanUndo] = useState(false);
-  const [canRedo, setCanRedo] = useState(false);
+  // 히스토리 아이템 타입
+  interface HistoryItem {
+    mask: ImageData;
+    original: ImageData;
+    label: string;
+    time: string;
+  }
+
+  // 히스토리 관리 (전문화된 선형 스택)
+  const historyStack = useRef<HistoryItem[]>([]);
+  const [historyIndex, setHistoryIndex] = useState(-1);
   const [historyVersion, setHistoryVersion] = useState(0);
 
+  // ── 핵심 드로잉/유틸리티 함수 (히스토리에서 호출하므로 상단 배치) ────────────────
   const compositeAndRender = useCallback(() => {
     if (!canvasRef.current || !originalRef.current || !maskRef.current) return;
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d')!;
-    const w = canvas.width;
-    const h = canvas.height;
-
-    // GPU 가속을 이용한 렌더링 (픽셀 루프 제거)
-    ctx.clearRect(0, 0, w, h);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(originalRef.current, 0, 0);
     ctx.globalCompositeOperation = 'destination-in';
     ctx.drawImage(maskRef.current, 0, 0);
     ctx.globalCompositeOperation = 'source-over';
-  }, []);
-
-  const saveMaskSnapshot = useCallback(() => {
-    if (!maskRef.current || !originalRef.current) return;
-    const mCtx = maskRef.current.getContext('2d', { willReadFrequently: true })!;
-    const oCtx = originalRef.current.getContext('2d', { willReadFrequently: true })!;
-    const mSnap = mCtx.getImageData(0, 0, maskRef.current.width, maskRef.current.height);
-    const oSnap = oCtx.getImageData(0, 0, originalRef.current.width, originalRef.current.height);
-
-    undoStack.current.push({ mask: mSnap, original: oSnap });
-    redoStack.current = [];
-    setCanUndo(true);
-    setCanRedo(false);
-    setHistoryVersion(v => v + 1);
   }, []);
 
   const updateCanvasSize = useCallback((w: number, h: number) => {
@@ -330,57 +319,63 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
     setImageSize({ w, h });
   }, []);
 
-  const undo = useCallback(() => {
-    if (!maskRef.current || !originalRef.current || undoStack.current.length === 0) return;
+  const saveMaskSnapshot = useCallback((label: string) => {
+    if (!maskRef.current || !originalRef.current) return;
+    const mCtx = maskRef.current.getContext('2d', { willReadFrequently: true })!;
+    const oCtx = originalRef.current.getContext('2d', { willReadFrequently: true })!;
+    const mSnap = mCtx.getImageData(0, 0, maskRef.current.width, maskRef.current.height);
+    const oSnap = oCtx.getImageData(0, 0, originalRef.current.width, originalRef.current.height);
 
+    const now = new Date();
+    const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
+
+    const newItem: HistoryItem = {
+      mask: mSnap,
+      original: oSnap,
+      label,
+      time: timeStr
+    };
+
+    // 현재 인덱스 이후의 히스토리는 삭제 (새로운 분기 시작)
+    const newStack = historyStack.current.slice(0, historyIndex + 1);
+    newStack.push(newItem);
+    historyStack.current = newStack;
+    setHistoryIndex(newStack.length - 1);
+    setHistoryVersion(v => v + 1);
+  }, [historyIndex]);
+
+  const jumpToHistory = useCallback((index: number) => {
+    if (index < 0 || index >= historyStack.current.length) return;
+    const item = historyStack.current[index]!;
+
+    if (!maskRef.current || !originalRef.current) return;
     const mCtx = maskRef.current.getContext('2d')!;
     const oCtx = originalRef.current.getContext('2d')!;
 
-    const currentM = mCtx.getImageData(0, 0, maskRef.current.width, maskRef.current.height);
-    const currentO = oCtx.getImageData(0, 0, originalRef.current.width, originalRef.current.height);
-    redoStack.current.push({ mask: currentM, original: currentO });
-
-    const prev = undoStack.current.pop()!;
-
-    // 크기가 다르면 리사이즈
-    if (prev.mask.width !== maskRef.current.width || prev.mask.height !== maskRef.current.height) {
-      updateCanvasSize(prev.mask.width, prev.mask.height);
+    if (item.mask.width !== maskRef.current.width || item.mask.height !== maskRef.current.height) {
+      updateCanvasSize(item.mask.width, item.mask.height);
     }
 
-    mCtx.putImageData(prev.mask, 0, 0);
-    oCtx.putImageData(prev.original, 0, 0);
+    mCtx.putImageData(item.mask, 0, 0);
+    oCtx.putImageData(item.original, 0, 0);
 
+    setHistoryIndex(index);
     compositeAndRender();
-    setCanUndo(undoStack.current.length > 0);
-    setCanRedo(true);
     setHistoryVersion(v => v + 1);
   }, [compositeAndRender, updateCanvasSize]);
+
+  const undo = useCallback(() => {
+    if (historyIndex > 0) jumpToHistory(historyIndex - 1);
+  }, [historyIndex, jumpToHistory]);
 
   const redo = useCallback(() => {
-    if (!maskRef.current || !originalRef.current || redoStack.current.length === 0) return;
+    if (historyIndex < historyStack.current.length - 1) jumpToHistory(historyIndex + 1);
+  }, [historyIndex, jumpToHistory]);
 
-    const mCtx = maskRef.current.getContext('2d')!;
-    const oCtx = originalRef.current.getContext('2d')!;
+  const canUndo = historyIndex > 0;
+  const canRedo = historyIndex < historyStack.current.length - 1;
 
-    const currentM = mCtx.getImageData(0, 0, maskRef.current.width, maskRef.current.height);
-    const currentO = oCtx.getImageData(0, 0, originalRef.current.width, originalRef.current.height);
-    undoStack.current.push({ mask: currentM, original: currentO });
 
-    const next = redoStack.current.pop()!;
-
-    // 크기가 다르면 리사이즈
-    if (next.mask.width !== maskRef.current.width || next.mask.height !== maskRef.current.height) {
-      updateCanvasSize(next.mask.width, next.mask.height);
-    }
-
-    mCtx.putImageData(next.mask, 0, 0);
-    oCtx.putImageData(next.original, 0, 0);
-
-    compositeAndRender();
-    setCanUndo(true);
-    setCanRedo(redoStack.current.length > 0);
-    setHistoryVersion(v => v + 1);
-  }, [compositeAndRender, updateCanvasSize]);
 
   // ── 크롭 오버레이 그리기 ──────────────────────────────────
   const drawCropOverlay = useCallback((rect: { x: number; y: number; w: number; h: number } | null) => {
@@ -644,6 +639,11 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
 
       aiResultRef.current!.getContext('2d')!.drawImage(img, 0, 0);
       compositeAndRender();
+
+      // 초기 상태 기록
+      historyStack.current = [];
+      setHistoryIndex(-1);
+      saveMaskSnapshot('Open');
     };
     img.src = imageUrl;
 
@@ -652,7 +652,6 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
 
   const runAI = useCallback(async () => {
     if (!originalRef.current || !maskRef.current || !aiResultRef.current) return;
-    saveMaskSnapshot();
     setIsProcessing(true);
     setProgress(0);
 
@@ -690,6 +689,7 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
         maskCtx.putImageData(maskData, 0, 0);
         URL.revokeObjectURL(resultUrl);
         compositeAndRender();
+        saveMaskSnapshot('AI Removal');
         setIsProcessing(false);
         setAiDone(true);
       };
@@ -784,7 +784,6 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
       const sel = selectionRef.current;
       if (!sel || !maskRef.current) return;
 
-      saveMaskSnapshot();
       const maskCtx = maskRef.current.getContext('2d')!;
       const maskData = maskCtx.getImageData(
         0, 0,
@@ -804,6 +803,7 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
       maskCtx.putImageData(maskData, 0, 0);
       compositeAndRender();
       stopMarching();
+      saveMaskSnapshot(mode === 'erase' ? 'Erase Selection' : 'Restore Selection');
     },
     [compositeAndRender, stopMarching, saveMaskSnapshot]
   );
@@ -812,7 +812,6 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
     const sel = selectionRef.current;
     if (!sel || !originalRef.current || !maskRef.current) return;
 
-    saveMaskSnapshot();
     const w = originalRef.current.width;
     const h = originalRef.current.height;
 
@@ -847,6 +846,7 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
     mCtx.putImageData(mData, 0, 0);
     compositeAndRender();
     stopMarching();
+    saveMaskSnapshot('Selection Fill');
   }, [brushColor, compositeAndRender, saveMaskSnapshot, stopMarching]);
 
   const handleBucket = useCallback(
@@ -857,7 +857,6 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
 
       if (pos.x < 0 || pos.x >= w || pos.y < 0 || pos.y >= h) return;
 
-      saveMaskSnapshot();
       const oCtx = originalRef.current.getContext('2d')!;
       const mCtx = maskRef.current.getContext('2d')!;
       const compositeCtx = canvasRef.current.getContext('2d', { willReadFrequently: true })!;
@@ -893,6 +892,7 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
       oCtx.putImageData(oData, 0, 0);
       mCtx.putImageData(mData, 0, 0);
       compositeAndRender();
+      saveMaskSnapshot('Bucket Fill');
     },
     [brushColor, tolerance, compositeAndRender, saveMaskSnapshot]
   );
@@ -986,6 +986,7 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
       maskCtx.restore();
       origCtx.restore();
       lastPos.current = pos;
+      hasStrokeRef.current = true;
       compositeAndRender();
     },
     [tool, brushSize, brushOpacity, brushShape, brushColor, compositeAndRender]
@@ -1031,8 +1032,8 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
         drawCropOverlay({ x: pos.x, y: pos.y, w: 0, h: 0 });
         isPainting.current = true;
       } else {
-        saveMaskSnapshot();
         isPainting.current = true;
+        hasStrokeRef.current = false;
         lastPos.current = pos;
         paint(pos);
       }
@@ -1042,10 +1043,15 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
 
 
   const handleMouseUp = useCallback(() => {
+    if (isPainting.current && hasStrokeRef.current) {
+      const label = toolRef.current === 'erase' ? 'Eraser' : toolRef.current === 'restore' ? 'Restore' : toolRef.current === 'paint' ? 'Paint' : 'Brush';
+      saveMaskSnapshot(label);
+    }
     isPainting.current = false;
+    hasStrokeRef.current = false;
     lastPos.current = null;
     setIsDraggingHandle(null);
-  }, []);
+  }, [saveMaskSnapshot]);
 
   // ── 크롭 실행 ────────────────────────────────────────────
   const applyCrop = useCallback(() => {
@@ -1053,7 +1059,7 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
     if (!rect || rect.w < 2 || rect.h < 2) return;
     if (!canvasRef.current || !originalRef.current || !maskRef.current) return;
 
-    saveMaskSnapshot();
+    saveMaskSnapshot('Crop');
 
     const sx = Math.round(rect.x);
     const sy = Math.round(rect.y);
@@ -1084,6 +1090,7 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
     overlayRef.current?.getContext('2d')?.clearRect(0, 0, sw, sh);
     setTool('wand');
     compositeAndRender();
+    saveMaskSnapshot('Crop');
   }, [compositeAndRender, saveMaskSnapshot, updateCanvasSize]);
 
   const cancelCrop = useCallback(() => {
@@ -1101,7 +1108,7 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
     const bounds = getAutoCropBounds(canvasRef.current, cropMargin);
     if (!bounds) return;
 
-    saveMaskSnapshot();
+    saveMaskSnapshot('Auto Crop');
     const { x, y, w, h } = bounds;
 
     const origCropped = document.createElement('canvas');
@@ -1122,6 +1129,7 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
 
     stopMarching();
     compositeAndRender();
+    saveMaskSnapshot('Auto Crop');
   }, [compositeAndRender, stopMarching, cropMargin, saveMaskSnapshot, updateCanvasSize]);
 
   // ── 배경색 채우기 ─────────────────────────────────────────
@@ -1130,7 +1138,6 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
     const w = canvasRef.current.width;
     const h = canvasRef.current.height;
 
-    saveMaskSnapshot();
 
     // 결과 이미지(투명 + 피사체) 위에 배경색을 깔아 새 캔버스 생성
     const flat = document.createElement('canvas');
@@ -1164,7 +1171,6 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
     const w = canvasRef.current.width;
     const h = canvasRef.current.height;
 
-    saveMaskSnapshot();
 
     const flat = document.createElement('canvas');
     flat.width = w;
@@ -1195,7 +1201,6 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
   // 투명 영역 전체를 현재 브러시 색상으로 채우는 기능
   const fillAllTransparency = useCallback(() => {
     if (!originalRef.current || !maskRef.current || !canvasRef.current) return;
-    saveMaskSnapshot();
     const w = originalRef.current.width;
     const h = originalRef.current.height;
 
@@ -1217,19 +1222,20 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
     maskCtx.fillRect(0, 0, w, h);
 
     compositeAndRender();
+    saveMaskSnapshot('Brush Fill');
   }, [brushColor, compositeAndRender, saveMaskSnapshot]);
 
 
 
   const resetMask = useCallback(() => {
     if (!maskRef.current) return;
-    saveMaskSnapshot();
     const ctx = maskRef.current.getContext('2d')!;
     ctx.fillStyle = 'black';
     ctx.fillRect(0, 0, maskRef.current.width, maskRef.current.height);
     compositeAndRender();
     stopMarching();
     setAiDone(false);
+    saveMaskSnapshot('Reset');
   }, [compositeAndRender, stopMarching, saveMaskSnapshot]);
 
   // ── 다운로드 ──────────────────────────────────────────────
@@ -1729,14 +1735,19 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
             <div className="brush-panel-title px-3 py-2 bg-[#333] mb-0 text-white font-black italic">
               HISTORY
             </div>
-            <div className="flex-1 overflow-y-auto no-scrollbar p-1">
-              <div className={`px-3 py-1 text-[11px] flex items-center gap-2 ${undoStack.current.length === 0 ? 'bg-[#4f46e5] text-white' : 'text-gray-400'}`}>
-                <Sparkles size={10} /> Initial State
-              </div>
-              {undoStack.current.map((_, i) => (
-                <div key={i} className={`px-3 py-1 text-[11px] flex items-center gap-2 ${i === undoStack.current.length - 1 ? 'bg-[#4f46e5]/30 text-white' : 'text-gray-400'}`}>
-                  <Scissors size={10} /> Edit Step {i + 1}
-                </div>
+            <div className="flex-1 overflow-y-auto no-scrollbar p-0 bg-[#222]">
+              {historyStack.current.map((item, i) => (
+                <button
+                  key={i}
+                  onClick={() => jumpToHistory(i)}
+                  className={`w-full px-4 py-2 text-[11px] flex items-center justify-between border-b border-[#333] transition-colors hover:bg-white/5 ${i === historyIndex ? 'bg-[#4f46e5] text-white' : 'text-gray-400'}`}
+                >
+                  <div className="flex items-center gap-2">
+                    {item.label === 'Open' ? <Palette size={12} /> : item.label === 'Brush' ? <Brush size={12} /> : item.label === 'Crop' ? <Crop size={12} /> : <Scissors size={12} />}
+                    <span className="font-bold uppercase tracking-tighter">{item.label}</span>
+                  </div>
+                  <span className="text-[9px] opacity-40 font-mono">{item.time}</span>
+                </button>
               ))}
             </div>
           </div>

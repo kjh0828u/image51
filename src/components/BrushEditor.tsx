@@ -16,7 +16,6 @@ import {
   PlusCircle,
   Scissors,
   AlertCircle,
-  Circle as CircleIcon,
   Square as SquareIcon,
   Diamond,
   RectangleHorizontal,
@@ -25,10 +24,16 @@ import {
   GripVertical,
   Brush,
   PaintBucket,
-  Pipette
+  Pipette,
+  Layers,
+  Activity,
+  Sliders,
+  Move,
+  Type,
+  Circle as CircleIcon
 } from 'lucide-react';
 
-type Tool = 'erase' | 'restore' | 'wand' | 'crop' | 'paint' | 'bucket' | 'eyedropper';
+type Tool = 'erase' | 'restore' | 'wand' | 'crop' | 'paint' | 'bucket' | 'eyedropper' | 'marquee-rect' | 'marquee-circle' | 'move' | 'text';
 type BrushShape = 'circle' | 'square' | 'rect-h' | 'rect-v' | 'rect-h-thin' | 'rect-v-thin' | 'diamond';
 
 interface BrushEditorProps {
@@ -221,6 +226,8 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
   const originalRef = useRef<HTMLCanvasElement>(null);
   const maskRef = useRef<HTMLCanvasElement>(null);
   const aiResultRef = useRef<HTMLCanvasElement>(null);
+  const maskSnapshotRef = useRef<HTMLCanvasElement>(null);
+  const tempCanvasRef = useRef<HTMLCanvasElement>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const isPainting = useRef(false);
@@ -282,6 +289,16 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
 
   const [cropMargin, setCropMargin] = useState(4);
 
+  // 보정(Adjustments) 관리
+  const [brightness, setBrightness] = useState(100);
+  const [contrast, setContrast] = useState(100);
+  const [saturation, setSaturation] = useState(100);
+  const [exposure, setExposure] = useState(0);
+  const [blur, setBlur] = useState(0);
+  const [showAdjustPanel, setShowAdjustPanel] = useState(false);
+
+  // 상태바 및 눈금자 정보
+  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
   // 뒤로가기 컨펌 모달
   const [showExitConfirm, setShowExitConfirm] = useState(false);
 
@@ -583,9 +600,12 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
         marchingOffset.current = (marchingOffset.current + 0.2 * dt) % 1;
 
         const currentTool = toolRef.current;
-        if (currentTool === 'wand' && selectionRef.current) {
+        if ((currentTool === 'wand' || currentTool === 'marquee-rect' || currentTool === 'marquee-circle') && selectionRef.current) {
           drawMarching();
         } else if (currentTool === 'crop' && cropRectRef.current) {
+          drawCropOverlay(cropRectRef.current);
+        } else if ((currentTool === 'marquee-rect' || currentTool === 'marquee-circle') && cropRectRef.current) {
+          // 드래그 중인 영역 그리기 (크롭 오버레이 재활용하되 핸들 없는 단순 버전 가능)
           drawCropOverlay(cropRectRef.current);
         }
       }
@@ -1052,6 +1072,11 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
         setCropRect({ x: pos.x, y: pos.y, w: 0, h: 0 });
         drawCropOverlay({ x: pos.x, y: pos.y, w: 0, h: 0 });
         isPainting.current = true;
+      } else if (tool === 'marquee-rect' || tool === 'marquee-circle') {
+        cropStartRef.current = pos;
+        cropRectRef.current = { x: pos.x, y: pos.y, w: 0, h: 0 };
+        setCropRect({ x: pos.x, y: pos.y, w: 0, h: 0 });
+        isPainting.current = true;
       } else {
         isPainting.current = true;
         hasStrokeRef.current = false;
@@ -1063,7 +1088,52 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
   );
 
 
+  const applyMarqueeSelection = useCallback(() => {
+    const rect = cropRectRef.current;
+    if (!rect || rect.w < 2 || rect.h < 2) return;
+    if (!originalRef.current) return;
+
+    const w = originalRef.current.width;
+    const h = originalRef.current.height;
+    const sel = new Uint8Array(w * h);
+
+    const x1 = Math.round(rect.x);
+    const y1 = Math.round(rect.y);
+    const x2 = Math.round(rect.x + rect.w);
+    const y2 = Math.round(rect.y + rect.h);
+
+    if (tool === 'marquee-rect') {
+      for (let y = Math.max(0, y1); y < Math.min(h, y2); y++) {
+        for (let x = Math.max(0, x1); x < Math.min(w, x2); x++) {
+          sel[y * w + x] = 1;
+        }
+      }
+    } else {
+      const cx = (x1 + x2) / 2;
+      const cy = (y1 + y2) / 2;
+      const rx = Math.abs(x2 - x1) / 2;
+      const ry = Math.abs(y2 - y1) / 2;
+      for (let y = Math.max(0, y1); y < Math.min(h, y2); y++) {
+        for (let x = Math.max(0, x1); x < Math.min(w, x2); x++) {
+          const dx = (x - cx) / rx;
+          const dy = (y - cy) / ry;
+          if (dx * dx + dy * dy <= 1) sel[y * w + x] = 1;
+        }
+      }
+    }
+
+    selectionRef.current = sel;
+    setHasSelection(true);
+    cropRectRef.current = null;
+    setCropRect(null);
+    drawMarching();
+    startMarching();
+  }, [tool, drawMarching, startMarching]);
+
   const handleMouseUp = useCallback(() => {
+    if (toolRef.current === 'marquee-rect' || toolRef.current === 'marquee-circle') {
+      applyMarqueeSelection();
+    }
     if (isPainting.current && hasStrokeRef.current) {
       const label = toolRef.current === 'erase' ? 'Eraser' : toolRef.current === 'restore' ? 'Restore' : toolRef.current === 'paint' ? 'Paint' : 'Brush';
       saveMaskSnapshot(label);
@@ -1072,7 +1142,7 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
     hasStrokeRef.current = false;
     lastPos.current = null;
     setIsDraggingHandle(null);
-  }, [saveMaskSnapshot]);
+  }, [applyMarqueeSelection, saveMaskSnapshot]);
 
   // ── 크롭 실행 ────────────────────────────────────────────
   const applyCrop = useCallback(() => {
@@ -1316,123 +1386,115 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [hasSelection, applySelectionToMask, undo, redo, tool, cancelCrop, applyCrop, cropRect]);
 
-  // 전역 마우스/터치 이동 리스너 (캔버스 밖에서도 작업 유지)
-  useEffect(() => {
-    const handleGlobalMove = (e: MouseEvent | TouchEvent) => {
-      const overlay = overlayRef.current;
-      const brushCursor = brushCursorRef.current;
-      if (!overlay) return;
+  // ── 전역 마우스/터치 이동 리스너 (캔버스 밖에서도 작업 유지) ─────────────────
+  const handleMouseMove = useCallback((e: MouseEvent | TouchEvent) => {
+    const overlay = overlayRef.current;
+    const brushCursor = brushCursorRef.current;
+    if (!overlay) return;
 
-      const rect = overlay.getBoundingClientRect();
-      const clientX = 'touches' in e ? (e as TouchEvent).touches[0]!.clientX : (e as MouseEvent).clientX;
-      const clientY = 'touches' in e ? (e as TouchEvent).touches[0]!.clientY : (e as MouseEvent).clientY;
+    const rect = overlay.getBoundingClientRect();
+    const clientX = 'touches' in e ? (e as TouchEvent).touches[0]!.clientX : (e as MouseEvent).clientX;
+    const clientY = 'touches' in e ? (e as TouchEvent).touches[0]!.clientY : (e as MouseEvent).clientY;
 
-      const lx = clientX - rect.left;
-      const ly = clientY - rect.top;
+    const lx = clientX - rect.left;
+    const ly = clientY - rect.top;
 
-      if (brushCursor) {
-        brushCursor.style.left = `${lx}px`;
-        brushCursor.style.top = `${ly}px`;
-        brushCursor.style.display = (toolRef.current === 'erase' || toolRef.current === 'restore' || toolRef.current === 'paint') ? 'block' : 'none';
-      }
+    if (brushCursor) {
+      brushCursor.style.left = `${lx}px`;
+      brushCursor.style.top = `${ly}px`;
+      brushCursor.style.display = (toolRef.current === 'erase' || toolRef.current === 'restore' || toolRef.current === 'paint') ? 'block' : 'none';
+    }
 
-      const canvasPos = getCanvasPos(e as any);
+    const canvasPos = getCanvasPos(e as any);
+    setMousePos(canvasPos);
 
-      // 크롭 도구 커서 처리 (Ref 사용하여 안정화)
-      if (toolRef.current === 'crop' && cropRectRef.current && !isPainting.current) {
-        const hs = 25;
-        const zoomHs = hs / zoomRef.current;
-        const { x, y, w, h } = cropRectRef.current;
-        const handles = [
-          { id: 'tl', x: x, y: y, cur: 'nwse-resize' },
-          { id: 'tr', x: x + w, y: y, cur: 'nesw-resize' },
-          { id: 'bl', x: x, y: y + h, cur: 'nesw-resize' },
-          { id: 'br', x: x + w, y: y + h, cur: 'nwse-resize' },
-          { id: 't', x: x + w / 2, y: y, cur: 'ns-resize' },
-          { id: 'b', x: x + w / 2, y: y + h, cur: 'ns-resize' },
-          { id: 'l', x: x, y: y + h / 2, cur: 'ew-resize' },
-          { id: 'r', x: x + w, y: y + h / 2, cur: 'ew-resize' }
-        ];
-        let found = '';
-        for (const hnd of handles) {
-          if (Math.abs(canvasPos.x - hnd.x) < zoomHs && Math.abs(canvasPos.y - hnd.y) < zoomHs) {
-            found = hnd.cur; break;
-          }
+    // 크롭 도구 커서 처리
+    if (toolRef.current === 'crop' && cropRectRef.current && !isPainting.current) {
+      const hs = 25;
+      const zoomHs = hs / zoomRef.current;
+      const { x, y, w, h } = cropRectRef.current;
+      const handles = [
+        { id: 'tl', x: x, y: y, cur: 'nwse-resize' },
+        { id: 'tr', x: x + w, y: y, cur: 'nesw-resize' },
+        { id: 'bl', x: x, y: y + h, cur: 'nesw-resize' },
+        { id: 'br', x: x + w, y: y + h, cur: 'nwse-resize' },
+        { id: 't', x: x + w / 2, y: y, cur: 'ns-resize' },
+        { id: 'b', x: x + w / 2, y: y + h, cur: 'ns-resize' },
+        { id: 'l', x: x, y: y + h / 2, cur: 'ew-resize' },
+        { id: 'r', x: x + w, y: y + h / 2, cur: 'ew-resize' }
+      ];
+      let found = '';
+      for (const hnd of handles) {
+        if (Math.abs(canvasPos.x - hnd.x) < zoomHs && Math.abs(canvasPos.y - hnd.y) < zoomHs) {
+          found = hnd.cur; break;
         }
-        overlay.style.cursor = found || 'crosshair';
       }
+      overlay.style.cursor = found || 'crosshair';
+    }
 
-      if (isPainting.current) {
-        if ('touches' in e) e.preventDefault();
+    if (isPainting.current) {
+      if ('touches' in e) e.preventDefault();
 
-        // RAF 스케줄링
-        if (rafId.current) cancelAnimationFrame(rafId.current);
-        rafId.current = requestAnimationFrame(() => {
-          const pos = canvasPos;
-          const currentTool = toolRef.current;
-          const draggingHnd = isDraggingHandleRef.current;
-          const curCropRect = cropRectRef.current;
+      if (rafId.current) cancelAnimationFrame(rafId.current);
+      rafId.current = requestAnimationFrame(() => {
+        const pos = canvasPos;
+        const currentTool = toolRef.current;
+        const draggingHnd = isDraggingHandleRef.current;
+        const curCropRect = cropRectRef.current;
 
-          if (currentTool === 'crop') {
-            if (draggingHnd && curCropRect) {
-              const newRect = { ...curCropRect };
-              if (draggingHnd.includes('t')) {
-                const bottom = newRect.y + newRect.h;
-                newRect.y = Math.min(pos.y, bottom - 1);
-                newRect.h = bottom - newRect.y;
-              }
-              if (draggingHnd.includes('b')) {
-                newRect.h = Math.max(1, pos.y - newRect.y);
-              }
-              if (draggingHnd.includes('l')) {
-                const right = newRect.x + newRect.w;
-                newRect.x = Math.min(pos.x, right - 1);
-                newRect.w = right - newRect.x;
-              }
-              if (draggingHnd.includes('r')) {
-                newRect.w = Math.max(1, pos.x - newRect.x);
-              }
-              cropRectRef.current = newRect;
-              // 리액트 상태 업데이트 생략 (드래그 종료 시 한 번에 수행)
-              drawCropOverlay(newRect);
-
-              const cursorMap: any = { tl: 'nwse-resize', br: 'nwse-resize', tr: 'nesw-resize', bl: 'nesw-resize', t: 'ns-resize', b: 'ns-resize', l: 'ew-resize', r: 'ew-resize' };
-              overlay.style.cursor = cursorMap[draggingHnd] || 'crosshair';
-            } else if (cropStartRef.current) {
-              const start = cropStartRef.current;
-              const newRect = {
-                x: Math.min(start.x, pos.x),
-                y: Math.min(start.y, pos.y),
-                w: Math.abs(pos.x - start.x),
-                h: Math.abs(pos.y - start.y),
-              };
-              cropRectRef.current = newRect;
-              drawCropOverlay(newRect);
+        if (currentTool === 'crop' || currentTool === 'marquee-rect' || currentTool === 'marquee-circle') {
+          if (draggingHnd && curCropRect) {
+            const newRect = { ...curCropRect };
+            if (draggingHnd.includes('t')) {
+              const bottom = newRect.y + newRect.h;
+              newRect.y = Math.min(pos.y, bottom - 1);
+              newRect.h = bottom - newRect.y;
             }
-          } else if (currentTool === 'erase' || currentTool === 'restore' || currentTool === 'paint') {
-            paint(pos);
-          } else if (currentTool === 'eyedropper') {
-            handleEyedropper(pos);
+            if (draggingHnd.includes('b')) newRect.h = Math.max(1, pos.y - newRect.y);
+            if (draggingHnd.includes('l')) {
+              const right = newRect.x + newRect.w;
+              newRect.x = Math.min(pos.x, right - 1);
+              newRect.w = right - newRect.x;
+            }
+            if (draggingHnd.includes('r')) newRect.w = Math.max(1, pos.x - newRect.x);
+            cropRectRef.current = newRect;
+            drawCropOverlay(newRect);
+          } else if (cropStartRef.current) {
+            const start = cropStartRef.current;
+            const newRect = {
+              x: Math.min(start.x, pos.x),
+              y: Math.min(start.y, pos.y),
+              w: Math.abs(pos.x - start.x),
+              h: Math.abs(pos.y - start.y)
+            };
+            cropRectRef.current = newRect;
+            drawCropOverlay(newRect);
           }
-        });
-      }
-    };
+        } else if (currentTool === 'erase' || currentTool === 'restore' || currentTool === 'paint') {
+          paint(pos);
+        } else if (currentTool === 'eyedropper') {
+          handleEyedropper(pos);
+        }
+      });
+    }
+  }, [getCanvasPos, paint, drawCropOverlay, handleEyedropper, setMousePos]);
 
-    window.addEventListener('mousemove', handleGlobalMove, { passive: false });
-    window.addEventListener('touchmove', handleGlobalMove, { passive: false });
+  useEffect(() => {
+    window.addEventListener('mousemove', handleMouseMove, { passive: false });
+    window.addEventListener('touchmove', handleMouseMove, { passive: false });
     return () => {
-      window.removeEventListener('mousemove', handleGlobalMove);
-      window.removeEventListener('touchmove', handleGlobalMove);
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('touchmove', handleMouseMove);
       if (rafId.current) cancelAnimationFrame(rafId.current);
     };
-  }, [getCanvasPos, paint, drawCropOverlay, handleEyedropper]);
+  }, [handleMouseMove]);
 
   // Global mouseup/touchend listener to stop painting if mouse leaves canvas
   useEffect(() => {
     const handleGlobalUp = () => {
       if (isPainting.current) {
         // 드래그 종료 시 최종 상태 동기화
-        if (toolRef.current === 'crop' && cropRectRef.current) {
+        if (toolRef.current === 'crop' || toolRef.current === 'marquee-rect' || toolRef.current === 'marquee-circle') {
           setCropRect({ ...cropRectRef.current });
         }
         handleMouseUp();
@@ -1444,7 +1506,7 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
       window.removeEventListener('mouseup', handleGlobalUp);
       window.removeEventListener('touchend', handleGlobalUp);
     };
-  }, [handleMouseUp]);
+  }, [handleMouseUp, setCropRect]);
 
   // ── Ctrl+휠 줌 ────────────────────────────────────────────
   useEffect(() => {
@@ -1462,11 +1524,47 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
     return () => el.removeEventListener('wheel', handleWheel);
   }, []);
 
+  // ── 스크롤 시 눈금자 동기화 ──────────────────────────────────
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const handleScroll = () => {
+      setHistoryVersion(v => v + 1); // 리렌더링 트리거하여 눈금자 배경 갱신
+    };
+    el.addEventListener('scroll', handleScroll);
+    return () => el.removeEventListener('scroll', handleScroll);
+  }, []);
+
   const displayWidth = imageSize.w * zoom;
   const displayHeight = imageSize.h * zoom;
-  const isBrushTool = tool === 'erase' || tool === 'restore';
+  // ── 보정 실행 ──────────────────────────────────────────
+  const applyAdjustments = useCallback(() => {
+    if (!originalRef.current || !maskRef.current) return;
+    const w = originalRef.current.width;
+    const h = originalRef.current.height;
 
-  // 배경 프리셋
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d')!;
+
+    // 필터 문자열 생성
+    ctx.filter = `brightness(${brightness}%) contrast(${contrast}%) saturate(${saturation}%) blur(${blur}px)`;
+    ctx.drawImage(originalRef.current, 0, 0);
+
+    const oCtx = originalRef.current.getContext('2d')!;
+    oCtx.clearRect(0, 0, w, h);
+    oCtx.drawImage(canvas, 0, 0);
+
+    compositeAndRender();
+    saveMaskSnapshot('Adjustments');
+    setShowAdjustPanel(false);
+
+    // 필터 리셋
+    setBrightness(100); setContrast(100); setSaturation(100); setBlur(0);
+  }, [brightness, contrast, saturation, blur, compositeAndRender, saveMaskSnapshot]);
+
+  const isBrushTool = tool === 'erase' || tool === 'restore' || tool === 'paint';
   const BG_PRESETS = [
     { label: '어두운 체크', swatch: 'bg-swatch-dark-check', style: { backgroundImage: 'linear-gradient(45deg,#1a1a1b 25%,transparent 25%),linear-gradient(-45deg,#1a1a1b 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#1a1a1b 75%),linear-gradient(-45deg,transparent 75%,#1a1a1b 75%)', backgroundSize: '16px 16px', backgroundPosition: '0 0,0 8px,8px -8px,-8px 0', backgroundColor: '#111' } },
     { label: '밝은 체크', swatch: 'bg-swatch-light-check', style: { backgroundImage: 'linear-gradient(45deg,#ccc 25%,transparent 25%),linear-gradient(-45deg,#ccc 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#ccc 75%),linear-gradient(-45deg,transparent 75%,#ccc 75%)', backgroundSize: '16px 16px', backgroundPosition: '0 0,0 8px,8px -8px,-8px 0', backgroundColor: '#fff' } },
@@ -1475,16 +1573,19 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
     { label: '회색', swatch: 'bg-swatch-gray', style: { backgroundImage: 'none', backgroundColor: '#808080' } },
   ] as const;
 
+  // 눈금자 렌더링용 SVG 배경
+  const horizontalRulerBg = `url("data:image/svg+xml,%3Csvg width='100' height='20' xmlns='http://www.w3.org/2000/svg'%3E%3Cline x1='0' y1='10' x2='0' y2='20' stroke='%23555' stroke-width='1'/%3E%3Cline x1='10' y1='15' x2='10' y2='20' stroke='%23444' stroke-width='1'/%3E%3Cline x1='20' y1='15' x2='20' y2='20' stroke='%23444' stroke-width='1'/%3E%3Cline x1='30' y1='15' x2='30' y2='20' stroke='%23444' stroke-width='1'/%3E%3Cline x1='40' y1='15' x2='40' y2='20' stroke='%23444' stroke-width='1'/%3E%3Cline x1='50' y1='12' x2='50' y2='20' stroke='%23555' stroke-width='1'/%3E%3Cline x1='60' y1='15' x2='60' y2='20' stroke='%23444' stroke-width='1'/%3E%3Cline x1='70' y1='15' x2='70' y2='20' stroke='%23444' stroke-width='1'/%3E%3Cline x1='80' y1='15' x2='80' y2='20' stroke='%23444' stroke-width='1'/%3E%3Cline x1='90' y1='15' x2='90' y2='20' stroke='%23444' stroke-width='1'/%3E%3C/svg%3E")`;
+  const verticalRulerBg = `url("data:image/svg+xml,%3Csvg width='20' height='100' xmlns='http://www.w3.org/2000/svg'%3E%3Cline x1='10' y1='0' x2='20' y2='0' stroke='%23555' stroke-width='1'/%3E%3Cline x1='15' y1='10' x2='20' y2='10' stroke='%23444' stroke-width='1'/%3E%3Cline x1='15' y1='20' x2='20' y2='20' stroke='%23444' stroke-width='1'/%3E%3Cline x1='15' y1='30' x2='20' y2='30' stroke='%23444' stroke-width='1'/%3E%3Cline x1='15' y1='40' x2='20' y2='40' stroke='%23444' stroke-width='1'/%3E%3Cline x1='12' y1='50' x2='20' y2='50' stroke='%23555' stroke-width='1'/%3E%3Cline x1='15' y1='60' x2='20' y2='60' stroke='%23444' stroke-width='1'/%3E%3Cline x1='15' y1='70' x2='20' y2='70' stroke='%23444' stroke-width='1'/%3E%3Cline x1='15' y1='80' x2='20' y2='80' stroke='%23444' stroke-width='1'/%3E%3Cline x1='15' y1='90' x2='20' y2='90' stroke='%23444' stroke-width='1'/%3E%3C/svg%3E")`;
+
   return (
     <div className="brush-editor-wrap">
-      {/* 상단 툴바 (옵션 바) */}
+      {/* ── TOP BAR (Header) ────────────────────────────────── */}
       <div className="brush-top-bar">
         <button onClick={() => setShowExitConfirm(true)} className="brush-tool-btn" title="목록으로">
           <ArrowLeft size={20} />
         </button>
         <div className="brush-top-sep" />
 
-        {/* Undo/Redo */}
         <div className="flex items-center gap-1">
           <button onClick={undo} disabled={!canUndo} className="brush-tool-btn" title="되돌리기 (Ctrl+Z)">
             <Undo2 size={18} />
@@ -1496,7 +1597,6 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
 
         <div className="brush-top-sep" />
 
-        {/* AI Background Removal */}
         <button
           onClick={runAI}
           disabled={isProcessing || aiDone}
@@ -1508,19 +1608,18 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
 
         <div className="flex-1" />
 
-        {/* Save/Download */}
         <div className="relative">
           <button
             onClick={() => setShowDownloadPanel(!showDownloadPanel)}
             className="btn-save-result px-4 h-8 flex items-center gap-2 rounded-full text-xs font-black uppercase tracking-tight"
           >
             <Save size={14} />
-            결과 저장
+            Download
           </button>
 
           {showDownloadPanel && (
             <div className="brush-fill-panel" style={{ position: 'absolute', left: 'auto', right: '0', top: '2.5rem', zIndex: 1000 }}>
-              <div className="brush-panel-title">포맷 선택</div>
+              <div className="brush-panel-title">Export Format</div>
               <div className="flex gap-1 mb-3">
                 {(['png', 'jpeg', 'webp'] as const).map(fmt => (
                   <button
@@ -1546,102 +1645,67 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
                 </div>
               )}
               <button onClick={download} className="brush-btn-action w-full h-8 rounded text-xs font-bold">
-                다운로드 실행
+                Export Now
               </button>
             </div>
           )}
         </div>
       </div>
 
+      {/* ── MAIN WORKSPACE (Layout) ─────────────────────────── */}
       <div className="brush-editor-layout">
-        {/* 좌측 메인 도구바 (툴박스) */}
-        <div className="brush-editor-sidebar-left bg-[#252526] border-r border-[#111]">
-          <button
-            onClick={() => { cancelCrop(); setTool('wand'); }}
-            className={`brush-tool-btn ${tool === 'wand' ? 'brush-tool-btn-active' : ''}`}
-            title="마법봉 (W / 스마트 선택)"
-          >
-            <Wand2 size={20} />
-          </button>
-          <button
-            onClick={() => { stopMarching(); cancelCrop(); setTool('erase'); }}
-            className={`brush-tool-btn ${tool === 'erase' ? 'brush-tool-btn-active' : ''}`}
-            title="지우개 (E / 배경 삭제)"
-          >
-            <Eraser size={20} />
-          </button>
-          <button
-            onClick={() => { stopMarching(); cancelCrop(); setTool('restore'); }}
-            className={`brush-tool-btn ${tool === 'restore' ? 'brush-tool-btn-active' : ''}`}
-            title="복구 브러시 (R)"
-          >
-            <RefreshCcw size={18} />
-          </button>
-          <button
-            onClick={() => { stopMarching(); cancelCrop(); setTool('paint'); }}
-            className={`brush-tool-btn ${tool === 'paint' ? 'brush-tool-btn-active' : ''}`}
-            title="컬러 브러시 (B)"
-          >
-            <Brush size={18} />
-          </button>
-          <button
-            onClick={() => { stopMarching(); cancelCrop(); setTool('eyedropper'); }}
-            className={`brush-tool-btn ${tool === 'eyedropper' ? 'brush-tool-btn-active' : ''}`}
-            title="스포이드 (I)"
-          >
-            <Pipette size={18} />
-          </button>
-          <button
-            onClick={() => { stopMarching(); cancelCrop(); setTool('bucket'); }}
-            className={`brush-tool-btn ${tool === 'bucket' ? 'brush-tool-btn-active' : ''}`}
-            title="페인트통 (G)"
-          >
-            <PaintBucket size={18} />
-          </button>
-          <button
-            onClick={() => { stopMarching(); setTool('crop'); setCropRect(null); cropRectRef.current = null; startMarching(); }}
-            className={`brush-tool-btn ${tool === 'crop' ? 'brush-tool-btn-active' : ''}`}
-            title="자르기 도구 (C)"
-          >
-            <Crop size={20} />
-          </button>
-
-          <div className="w-8 h-[1px] bg-[#333] my-2" />
-
-          <button onClick={() => setZoom(z => Math.min(8, z + 0.2))} className="brush-tool-btn" title="확대">
-            <PlusCircle size={18} />
-          </button>
-          <button onClick={() => setZoom(z => Math.max(0.1, z - 0.2))} className="brush-tool-btn" title="축소">
-            <MinusCircle size={18} />
-          </button>
-          <button
-            onClick={() => {
+        {/* Left Toolbar */}
+        <div className="brush-editor-sidebar-left bg-[#252526] border-r border-[#111] py-2 flex flex-col items-center gap-1">
+          <div className="flex flex-col gap-1 mb-2">
+            <button onClick={() => { cancelCrop(); setTool('move'); }} className={`brush-tool-btn ${tool === 'move' ? 'brush-tool-btn-active' : ''}`} title="Move (V)"><Move size={18} /></button>
+            <button onClick={() => { cancelCrop(); setTool('marquee-rect'); }} className={`brush-tool-btn ${tool === 'marquee-rect' ? 'brush-tool-btn-active' : ''}`} title="Marquee Rect (M)"><SquareIcon size={18} /></button>
+            <button onClick={() => { cancelCrop(); setTool('marquee-circle'); }} className={`brush-tool-btn ${tool === 'marquee-circle' ? 'brush-tool-btn-active' : ''}`} title="Marquee Circle (Shift+M)"><CircleIcon size={18} /></button>
+            <button onClick={() => { cancelCrop(); setTool('wand'); }} className={`brush-tool-btn ${tool === 'wand' ? 'brush-tool-btn-active' : ''}`} title="Magic Wand (W)"><Wand2 size={18} /></button>
+          </div>
+          <div className="w-8 h-[1px] bg-[#333] mb-2" />
+          <div className="flex flex-col gap-1 mb-2">
+            <button onClick={() => { stopMarching(); cancelCrop(); setTool('crop'); setCropRect(null); cropRectRef.current = null; startMarching(); }} className={`brush-tool-btn ${tool === 'crop' ? 'brush-tool-btn-active' : ''}`} title="Crop (C)"><Crop size={18} /></button>
+            <button onClick={() => { stopMarching(); cancelCrop(); setTool('eyedropper'); }} className={`brush-tool-btn ${tool === 'eyedropper' ? 'brush-tool-btn-active' : ''}`} title="Eyedropper (I)"><Pipette size={18} /></button>
+          </div>
+          <div className="w-8 h-[1px] bg-[#333] mb-2" />
+          <div className="flex flex-col gap-1 mb-2">
+            <button onClick={() => { stopMarching(); cancelCrop(); setTool('paint'); }} className={`brush-tool-btn ${tool === 'paint' ? 'brush-tool-btn-active' : ''}`} title="Brush (B)"><Brush size={18} /></button>
+            <button onClick={() => { stopMarching(); cancelCrop(); setTool('erase'); }} className={`brush-tool-btn ${tool === 'erase' ? 'brush-tool-btn-active' : ''}`} title="Eraser (E)"><Eraser size={18} /></button>
+            <button onClick={() => { stopMarching(); cancelCrop(); setTool('restore'); }} className={`brush-tool-btn ${tool === 'restore' ? 'brush-tool-btn-active' : ''}`} title="Restore (R)"><RefreshCcw size={18} /></button>
+            <button onClick={() => { stopMarching(); cancelCrop(); setTool('bucket'); }} className={`brush-tool-btn ${tool === 'bucket' ? 'brush-tool-btn-active' : ''}`} title="Fill (G)"><PaintBucket size={18} /></button>
+          </div>
+          <div className="mt-auto flex flex-col gap-1">
+            <button onClick={() => setZoom(z => Math.min(8, z + 0.2))} className="brush-tool-btn" title="확대">
+              <PlusCircle size={18} />
+            </button>
+            <button onClick={() => setZoom(z => Math.max(0.1, z - 0.2))} className="brush-tool-btn" title="축소">
+              <MinusCircle size={18} />
+            </button>
+            <button onClick={() => {
               const containerW = containerRef.current?.clientWidth ?? 800;
               const containerH = containerRef.current?.clientHeight ?? 600;
               setZoom(Math.min((containerW - 40) / imageSize.w, (containerH - 40) / imageSize.h, 1));
-            }}
-            className="brush-tool-btn"
-            title="화면에 맞추기"
-          >
-            <Maximize2 size={18} />
-          </button>
+            }} className="brush-tool-btn" title="맞춤"><Maximize2 size={18} /></button>
+          </div>
         </div>
 
-        {/* 중앙 편집 공간 */}
-        <div className="flex-1 flex flex-col min-w-0 bg-[#1e1e1e]">
-          {/* 포토샵 스타일 도구 옵션 바 */}
-          <div className="h-10 border-b border-[#111] bg-[#2d2d2d] flex items-center px-4 gap-4 overflow-hidden">
+        {/* Center Canvas Area */}
+        <div className="flex-1 flex flex-col min-w-0 bg-[#1e1e1e] relative">
+          {/* Options Bar */}
+          <div className="h-10 border-b border-[#111] bg-[#2d2d2d] flex items-center px-4 gap-4 overflow-hidden flex-shrink-0">
             <div className="flex items-center gap-2 pr-4 border-r border-[#444]">
+              {tool === 'move' && <Move size={16} className="text-gray-400" />}
+              {tool === 'marquee-rect' && <SquareIcon size={16} className="text-gray-400" />}
+              {tool === 'marquee-circle' && <CircleIcon size={16} className="text-gray-400" />}
               {tool === 'wand' && <Wand2 size={16} className="text-gray-400" />}
               {tool === 'erase' && <Eraser size={16} className="text-gray-400" />}
               {tool === 'restore' && <RefreshCcw size={16} className="text-gray-400" />}
               {tool === 'paint' && <Brush size={16} className="text-gray-400" />}
               {tool === 'bucket' && <PaintBucket size={16} className="text-gray-400" />}
               {tool === 'crop' && <Crop size={16} className="text-gray-400" />}
-              <span className="text-[10px] font-bold text-gray-500 uppercase">{tool}</span>
+              <span className="text-[10px] font-bold text-gray-500 uppercase">{tool.replace('-', ' ')}</span>
             </div>
-
-            {/* 도구별 동적 옵션 */}
+            {/* Tool Options */}
             <div className="flex items-center gap-6 overflow-x-auto no-scrollbar">
               {tool === 'wand' && (
                 <>
@@ -1705,68 +1769,81 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
                     <span className="text-[11px] font-mono text-amber-500">{Math.round(cropRect.w)} × {Math.round(cropRect.h)}</span>
                   )}
                   <div className="flex gap-1 text-[10px] font-bold">
-                    <button onClick={applyCrop} disabled={!cropRect || cropRect.w < 2} className="px-3 h-6 rounded bg-amber-600 text-white disabled:opacity-30">적용</button>
-                    <button onClick={cancelCrop} className="px-3 h-6 rounded bg-[#444] text-gray-300">취소</button>
+                    <button onClick={applyCrop} disabled={!cropRect || cropRect.w < 2} className="px-3 h-6 rounded bg-amber-600 text-white disabled:opacity-30">Commit</button>
+                    <button onClick={cancelCrop} className="px-3 h-6 rounded bg-[#444] text-gray-300">Cancel</button>
+                  </div>
+                </div>
+              )}
+
+              {(tool === 'marquee-rect' || tool === 'marquee-circle') && (
+                <div className="flex items-center gap-4">
+                  <span className="text-[10px] font-bold text-gray-400">SELECTION</span>
+                  {cropRect && (
+                    <span className="text-[11px] font-mono text-indigo-400">{Math.round(cropRect.w)} × {Math.round(cropRect.h)}</span>
+                  )}
+                  <div className="flex gap-2">
+                    <button onClick={() => setTool('wand')} className="text-[10px] font-bold text-gray-400 hover:text-white underline">Clear Selection</button>
                   </div>
                 </div>
               )}
             </div>
           </div>
 
-          <div
-            ref={containerRef}
-            className="brush-canvas-area flex-1 overflow-auto relative"
-            onMouseDown={handleMouseDown}
-            onTouchStart={handleMouseDown}
-          >
+          {/* Canvas with Rulers */}
+          <div className="flex-1 relative overflow-hidden flex flex-col">
+            <div className="ruler-corner" />
+            <div className="editor-ruler-h" style={{ backgroundImage: horizontalRulerBg, backgroundPositionX: `${-100 - (containerRef.current?.scrollLeft ?? 0)}px` }} />
+            <div className="editor-ruler-v" style={{ backgroundImage: verticalRulerBg, backgroundPositionY: `${-100 - (containerRef.current?.scrollTop ?? 0)}px` }} />
+
             <div
-              className="brush-canvas-frame"
-              style={{ width: displayWidth, height: displayHeight, ...BG_PRESETS[bgPreset]!.style }}
+              ref={containerRef}
+              className="flex-1 overflow-auto brush-canvas-area p-[100px] no-scrollbar relative"
+              style={{ paddingTop: '120px', paddingLeft: '120px' }} // 눈금자 공간 확보
+              onMouseDown={handleMouseDown}
+              onTouchStart={handleMouseDown}
             >
-              <canvas ref={canvasRef} style={{ width: displayWidth, height: displayHeight, display: 'block' }} />
-              <canvas
-                ref={overlayRef}
-                style={{
-                  position: 'absolute', top: 0, left: 0,
-                  width: displayWidth, height: displayHeight,
-                  cursor: (tool === 'wand' || tool === 'crop' || tool === 'bucket' || tool === 'eyedropper') ? 'crosshair' : 'none',
-                  touchAction: 'none',
-                }}
-              />
               <div
-                ref={brushCursorRef}
-                className={`brush-cursor-preview brush-cursor-${brushShape}`}
-                style={{
-                  width: (brushShape === 'rect-v' || brushShape === 'rect-v-thin') ? (brushSize / (brushShape === 'rect-v' ? 2 : 4)) * zoom : brushSize * zoom,
-                  height: (brushShape === 'rect-h' || brushShape === 'rect-h-thin') ? (brushSize / (brushShape === 'rect-h' ? 2 : 4)) * zoom : brushSize * zoom,
-                  display: (tool === 'erase' || tool === 'restore' || tool === 'paint') ? 'block' : 'none',
-                  borderColor: tool === 'erase' ? '#ef4444' : tool === 'paint' ? brushColor : '#22c55e',
-                  backgroundColor: tool === 'erase' ? 'rgba(239,68,68,0.15)' : tool === 'paint' ? `${brushColor}33` : 'rgba(34,197,94,0.15)',
-                }}
-              />
+                className="brush-canvas-frame"
+                style={{ width: displayWidth, height: displayHeight, ...BG_PRESETS[bgPreset]!.style }}
+              >
+                <canvas ref={canvasRef} style={{ width: displayWidth, height: displayHeight, display: 'block' }} />
+                <canvas
+                  ref={overlayRef}
+                  style={{
+                    position: 'absolute', top: 0, left: 0,
+                    width: displayWidth, height: displayHeight,
+                    cursor: (tool === 'wand' || tool === 'crop' || tool === 'bucket' || tool === 'eyedropper' || tool.startsWith('marquee')) ? 'crosshair' : 'none',
+                    touchAction: 'none',
+                  }}
+                />
+                <div
+                  ref={brushCursorRef}
+                  className={`brush-cursor-preview brush-cursor-${brushShape}`}
+                  style={{
+                    width: (brushShape === 'rect-v' || brushShape === 'rect-v-thin') ? (brushSize / (brushShape === 'rect-v' ? 2 : 4)) * zoom : brushSize * zoom,
+                    height: (brushShape === 'rect-h' || brushShape === 'rect-h-thin') ? (brushSize / (brushShape === 'rect-h' ? 2 : 4)) * zoom : brushSize * zoom,
+                    display: (tool === 'erase' || tool === 'restore' || tool === 'paint') ? 'block' : 'none',
+                    borderColor: tool === 'erase' ? '#ef4444' : tool === 'paint' ? brushColor : '#22c55e',
+                    backgroundColor: tool === 'erase' ? 'rgba(239,68,68,0.15)' : tool === 'paint' ? `${brushColor}33` : 'rgba(34,197,94,0.15)',
+                  }}
+                />
+              </div>
             </div>
           </div>
         </div>
 
-        {/* 우측 속성 패널 */}
-        <div className="brush-editor-sidebar-right flex flex-col pt-0">
-          {/* 우측 상단: 히스토리 패널 */}
-          <div className="h-1/2 flex flex-col border-b border-[#111]">
-            <div className="brush-panel-title px-3 py-2 bg-[#333] mb-0 text-white font-black italic">
-              HISTORY
+        {/* Right Sidebar Panels */}
+        <div className="brush-editor-sidebar-right flex flex-col min-w-[240px]">
+          {/* History */}
+          <div className="flex-1 flex flex-col border-b border-[#111]">
+            <div className="brush-panel-title px-3 py-2 bg-[#333] text-white font-black italic flex justify-between items-center">
+              <span>HISTORY</span><Activity size={12} className="text-gray-500" />
             </div>
-            <div
-              ref={historyListRef}
-              className="flex-1 overflow-y-auto no-scrollbar p-0 bg-[#222]"
-            >
+            <div ref={historyListRef} className="flex-1 overflow-y-auto no-scrollbar p-0 bg-[#222]">
               {historyStack.current.map((item, i) => (
-                <button
-                  key={i}
-                  onClick={() => jumpToHistory(i)}
-                  className={`w-full px-4 py-2 text-[11px] flex items-center justify-between border-b border-[#333] transition-colors hover:bg-white/5 ${i === historyIndex ? 'bg-[#4f46e5] text-white' : 'text-gray-400'}`}
-                >
+                <button key={i} onClick={() => jumpToHistory(i)} className={`w-full px-4 py-2 text-[11px] flex justify-between items-center border-b border-[#333] transition-colors ${i === historyIndex ? 'bg-[#4f46e5] text-white' : 'text-gray-400 hover:bg-white/5'}`}>
                   <div className="flex items-center gap-2">
-                    {item.label === 'Open' ? <Palette size={12} /> : item.label === 'Brush' ? <Brush size={12} /> : item.label === 'Crop' ? <Crop size={12} /> : <Scissors size={12} />}
+                    {item.label === 'Open' ? <Palette size={12} /> : item.label === 'Brush' || item.label === 'Paint' ? <Brush size={12} /> : item.label === 'Crop' ? <Crop size={12} /> : item.label === 'Adjustments' ? <Sliders size={12} /> : <Scissors size={12} />}
                     <span className="font-bold uppercase tracking-tighter">{item.label}</span>
                   </div>
                   <span className="text-[9px] opacity-40 font-mono">{item.time}</span>
@@ -1774,28 +1851,74 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
               ))}
             </div>
           </div>
-
-          {/* 우측 하단: 레이어 / 속성 */}
-          <div className="flex-1 flex flex-col overflow-hidden">
-            <div className="brush-panel-title px-3 py-2 bg-[#333] mb-0 text-white font-black italic">
-              LAYERS / OPTIONS
+          {/* Adjustments */}
+          <div className="flex-1 flex flex-col border-b border-[#111]">
+            <div className="brush-panel-title px-3 py-2 bg-[#333] text-white font-black italic flex justify-between items-center">
+              <span>ADJUSTMENTS</span><Sliders size={12} className="text-gray-500" />
             </div>
-            <div className="flex-1 overflow-y-auto no-scrollbar p-3 space-y-6">
+            <div className="flex-1 overflow-y-auto no-scrollbar p-3 space-y-3 bg-[#282828]">
+              <div className="space-y-3">
+                <div className="flex flex-col gap-1">
+                  <div className="flex justify-between items-center text-[10px] font-bold text-gray-400">
+                    <span>BRIGHTNESS</span>
+                    <span className="text-indigo-400">{brightness}%</span>
+                  </div>
+                  <input type="range" min={0} max={200} value={brightness} onChange={(e) => setBrightness(Number(e.target.value))} className="w-full h-1 range-slider" />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <div className="flex justify-between items-center text-[10px] font-bold text-gray-400">
+                    <span>CONTRAST</span>
+                    <span className="text-indigo-400">{contrast}%</span>
+                  </div>
+                  <input type="range" min={0} max={200} value={contrast} onChange={(e) => setContrast(Number(e.target.value))} className="w-full h-1 range-slider" />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <div className="flex justify-between items-center text-[10px] font-bold text-gray-400">
+                    <span>SATURATION</span>
+                    <span className="text-indigo-400">{saturation}%</span>
+                  </div>
+                  <input type="range" min={0} max={200} value={saturation} onChange={(e) => setSaturation(Number(e.target.value))} className="w-full h-1 range-slider" />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <div className="flex justify-between items-center text-[10px] font-bold text-gray-400">
+                    <span>BLUR</span>
+                    <span className="text-indigo-400">{blur}px</span>
+                  </div>
+                  <input type="range" min={0} max={20} value={blur} onChange={(e) => setBlur(Number(e.target.value))} className="w-full h-1 range-slider" />
+                </div>
+              </div>
+              <button
+                onClick={applyAdjustments}
+                className="w-full h-8 bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-black uppercase rounded transition-colors"
+              >
+                Apply Changes
+              </button>
+            </div>
+          </div>
+          {/* Layers */}
+          <div className="flex-1 flex flex-col border-b border-[#111]">
+            <div className="brush-panel-title px-3 py-2 bg-[#333] text-white font-black italic flex justify-between items-center">
+              <span>LAYERS</span><Layers size={12} className="text-gray-500" />
+            </div>
+            <div className="flex-1 overflow-y-auto no-scrollbar p-3 space-y-6 bg-[#222]">
               {/* 레이어 영역 */}
               <div>
                 <span className="text-[10px] font-bold text-gray-500 uppercase mb-2 block">Composite Layers</span>
                 <div className="space-y-1">
                   <div className="bg-[#3d3d3d] p-1 rounded flex items-center gap-3 border border-indigo-500/50">
                     <div className="w-10 h-10 bg-black rounded overflow-hidden flex items-center justify-center border border-[#111]">
-                      <canvas ref={aiResultRef} className="max-w-full max-h-full opacity-50" />
+                      <canvas className="max-w-full max-h-full opacity-70" ref={(el) => {
+                        if (el && canvasRef.current) {
+                          const ctx = el.getContext('2d');
+                          if (ctx) {
+                            el.width = canvasRef.current.width;
+                            el.height = canvasRef.current.height;
+                            ctx.drawImage(canvasRef.current, 0, 0);
+                          }
+                        }
+                      }} />
                     </div>
-                    <span className="text-[11px] font-bold text-white">Masked Result</span>
-                  </div>
-                  <div className="bg-[#2a2a2a] p-1 rounded flex items-center gap-3 opacity-50">
-                    <div className="w-10 h-10 bg-black rounded overflow-hidden border border-[#111]">
-                      <canvas ref={originalRef} className="max-w-full max-h-full" />
-                    </div>
-                    <span className="text-[11px] font-bold text-gray-400">Original Plate</span>
+                    <span className="text-[11px] font-bold text-white uppercase tracking-tighter">Composite view</span>
                   </div>
                 </div>
               </div>
@@ -1835,37 +1958,29 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
             </div>
           </div>
         </div>
-
-        {/* 숨겨진 작업용 캔버스 */}
-        <canvas ref={originalRef} className="hidden" />
-        <canvas ref={maskRef} className="hidden" />
-        <canvas ref={aiResultRef} className="hidden" />
       </div>
 
-      {/* 상태바 (포토샵 스타일) */}
-      <div className="brush-status-bar">
-        <div className="brush-status-dot" />
-        <span className="text-[10px] font-bold text-[#888] uppercase tracking-wider">
-          {tool === 'crop' ? 'Crop Tool' : tool === 'wand' ? 'Magic Wand' : tool === 'erase' ? 'Eraser' : tool === 'paint' ? 'Paint Brush' : tool === 'bucket' ? 'Paint Bucket' : 'Restore Brush'}
-        </span>
-        <div className="brush-status-sep" />
-        <span className="text-[10px] font-medium text-[#666]">
-          {tool === 'wand' ? 'Click to select area. Shift+Click to add.' :
-            tool === 'crop' ? 'Drag to define crop area.' : 'Click and drag to edit masks.'}
-        </span>
+      {/* Status Bar */}
+      <div className="editor-status-bar flex-shrink-0">
+        <div className="status-item">
+          <span className="text-white/60">X:</span> {Math.round(mousePos.x)}px
+          <span className="text-white/60 ml-2">Y:</span> {Math.round(mousePos.y)}px
+        </div>
+        <div className="status-divider" />
+        <div className="status-item">
+          <span className="text-white/60">DOC:</span> {imageSize.w} × {imageSize.h} px
+        </div>
+        <div className="status-divider" />
+        <div className="status-item">
+          <span className="text-white/60">ZOOM:</span> {Math.round(zoom * 100)}%
+        </div>
         <div className="flex-1" />
-        {imageSize.w > 0 && (
-          <span className="text-[10px] font-mono text-[#888]">
-            {imageSize.w} × {imageSize.h} PX
-          </span>
-        )}
-        <div className="brush-status-sep" />
-        <span className="text-[10px] font-mono text-[#888]">
-          {Math.round(zoom * 100)}%
-        </span>
+        <div className="status-item text-white/40 italic">
+          Photoshop Style Editor v2.0
+        </div>
       </div>
 
-      {/* 뒤로가기 확인 모달 */}
+      {/* Modals & Hidden Canvases */}
       {showExitConfirm && (
         <div className="brush-modal-overlay">
           <div className="brush-modal-content">
@@ -1894,6 +2009,15 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
           </div>
         </div>
       )}
+
+      {/* 숨겨진 임시 캔버스들 */}
+      <div className="hidden">
+        <canvas ref={maskSnapshotRef} />
+        <canvas ref={tempCanvasRef} />
+        <canvas ref={originalRef} />
+        <canvas ref={maskRef} />
+        <canvas ref={aiResultRef} />
+      </div>
     </div>
   );
 }

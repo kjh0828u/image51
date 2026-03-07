@@ -2214,6 +2214,7 @@ body::before {
   gap: 0;
   padding: 0.15rem;
 }
+
 /* ========== BrushEditor 레이아웃 구성 ========== */
 .brush-editor-layout {
   flex: 1;
@@ -2268,7 +2269,7 @@ body::before {
 .brush-tool-btn-active {
   background: #3d3d3d !important;
   color: #fff !important;
-  box-shadow: inset 0 1px 3px rgba(0,0,0,0.5);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.5);
 }
 
 .brush-panel-title {
@@ -2284,11 +2285,76 @@ body::before {
 
 .brush-canvas-area {
   background-color: #1e1e1e !important;
-  background-image: 
+  background-image:
     linear-gradient(45deg, #181818 25%, transparent 25%),
     linear-gradient(-45deg, #181818 25%, transparent 25%),
     linear-gradient(45deg, transparent 75%, #181818 75%),
     linear-gradient(-45deg, transparent 75%, #181818 75%) !important;
   background-size: 20px 20px !important;
   background-position: 0 0, 0 10px, 10px -10px, -10px 0 !important;
+  position: relative;
+}
+
+/* Rulers */
+.editor-ruler-h {
+  position: absolute;
+  top: 0;
+  left: 20px;
+  right: 0;
+  height: 20px;
+  background: #252526;
+  border-bottom: 1px solid #111;
+  z-index: 100;
+  overflow: hidden;
+}
+
+.editor-ruler-v {
+  position: absolute;
+  top: 20px;
+  left: 0;
+  bottom: 0;
+  width: 20px;
+  background: #252526;
+  border-right: 1px solid #111;
+  z-index: 100;
+  overflow: hidden;
+}
+
+.ruler-corner {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 20px;
+  height: 20px;
+  background: #333;
+  z-index: 101;
+  border-right: 1px solid #111;
+  border-bottom: 1px solid #111;
+}
+
+/* Status Bar */
+.editor-status-bar {
+  height: 24px;
+  background: #007acc;
+  /* Photoshop blue or VSCode blue */
+  color: white;
+  display: flex;
+  align-items: center;
+  font-size: 10px;
+  font-weight: 600;
+  z-index: 70;
+  gap: 1.5rem;
+  padding: 0 12px;
+}
+
+.status-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.status-divider {
+  width: 1px;
+  height: 12px;
+  background: rgba(255, 255, 255, 0.2);
 }

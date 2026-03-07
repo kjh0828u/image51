@@ -1,34 +1,7 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npm install:*)",
-      "Bash(npm run dev:*)",
-      "Bash(npm uninstall:*)",
-      "Bash(npm view:*)",
-      "WebFetch(domain:www.behance.net)",
-      "Bash(node:*)",
-      "Bash(npm --version)",
-      "Bash(npm run build:*)",
-      "Bash(curl:*)",
-      "Bash(npx:*)",
-      "Read(//tmp/**)",
-      "Bash(ls:*)",
-      "Read(//c/Users/kjh08/.claude/**)",
-      "Bash(pkill:*)",
-      "Bash(lsof:*)",
-      "Bash(xargs kill:*)",
-      "Bash(netstat:*)",
-      "Bash(taskkill:*)",
-      "Bash(kill:*)",
-      "Bash(powershell -Command:*)",
-      "Bash(\"c:/workspace/test/routine-tracker/README.md\":*)",
-      "Bash(\"c:/workspace/test/routine-tracker/DOCUMENTATION_GUIDE.md\":*)",
-      "Bash(wc:*)",
-      "Bash(npx tsc:*)",
-      "WebFetch(domain:github.com)",
-      "WebFetch(domain:cdn.jsdelivr.net)",
-      "WebFetch(domain:raw.githubusercontent.com)",
-      "WebFetch(domain:discuss.huggingface.co)"
+      "*"
     ],
     "deny": [
       "Read(node_modules/**)",

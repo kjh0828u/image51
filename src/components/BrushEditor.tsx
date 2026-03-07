@@ -305,6 +305,16 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
     setCanRedo(false);
   }, []);
 
+  const updateCanvasSize = useCallback((w: number, h: number) => {
+    [canvasRef, overlayRef, originalRef, maskRef, aiResultRef].forEach((ref) => {
+      if (ref.current) {
+        ref.current.width = w;
+        ref.current.height = h;
+      }
+    });
+    setImageSize({ w, h });
+  }, []);
+
   const undo = useCallback(() => {
     if (!maskRef.current || !originalRef.current || undoStack.current.length === 0) return;
 
@@ -316,13 +326,19 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
     redoStack.current.push({ mask: currentM, original: currentO });
 
     const prev = undoStack.current.pop()!;
+
+    // 크기가 다르면 리사이즈
+    if (prev.mask.width !== maskRef.current.width || prev.mask.height !== maskRef.current.height) {
+      updateCanvasSize(prev.mask.width, prev.mask.height);
+    }
+
     mCtx.putImageData(prev.mask, 0, 0);
     oCtx.putImageData(prev.original, 0, 0);
 
     compositeAndRender();
     setCanUndo(undoStack.current.length > 0);
     setCanRedo(true);
-  }, [compositeAndRender]);
+  }, [compositeAndRender, updateCanvasSize]);
 
   const redo = useCallback(() => {
     if (!maskRef.current || !originalRef.current || redoStack.current.length === 0) return;
@@ -335,13 +351,19 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
     undoStack.current.push({ mask: currentM, original: currentO });
 
     const next = redoStack.current.pop()!;
+
+    // 크기가 다르면 리사이즈
+    if (next.mask.width !== maskRef.current.width || next.mask.height !== maskRef.current.height) {
+      updateCanvasSize(next.mask.width, next.mask.height);
+    }
+
     mCtx.putImageData(next.mask, 0, 0);
     oCtx.putImageData(next.original, 0, 0);
 
     compositeAndRender();
     setCanUndo(true);
     setCanRedo(redoStack.current.length > 0);
-  }, [compositeAndRender]);
+  }, [compositeAndRender, updateCanvasSize]);
 
   const drawMarching = useCallback(() => {
     const overlay = overlayRef.current;
@@ -731,22 +753,25 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
 
   const handleBucket = useCallback(
     (pos: { x: number; y: number }) => {
-      if (!originalRef.current || !maskRef.current) return;
+      if (!originalRef.current || !maskRef.current || !canvasRef.current) return;
       const w = originalRef.current.width;
       const h = originalRef.current.height;
 
-      if (pos.x < 0 || pos.x >= w || pos.y < 0 || pos.y >= h || !hasSelection) return;
+      if (pos.x < 0 || pos.x >= w || pos.y < 0 || pos.y >= h) return;
 
       saveMaskSnapshot();
       const oCtx = originalRef.current.getContext('2d')!;
       const mCtx = maskRef.current.getContext('2d')!;
+      const compositeCtx = canvasRef.current.getContext('2d', { willReadFrequently: true })!;
 
-      const origData = oCtx.getImageData(0, 0, w, h);
-      const sel = floodFillSelect(origData, pos.x, pos.y, tolerance);
+      // 현재 보이는 상태(composite)를 기준으로 영역 계산 (투명 영역도 색칠 가능하게 함)
+      const visibleData = compositeCtx.getImageData(0, 0, w, h);
+      const sel = floodFillSelect(visibleData, pos.x, pos.y, tolerance);
 
       const oData = oCtx.getImageData(0, 0, w, h);
       const mData = mCtx.getImageData(0, 0, w, h);
 
+      // 브러시 컬러 적용
       const r = parseInt(brushColor.slice(1, 3), 16);
       const g = parseInt(brushColor.slice(3, 5), 16);
       const b = parseInt(brushColor.slice(5, 7), 16);
@@ -759,6 +784,7 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
           oData.data[idx + 2] = b;
           oData.data[idx + 3] = 255;
 
+          // 마스트도 해당 부분을 불투명하게 채움
           mData.data[idx] = 0;
           mData.data[idx + 1] = 0;
           mData.data[idx + 2] = 0;
@@ -770,7 +796,7 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
       mCtx.putImageData(mData, 0, 0);
       compositeAndRender();
     },
-    [brushColor, tolerance, compositeAndRender, saveMaskSnapshot, hasSelection]
+    [brushColor, tolerance, compositeAndRender, saveMaskSnapshot]
   );
 
   const drawShape = (ctx: CanvasRenderingContext2D, x: number, y: number, size: number, shape: BrushShape) => {
@@ -934,6 +960,8 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
     if (!rect || rect.w < 2 || rect.h < 2) return;
     if (!canvasRef.current || !originalRef.current || !maskRef.current) return;
 
+    saveMaskSnapshot();
+
     const sx = Math.round(rect.x);
     const sy = Math.round(rect.y);
     const sw = Math.round(rect.w);
@@ -952,26 +980,18 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
     maskCropped.getContext('2d')!.drawImage(maskRef.current, sx, sy, sw, sh, 0, 0, sw, sh);
 
     // 모든 캔버스 리사이즈
-    [canvasRef, overlayRef, originalRef, maskRef, aiResultRef].forEach((ref) => {
-      if (ref.current) { ref.current.width = sw; ref.current.height = sh; }
-    });
+    updateCanvasSize(sw, sh);
 
     originalRef.current.getContext('2d')!.drawImage(origCropped, 0, 0);
     maskRef.current.getContext('2d')!.drawImage(maskCropped, 0, 0);
     aiResultRef.current!.getContext('2d')!.drawImage(origCropped, 0, 0);
-
-    setImageSize({ w: sw, h: sh });
-    undoStack.current = [];
-    redoStack.current = [];
-    setCanUndo(false);
-    setCanRedo(false);
 
     cropRectRef.current = null;
     setCropRect(null);
     overlayRef.current?.getContext('2d')?.clearRect(0, 0, sw, sh);
     setTool('wand');
     compositeAndRender();
-  }, [compositeAndRender]);
+  }, [compositeAndRender, saveMaskSnapshot, updateCanvasSize]);
 
   const cancelCrop = useCallback(() => {
     cropRectRef.current = null;
@@ -988,6 +1008,7 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
     const bounds = getAutoCropBounds(canvasRef.current, cropMargin);
     if (!bounds) return;
 
+    saveMaskSnapshot();
     const { x, y, w, h } = bounds;
 
     const origCropped = document.createElement('canvas');
@@ -1000,22 +1021,15 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
     maskCropped.height = h;
     maskCropped.getContext('2d')!.drawImage(maskRef.current, x, y, w, h, 0, 0, w, h);
 
-    [canvasRef, overlayRef, originalRef, maskRef, aiResultRef].forEach((ref) => {
-      if (ref.current) { ref.current.width = w; ref.current.height = h; }
-    });
+    updateCanvasSize(w, h);
 
     originalRef.current.getContext('2d')!.drawImage(origCropped, 0, 0);
     maskRef.current.getContext('2d')!.drawImage(maskCropped, 0, 0);
     aiResultRef.current!.getContext('2d')!.drawImage(origCropped, 0, 0);
 
-    setImageSize({ w, h });
-    undoStack.current = [];
-    redoStack.current = [];
-    setCanUndo(false);
-    setCanRedo(false);
     stopMarching();
     compositeAndRender();
-  }, [compositeAndRender, stopMarching, cropMargin]);
+  }, [compositeAndRender, stopMarching, cropMargin, saveMaskSnapshot, updateCanvasSize]);
 
   // ── 배경색 채우기 ─────────────────────────────────────────
   const applyFillColor = useCallback(() => {
@@ -1159,8 +1173,19 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
         e.preventDefault();
         redo();
       }
+
+      // Photoshop shortcuts
+      const key = e.key.toLowerCase();
+      if (key === 'v' || key === 'w') { setTool('wand'); cancelCrop(); }
+      if (key === 'b') { setTool('paint'); stopMarching(); cancelCrop(); }
+      if (key === 'e') { setTool('erase'); stopMarching(); cancelCrop(); }
+      if (key === 'g') { setTool('bucket'); stopMarching(); cancelCrop(); }
+      if (key === 'c') { setTool('crop'); stopMarching(); }
+      if (key === 'r') { setTool('restore'); stopMarching(); cancelCrop(); }
+
       if (e.key === 'Escape') {
         if (tool === 'crop') cancelCrop();
+        if (hasSelection) stopMarching();
       }
       if (e.key === 'Enter') {
         if (tool === 'crop' && cropRect && cropRect.w > 2) applyCrop();
@@ -1293,9 +1318,9 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
         <button
           onClick={runAI}
           disabled={isProcessing || aiDone}
-          className={`brush-btn-action px-4 h-8 flex items-center gap-2 rounded text-xs font-bold ${aiDone ? 'opacity-50' : ''}`}
+          className={`brush-btn-action px-4 h-8 flex items-center gap-2 rounded-full text-xs font-bold ${aiDone ? 'opacity-50' : ''}`}
         >
-          <Sparkles size={14} />
+          <Sparkles size={14} className={isProcessing ? "animate-spin" : ""} />
           {isProcessing ? `AI 처리 중... ${progress}%` : aiDone ? 'AI 처리 완료' : 'AI 배경 제거'}
         </button>
 
@@ -1305,7 +1330,7 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
         <div className="relative">
           <button
             onClick={() => setShowDownloadPanel(!showDownloadPanel)}
-            className="brush-btn-restore px-4 h-8 flex items-center gap-2 rounded text-xs font-bold"
+            className="btn-save-result px-4 h-8 flex items-center gap-2 rounded-full text-xs font-black uppercase tracking-tight"
           >
             <Save size={14} />
             결과 저장
@@ -1348,398 +1373,204 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
 
       <div className="brush-editor-layout">
         {/* 좌측 메인 도구바 */}
-        <div className="brush-editor-sidebar-left">
-          <button
-            onClick={() => { cancelCrop(); setTool('wand'); }}
-            className={`brush-tool-btn ${tool === 'wand' ? 'brush-tool-btn-active' : ''}`}
-            title="마법봉 (스마트 선택)"
-          >
-            <Wand2 size={20} />
-          </button>
-          <button
-            onClick={() => { stopMarching(); cancelCrop(); setTool('erase'); }}
-            className={`brush-tool-btn ${tool === 'erase' ? 'brush-tool-btn-active' : ''}`}
-            title="지우개 (배경 삭제)"
-          >
-            <Eraser size={20} />
-          </button>
-          <button
-            onClick={() => { stopMarching(); cancelCrop(); setTool('restore'); }}
-            className={`brush-tool-btn ${tool === 'restore' ? 'brush-tool-btn-active' : ''}`}
-            title="복구 브러시"
-          >
-            <RefreshCcw size={18} />
-          </button>
-          <button
-            onClick={() => { stopMarching(); cancelCrop(); setTool('paint'); }}
-            className={`brush-tool-btn ${tool === 'paint' ? 'brush-tool-btn-active' : ''}`}
-            title="컬러 브러시 (P)"
-          >
-            <Brush size={18} />
-          </button>
-          <button
-            onClick={() => { stopMarching(); cancelCrop(); setTool('bucket'); }}
-            className={`brush-tool-btn ${tool === 'bucket' ? 'brush-tool-btn-active' : ''}`}
-            title="페인트통 (G)"
-          >
-            <PaintBucket size={18} />
-          </button>
-          <button
-            onClick={() => { stopMarching(); setTool('crop'); setCropRect(null); cropRectRef.current = null; }}
-            className={`brush-tool-btn ${tool === 'crop' ? 'brush-tool-btn-active' : ''}`}
-            title="자르기 도구"
-          >
-            <Crop size={20} />
-          </button>
-
-          <div className="w-8 h-[1px] bg-[#333] my-2" />
-
-          <button
-            onClick={() => setZoom(z => Math.min(8, z + 0.2))}
-            className="brush-tool-btn"
-            title="확대"
-          >
-            <PlusCircle size={18} />
-          </button>
-          <button
-            onClick={() => setZoom(z => Math.max(0.1, z - 0.2))}
-            className="brush-tool-btn"
-            title="축소"
-          >
-            <MinusCircle size={18} />
-          </button>
-          <button
-            onClick={() => {
-              const containerW = containerRef.current?.clientWidth ?? 800;
-              const containerH = containerRef.current?.clientHeight ?? 600;
-              setZoom(Math.min((containerW - 40) / imageSize.w, (containerH - 40) / imageSize.h, 1));
-            }}
-            className="brush-tool-btn"
-            title="화면에 맞추기"
-          >
-            <Maximize2 size={18} />
-          </button>
-        </div>
-
-        {/* 중앙 캔버스 영역 */}
-        <div
-          ref={containerRef}
-          className="brush-canvas-area"
-          onMouseDown={handleMouseDown}
-          onTouchStart={handleMouseDown}
-        >
-          <div
-            className="brush-canvas-frame"
-            style={{ width: displayWidth, height: displayHeight, ...BG_PRESETS[bgPreset]!.style }}
-          >
-            <canvas ref={canvasRef} style={{ width: displayWidth, height: displayHeight, display: 'block' }} />
-            <canvas
-              ref={overlayRef}
-              style={{
-                position: 'absolute', top: 0, left: 0,
-                width: displayWidth, height: displayHeight,
-                cursor: tool === 'wand' ? 'crosshair' : tool === 'crop' ? 'crosshair' : 'none',
-                touchAction: 'none',
-              }}
-            />
-            {/* 브러시 커서 프리뷰 (Ref 기반 직접 조작) */}
-            <div
-              ref={brushCursorRef}
-              className={`brush-cursor-preview brush-cursor-${brushShape}`}
-              style={{
-                width: (brushShape === 'rect-v' || brushShape === 'rect-v-thin') ? (brushSize / (brushShape === 'rect-v' ? 2 : 4)) * zoom : brushSize * zoom,
-                height: (brushShape === 'rect-h' || brushShape === 'rect-h-thin') ? (brushSize / (brushShape === 'rect-h' ? 2 : 4)) * zoom : brushSize * zoom,
-                display: (tool === 'erase' || tool === 'restore' || tool === 'paint') ? 'block' : 'none',
-                borderColor: tool === 'erase' ? '#ef4444' : tool === 'paint' ? brushColor : '#22c55e',
-                backgroundColor: tool === 'erase' ? 'rgba(239,68,68,0.15)' : tool === 'paint' ? `${brushColor}33` : 'rgba(34,197,94,0.15)',
-              }}
-            />
-          </div>
-        </div>
-
-        {/* 우측 속성 패널 */}
-        <div className="brush-editor-sidebar-right">
-          {/* 도구별 옵션 */}
-          <div className="brush-panel-section">
-            <div className="brush-panel-title">
-              {tool === 'wand' ? 'WAND PROPERTIES' :
-                tool === 'erase' ? 'ERASER PROPERTIES' :
-                  tool === 'restore' ? 'RESTORE PROPERTIES' :
-                    tool === 'paint' ? 'BRUSH PROPERTIES' :
-                      tool === 'bucket' ? 'BUCKET PROPERTIES' : 'CROP PROPERTIES'}
+        {/* 중앙 편집 공간 */}
+        <div className="flex-1 flex flex-col min-w-0 bg-[#1e1e1e]">
+          {/* 포토샵 스타일 도구 옵션 바 */}
+          <div className="h-10 border-b border-[#111] bg-[#2d2d2d] flex items-center px-4 gap-4 overflow-hidden">
+            <div className="flex items-center gap-2 pr-4 border-r border-[#444]">
+              {tool === 'wand' && <Wand2 size={16} className="text-gray-400" />}
+              {tool === 'erase' && <Eraser size={16} className="text-gray-400" />}
+              {tool === 'restore' && <RefreshCcw size={16} className="text-gray-400" />}
+              {tool === 'paint' && <Brush size={16} className="text-gray-400" />}
+              {tool === 'bucket' && <PaintBucket size={16} className="text-gray-400" />}
+              {tool === 'crop' && <Crop size={16} className="text-gray-400" />}
+              <span className="text-[10px] font-bold text-gray-500 uppercase">{tool}</span>
             </div>
 
-            {tool === 'wand' && (
-              <div className="flex flex-col gap-4">
-                <div className="brush-input-group">
-                  <div className="flex justify-between items-center mb-1">
-                    <span className="brush-label">허용치</span>
-                    <span className="brush-value">{tolerance}</span>
+            {/* 도구별 동적 옵션 */}
+            <div className="flex items-center gap-6 overflow-x-auto no-scrollbar">
+              {tool === 'wand' && (
+                <>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-bold text-gray-400">TOLERANCE</span>
+                    <input type="range" min={5} max={120} value={tolerance} onChange={(e) => setTolerance(Number(e.target.value))} className="w-24 h-1 range-slider" />
+                    <span className="text-[11px] font-mono text-indigo-400 w-8">{tolerance}</span>
                   </div>
-                  <input
-                    type="range" min={5} max={120} value={tolerance}
-                    onChange={(e) => setTolerance(Number(e.target.value))}
-                    className="range-slider brush-range"
-                  />
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-bold text-gray-400">SMOOTH</span>
+                    <input type="range" min={0} max={20} value={wandSmooth} onChange={(e) => setWandSmooth(Number(e.target.value))} className="w-24 h-1 range-slider" />
+                    <span className="text-[11px] font-mono text-indigo-400 w-8">{wandSmooth}</span>
+                  </div>
+                </>
+              )}
+
+              {(tool === 'erase' || tool === 'restore' || tool === 'paint') && (
+                <>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-bold text-gray-400">SIZE</span>
+                    <input type="range" min={5} max={300} value={brushSize} onChange={(e) => setBrushSize(Number(e.target.value))} className="w-32 h-1 range-slider" />
+                    <span className="text-[11px] font-mono text-indigo-400 w-10">{brushSize}px</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-bold text-gray-400">OPACITY</span>
+                    <input type="range" min={10} max={100} value={brushOpacity} onChange={(e) => setBrushOpacity(Number(e.target.value))} className="w-24 h-1 range-slider" />
+                    <span className="text-[11px] font-mono text-indigo-400 w-10">{brushOpacity}%</span>
+                  </div>
+                  <div className="flex gap-1">
+                    {['circle', 'square', 'diamond'].map(s => (
+                      <button key={s} onClick={() => setBrushShape(s as BrushShape)} className={`w-6 h-6 rounded flex items-center justify-center ${brushShape === s ? 'bg-[#555] text-white' : 'text-gray-500 hover:text-gray-300'}`}>
+                        {s === 'circle' && <CircleIcon size={12} />}
+                        {s === 'square' && <SquareIcon size={12} />}
+                        {s === 'diamond' && <Diamond size={12} />}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {(tool === 'paint' || tool === 'bucket') && (
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-bold text-gray-400">COLOR</span>
+                  <input type="color" value={brushColor} onChange={(e) => setBrushColor(e.target.value)} className="w-5 h-5 rounded overflow-hidden border-0 p-0 bg-transparent cursor-pointer" />
+                  <span className="text-[11px] font-mono text-gray-400">{brushColor.toUpperCase()}</span>
                 </div>
-                <div className="brush-input-group">
-                  <div className="flex justify-between items-center mb-1">
-                    <span className="brush-label">스무딩</span>
-                    <span className="brush-value">{wandSmooth}</span>
-                  </div>
-                  <input
-                    type="range" min={0} max={20} step={1} value={wandSmooth}
-                    onChange={(e) => setWandSmooth(Number(e.target.value))}
-                    className="range-slider brush-range"
-                  />
+              )}
+
+              {tool === 'bucket' && (
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-bold text-gray-400">TOLERANCE</span>
+                  <input type="range" min={5} max={120} value={tolerance} onChange={(e) => setTolerance(Number(e.target.value))} className="w-28 h-1 range-slider" />
+                  <span className="text-[11px] font-mono text-indigo-400">{tolerance}</span>
                 </div>
+              )}
 
-                {hasSelection && (
-                  <>
-                    <div className="brush-input-group">
-                      <div className="flex justify-between items-center mb-1">
-                        <span className="brush-label">영역 확장/축소</span>
-                        <span className={`brush-value ${wandExpand < 0 ? 'text-orange-400' : wandExpand > 0 ? 'text-cyan-400' : ''}`}>
-                          {wandExpand > 0 ? `+${wandExpand}` : wandExpand}
-                        </span>
-                      </div>
-                      <input
-                        type="range" min={-15} max={15} step={1} value={wandExpand}
-                        onChange={(e) => handleExpandChange(Number(e.target.value))}
-                        className="range-slider brush-range"
-                      />
-                    </div>
-                    <div className="flex gap-2 mt-2">
-                      <button onClick={() => applySelectionToMask('erase')} className="brush-btn-erase flex-1 h-9 rounded text-[11px] font-bold">삭제</button>
-                      <button onClick={() => applySelectionToMask('restore')} className="brush-btn-restore flex-1 h-9 rounded text-[11px] font-bold">복구</button>
-                    </div>
-
-                    <div className="brush-input-group mt-2">
-                      <span className="brush-label mb-2">선택 영역 색상 채우기</span>
-                      <div className="flex gap-2">
-                        <input
-                          type="color"
-                          value={brushColor}
-                          onChange={(e) => setBrushColor(e.target.value)}
-                          className="w-10 h-10 rounded cursor-pointer bg-transparent border-0"
-                        />
-                        <button
-                          onClick={fillSelectionWithColor}
-                          className="brush-btn-action flex-1 h-10 flex items-center justify-center gap-2 rounded text-[11px] font-bold"
-                        >
-                          <span className="flex items-center gap-2">
-                            <PaintBucket size={14} />
-                            <span>선택 영역 채우기</span>
-                          </span>
-                        </button>
-                      </div>
-                    </div>
-                  </>
-                )}
-
-
-                {hasSelection && (
-                  <button onClick={stopMarching} className="brush-btn-ghost h-8 rounded text-[10px] font-bold border border-[#444] mt-1">
-                    선택 해제
-                  </button>
-                )}
-              </div>
-            )}
-
-            {(isBrushTool || tool === 'paint' || tool === 'bucket') && (
-              <div className="flex flex-col gap-4">
-                {(tool === 'paint' || tool === 'bucket') && (
-                  <div className="brush-input-group">
-                    <span className="brush-label mb-2">채우기/브러시 색상</span>
-                    <div className="flex items-center gap-3">
-                      <input
-                        type="color"
-                        value={brushColor}
-                        onChange={(e) => setBrushColor(e.target.value)}
-                        className="w-10 h-10 rounded cursor-pointer bg-transparent border-0"
-                      />
-                      <span className="font-mono text-xs font-bold" style={{ color: brushColor }}>{brushColor.toUpperCase()}</span>
-                    </div>
+              {tool === 'crop' && (
+                <div className="flex items-center gap-4">
+                  <span className="text-[10px] font-bold text-gray-400">CROP MODE</span>
+                  {cropRect && (
+                    <span className="text-[11px] font-mono text-amber-500">{Math.round(cropRect.w)} × {Math.round(cropRect.h)}</span>
+                  )}
+                  <div className="flex gap-1 text-[10px] font-bold">
+                    <button onClick={applyCrop} disabled={!cropRect || cropRect.w < 2} className="px-3 h-6 rounded bg-amber-600 text-white disabled:opacity-30">적용</button>
+                    <button onClick={cancelCrop} className="px-3 h-6 rounded bg-[#444] text-gray-300">취소</button>
                   </div>
-                )}
-
-                {tool === 'bucket' && (
-                  <div className="brush-input-group">
-                    <div className="flex justify-between items-center mb-1">
-                      <span className="brush-label">허용치 (Tolerance)</span>
-                      <span className="brush-value">{tolerance}</span>
-                    </div>
-                    <input
-                      type="range" min={5} max={120} value={tolerance}
-                      onChange={(e) => setTolerance(Number(e.target.value))}
-                      className="range-slider brush-range"
-                    />
-                    <p className="text-[10px] text-gray-500 mt-2">
-                      클릭한 지점과 비슷한 색상 영역을 한 번에 채웁니다.
-                    </p>
-                  </div>
-                )}
-
-                {isBrushTool || tool === 'paint' ? (
-                  <>
-                    <div className="brush-input-group">
-                      <div className="flex justify-between items-center mb-1">
-                        <span className="brush-label">브러시 크기</span>
-                        <span className="brush-value">{brushSize}px</span>
-                      </div>
-                      <input
-                        type="range"
-                        min={5}
-                        max={300}
-                        value={brushSize}
-                        onChange={(e) => setBrushSize(Number(e.target.value))}
-                        className="range-slider brush-range"
-                      />
-                    </div>
-                    <div className="brush-input-group">
-                      <div className="flex justify-between items-center mb-1">
-                        <span className="brush-label">불투명도</span>
-                        <span className="brush-value">{brushOpacity}%</span>
-                      </div>
-                      <input
-                        type="range" min={10} max={100} value={brushOpacity}
-                        onChange={(e) => setBrushOpacity(Number(e.target.value))}
-                        className="range-slider brush-range"
-                      />
-                    </div>
-                    <div className="brush-input-group">
-                      <span className="brush-label mb-2">브러시 모양</span>
-                      <div className="flex gap-2">
-                        {[
-                          { id: 'circle', icon: <CircleIcon size={14} />, label: 'Circle' },
-                          { id: 'square', icon: <SquareIcon size={14} />, label: 'Square' },
-                          { id: 'rect-h', icon: <RectangleHorizontal size={14} />, label: 'Wide' },
-                          { id: 'rect-v', icon: <RectangleVertical size={14} />, label: 'Tall' },
-                          { id: 'rect-h-thin', icon: <Minus size={14} />, label: 'Horiz Thin' },
-                          { id: 'rect-v-thin', icon: <GripVertical size={14} />, label: 'Vert Thin' },
-                          { id: 'diamond', icon: <Diamond size={14} />, label: 'Diamond' },
-                        ].map(s => (
-                          <button
-                            key={s.id}
-                            onClick={() => setBrushShape(s.id as BrushShape)}
-                            className={`w-8 h-8 flex items-center justify-center rounded border transition-all ${brushShape === s.id ? 'bg-indigo-600 border-indigo-400 text-white' : 'bg-[#1a1a1a] border-[#333] text-[#666] hover:text-[#aaa]'}`}
-                            title={s.label}
-                          >
-                            {s.icon}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </>
-                ) : null}
-              </div>
-            )}
-
-            {tool === 'crop' && (
-              <div className="flex flex-col gap-4">
-                {cropRect && cropRect.w > 2 ? (
-                  <>
-                    <div className="flex justify-between items-center bg-[#1a1a1a] p-3 rounded border border-[#333]">
-                      <div className="flex flex-col">
-                        <span className="text-[10px] text-[#555] font-bold">DIMENSIONS</span>
-                        <span className="text-xs text-[#aaa] font-mono">{Math.round(cropRect.w)} × {Math.round(cropRect.h)}</span>
-                      </div>
-                      <Scissors size={16} className="text-[#555]" />
-                    </div>
-                    <div className="flex gap-2">
-                      <button onClick={applyCrop} className="brush-btn-action flex-1 h-9 rounded text-[11px] font-bold">크롭 적용</button>
-                      <button onClick={cancelCrop} className="brush-btn-ghost flex-1 h-9 rounded text-[11px] font-bold border border-[#444]">취소</button>
-                    </div>
-                  </>
-                ) : (
-                  <p className="text-[11px] text-[#666] leading-relaxed">
-                    캔버스 위를 드래그하여 자를 영역을 선택하세요.<br />
-                    Enter를 누르면 적용됩니다.
-                  </p>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* 자동 여백 섹션 */}
-          <div className="brush-panel-section">
-            <div className="brush-panel-title">AUTO BOUNDS</div>
-            <div className="brush-input-group mb-3">
-              <div className="flex justify-between items-center mb-1">
-                <span className="brush-label">여백 (PADDING)</span>
-                <span className="brush-value">{cropMargin}px</span>
-              </div>
-              <input
-                type="range" min={0} max={40} step={1} value={cropMargin}
-                onChange={(e) => setCropMargin(Number(e.target.value))}
-                className="range-slider brush-range"
-              />
-            </div>
-            <button onClick={autoCrop} className="brush-btn-ghost w-full h-9 flex items-center justify-center gap-2 rounded text-[11px] font-bold border border-[#444] hover:bg-[#333] transition-colors">
-              <Sparkles size={14} className="text-indigo-400" />
-              자동 여백 제거 실행
-            </button>
-          </div>
-
-          {/* 배경 설정 */}
-          <div className="brush-panel-section">
-            <div className="brush-panel-title">BACKGROUND DISPLAY</div>
-            <div className="flex flex-wrap gap-2 mb-4">
-              {BG_PRESETS.map((p, i) => (
-                <button
-                  key={i}
-                  onClick={() => setBgPreset(i)}
-                  className={`w-8 h-8 rounded border-2 transition-all ${bgPreset === i ? 'border-indigo-500 scale-110' : 'border-[#333]'} ${p.swatch}`}
-                  title={p.label}
-                />
-              ))}
-            </div>
-
-            <div className="relative">
-              <button
-                onClick={() => setShowFillPanel(!showFillPanel)}
-                className={`w-full h-9 flex items-center justify-center gap-2 rounded text-[11px] font-bold border transition-colors ${showFillPanel ? 'bg-indigo-600 border-indigo-500' : 'border-[#444] hover:bg-[#333]'}`}
-              >
-                <span className="flex items-center gap-2">
-                  <PaintBucket size={14} />
-                  <span>{hasSelection ? '선택 영역 채우기' : '투명 배경 채우기'}</span>
-                </span>
-              </button>
-
-              {showFillPanel && (
-                <div className="brush-fill-panel" style={{ bottom: '110%', top: 'auto', left: '0', right: '0' }}>
-                  <div className="brush-panel-title">색상 선택</div>
-                  <div className="flex items-center gap-3 mb-4">
-                    <input
-                      type="color"
-                      value={fillColor}
-                      onChange={(e) => setFillColor(e.target.value)}
-                      className="w-10 h-10 rounded cursor-pointer bg-transparent border-0"
-                    />
-                    <span className="font-mono text-xs font-bold" style={{ color: fillColor }}>{fillColor.toUpperCase()}</span>
-                  </div>
-                  <button
-                    onClick={hasSelection ? applyFillColor : applyBackgroundToTransparency}
-                    className="brush-btn-restore w-full h-8 rounded text-[10px] font-bold"
-                  >
-                    배경색 즉시 적용
-                  </button>
                 </div>
               )}
             </div>
           </div>
 
-          <div className="flex-1" />
-
-          {/* 하단 위험 구역 */}
-          <div className="brush-panel-section border-t border-[#333] border-b-0">
-            <button
-              onClick={resetMask}
-              className="w-full h-9 flex items-center justify-center gap-2 rounded text-[11px] font-bold text-red-400 border border-red-900/30 hover:bg-red-950/30 transition-colors"
+          <div
+            ref={containerRef}
+            className="brush-canvas-area flex-1 overflow-auto relative"
+            onMouseDown={handleMouseDown}
+            onTouchStart={handleMouseDown}
+          >
+            <div
+              className="brush-canvas-frame"
+              style={{ width: displayWidth, height: displayHeight, ...BG_PRESETS[bgPreset]!.style }}
             >
-              <Trash2 size={14} />
-              모든 작업 초기화
-            </button>
+              <canvas ref={canvasRef} style={{ width: displayWidth, height: displayHeight, display: 'block' }} />
+              <canvas
+                ref={overlayRef}
+                style={{
+                  position: 'absolute', top: 0, left: 0,
+                  width: displayWidth, height: displayHeight,
+                  cursor: tool === 'wand' ? 'crosshair' : tool === 'crop' ? 'crosshair' : 'none',
+                  touchAction: 'none',
+                }}
+              />
+              <div
+                ref={brushCursorRef}
+                className={`brush-cursor-preview brush-cursor-${brushShape}`}
+                style={{
+                  width: (brushShape === 'rect-v' || brushShape === 'rect-v-thin') ? (brushSize / (brushShape === 'rect-v' ? 2 : 4)) * zoom : brushSize * zoom,
+                  height: (brushShape === 'rect-h' || brushShape === 'rect-h-thin') ? (brushSize / (brushShape === 'rect-h' ? 2 : 4)) * zoom : brushSize * zoom,
+                  display: (tool === 'erase' || tool === 'restore' || tool === 'paint') ? 'block' : 'none',
+                  borderColor: tool === 'erase' ? '#ef4444' : tool === 'paint' ? brushColor : '#22c55e',
+                  backgroundColor: tool === 'erase' ? 'rgba(239,68,68,0.15)' : tool === 'paint' ? `${brushColor}33` : 'rgba(34,197,94,0.15)',
+                }}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* 우측 속성 패널 */}
+        <div className="brush-editor-sidebar-right flex flex-col pt-0">
+          {/* 우측 상단: 히스토리 패널 */}
+          <div className="h-1/2 flex flex-col border-b border-[#111]">
+            <div className="brush-panel-title px-3 py-2 bg-[#333] mb-0 text-white font-black italic">
+              HISTORY
+            </div>
+            <div className="flex-1 overflow-y-auto no-scrollbar p-1">
+              <div className={`px-3 py-1 text-[11px] flex items-center gap-2 ${undoStack.current.length === 0 ? 'bg-[#4f46e5] text-white' : 'text-gray-400'}`}>
+                <Sparkles size={10} /> Initial State
+              </div>
+              {undoStack.current.map((_, i) => (
+                <div key={i} className={`px-3 py-1 text-[11px] flex items-center gap-2 ${i === undoStack.current.length - 1 ? 'bg-[#4f46e5]/30 text-white' : 'text-gray-400'}`}>
+                  <Scissors size={10} /> Edit Step {i + 1}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* 우측 하단: 레이어 / 속성 */}
+          <div className="flex-1 flex flex-col overflow-hidden">
+            <div className="brush-panel-title px-3 py-2 bg-[#333] mb-0 text-white font-black italic">
+              LAYERS / OPTIONS
+            </div>
+            <div className="flex-1 overflow-y-auto no-scrollbar p-3 space-y-6">
+              {/* 레이어 영역 */}
+              <div>
+                <span className="text-[10px] font-bold text-gray-500 uppercase mb-2 block">Composite Layers</span>
+                <div className="space-y-1">
+                  <div className="bg-[#3d3d3d] p-1 rounded flex items-center gap-3 border border-indigo-500/50">
+                    <div className="w-10 h-10 bg-black rounded overflow-hidden flex items-center justify-center border border-[#111]">
+                      <canvas ref={aiResultRef} className="max-w-full max-h-full opacity-50" />
+                    </div>
+                    <span className="text-[11px] font-bold text-white">Masked Result</span>
+                  </div>
+                  <div className="bg-[#2a2a2a] p-1 rounded flex items-center gap-3 opacity-50">
+                    <div className="w-10 h-10 bg-black rounded overflow-hidden border border-[#111]">
+                      <canvas ref={originalRef} className="max-w-full max-h-full" />
+                    </div>
+                    <span className="text-[11px] font-bold text-gray-400">Original Plate</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* 여백 제거 */}
+              <div className="pt-4 border-t border-[#333]">
+                <div className="flex justify-between items-center mb-1">
+                  <span className="brush-label">AUTO BOUNDS MARGIN</span>
+                  <span className="brush-value text-indigo-400">{cropMargin}px</span>
+                </div>
+                <input type="range" min={0} max={40} value={cropMargin} onChange={(e) => setCropMargin(Number(e.target.value))} className="w-full h-1 range-slider mb-3" />
+                <button onClick={autoCrop} className="brush-btn-ghost w-full h-8 text-[10px] font-black italic border border-[#444] rounded uppercase tracking-widest hover:bg-white hover:text-black transition-all">
+                  Auto Crop Bounds
+                </button>
+              </div>
+
+              {/* 배경 프리셋 */}
+              <div className="pt-4 border-t border-[#333]">
+                <span className="brush-label mb-2 block">Viewport Bg</span>
+                <div className="flex flex-wrap gap-2">
+                  {BG_PRESETS.map((p, i) => (
+                    <button
+                      key={i}
+                      onClick={() => setBgPreset(i)}
+                      className={`w-6 h-6 rounded border transition-all ${bgPreset === i ? 'border-indigo-500 ring-1 ring-indigo-500' : 'border-transparent'} ${p.swatch}`}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              <button
+                onClick={resetMask}
+                className="brush-btn-erase w-full h-8 mt-auto text-[10px] font-black uppercase italic rounded-none"
+              >
+                Reset All Changes
+              </button>
+            </div>
           </div>
         </div>
 

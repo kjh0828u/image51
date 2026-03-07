@@ -235,6 +235,7 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
   const cachedSelKey = useRef<Uint8Array | null>(null);
   const isSliding = useRef(false);
   const hasStrokeRef = useRef(false);
+  const historyListRef = useRef<HTMLDivElement>(null);
 
   // 크롭 드래그 상태
   const cropStartRef = useRef<{ x: number; y: number } | null>(null);
@@ -296,6 +297,16 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
   const historyStack = useRef<HistoryItem[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [historyVersion, setHistoryVersion] = useState(0);
+
+  // 히스토리 추가 시 하단 자동 스크롤
+  useEffect(() => {
+    if (historyListRef.current) {
+      historyListRef.current.scrollTo({
+        top: historyListRef.current.scrollHeight,
+        behavior: 'smooth'
+      });
+    }
+  }, [historyIndex, historyStack.current.length]);
 
   // ── 핵심 드로잉/유틸리티 함수 (히스토리에서 호출하므로 상단 배치) ────────────────
   const compositeAndRender = useCallback(() => {
@@ -937,6 +948,12 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
   const paint = useCallback(
     (pos: { x: number; y: number }) => {
       if (!maskRef.current || !originalRef.current) return;
+
+      // 캔버스 범위 체크: 영역 밖이면 그리지 않고 stroke로 간주하지 않음
+      const imgW = originalRef.current.width;
+      const imgH = originalRef.current.height;
+      if (pos.x < -brushSize || pos.x > imgW + brushSize || pos.y < -brushSize || pos.y > imgH + brushSize) return;
+
       const maskCtx = maskRef.current.getContext('2d')!;
       const origCtx = originalRef.current.getContext('2d')!;
       const from = lastPos.current ?? pos;
@@ -986,7 +1003,11 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
       maskCtx.restore();
       origCtx.restore();
       lastPos.current = pos;
-      hasStrokeRef.current = true;
+
+      // 실제로 이미지 내부 유효 범위에서 그렸을 때만 스트로크 인정
+      if (pos.x >= 0 && pos.x < imgW && pos.y >= 0 && pos.y < imgH) {
+        hasStrokeRef.current = true;
+      }
       compositeAndRender();
     },
     [tool, brushSize, brushOpacity, brushShape, brushColor, compositeAndRender]
@@ -1734,7 +1755,10 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
             <div className="brush-panel-title px-3 py-2 bg-[#333] mb-0 text-white font-black italic">
               HISTORY
             </div>
-            <div className="flex-1 overflow-y-auto no-scrollbar p-0 bg-[#222]">
+            <div
+              ref={historyListRef}
+              className="flex-1 overflow-y-auto no-scrollbar p-0 bg-[#222]"
+            >
               {historyStack.current.map((item, i) => (
                 <button
                   key={i}

@@ -44,6 +44,8 @@ interface BrushEditorProps {
   onReset: () => void;
 }
 
+const EYEDROPPER_CURSOR = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m2 22 1-1h3l9-9'/%3E%3Cpath d='M3 21v-3l9-9'/%3E%3Cpath d='m15 6 3.4-3.4a2.1 2.1 0 1 1 3 3L18 9l-3-3Z'/%3E%3C/svg%3E") 0 22, url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m2 22 1-1h3l9-9'/%3E%3Cpath d='M3 21v-3l9-9'/%3E%3Cpath d='m15 6 3.4-3.4a2.1 2.1 0 1 1 3 3L18 9l-3-3Z'/%3E%3C/svg%3E") 0 22, crosshair`;
+
 // ── box blur 기반 선택 영역 부드럽게 처리 ──────────────────
 function boxBlur01(sel: Uint8Array, w: number, h: number, r: number): Float32Array {
   const tmp = new Float32Array(w * h);
@@ -945,7 +947,7 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
     const b = pixel[2]!.toString(16).padStart(2, '0');
     const hex = `#${r}${g}${b}`;
     setBrushColor(hex);
-    setTool('paint'); // 색상 추출 후 다시 브러시로 전환 (포토샵 스타일)
+    // [수정] 강제로 'paint'로 바꾸는 로직을 제거하여 현재 도구(Bucket 등)를 유지합니다.
   }, []);
 
   const drawShape = (ctx: CanvasRenderingContext2D, x: number, y: number, size: number, shape: BrushShape) => {
@@ -1145,6 +1147,12 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
       if ((tool === 'clone' || tool === 'heal') && isAlt) {
         cloneSourceRef.current = pos;
         setHasCloneSource(true);
+        return;
+      }
+
+      // [추가] Paint/Bucket 도구에서 Alt 클릭 시 색상 추출
+      if ((tool === 'paint' || tool === 'bucket') && isAlt) {
+        handleEyedropper(pos);
         return;
       }
 
@@ -1575,7 +1583,18 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
     } else if (toolRef.current === 'text') {
       overlay.style.cursor = 'text';
     } else if (!isPainting.current) {
-      overlay.style.cursor = (toolRef.current === 'wand' || toolRef.current === 'crop' || toolRef.current === 'bucket' || toolRef.current === 'eyedropper' || toolRef.current.startsWith('marquee')) ? 'crosshair' : 'none';
+      const isAltHeld = (e as any).altKey;
+      const isEyedropperTool = toolRef.current === 'eyedropper';
+      const isDropperHover = (toolRef.current === 'paint' || toolRef.current === 'bucket') && isAltHeld;
+
+      if (isEyedropperTool || isDropperHover) {
+        overlay.style.cursor = EYEDROPPER_CURSOR;
+        if (brushCursor) brushCursor.style.display = 'none';
+      } else {
+        const showBrush = (toolRef.current === 'erase' || toolRef.current === 'restore' || toolRef.current === 'paint' || toolRef.current === 'clone' || toolRef.current === 'heal' || toolRef.current === 'blur-brush');
+        overlay.style.cursor = (toolRef.current === 'wand' || toolRef.current === 'crop' || toolRef.current === 'bucket' || toolRef.current.startsWith('marquee')) ? 'crosshair' : 'none';
+        if (brushCursor) brushCursor.style.display = showBrush ? 'block' : 'none';
+      }
     }
 
     if (isPainting.current) {
@@ -1857,19 +1876,46 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
           <div className="flex flex-col gap-1 mb-2">
             <button onClick={() => { stopMarching(); cancelCrop(); setTool('text'); }} className={`brush-tool-btn ${tool === 'text' ? 'brush-tool-btn-active' : ''}`} title="Horizontal Type Tool (T)"><Type size={18} /></button>
           </div>
-          <div className="mt-auto flex flex-col gap-1">
-            <button onClick={() => setZoom(z => Math.min(8, z + 0.2))} className="brush-tool-btn" title="확대">
-              <PlusCircle size={18} />
-            </button>
-            <button onClick={() => setZoom(z => Math.max(0.1, z - 0.2))} className="brush-tool-btn" title="축소">
-              <MinusCircle size={18} />
-            </button>
-            <button onClick={() => {
-              const containerW = containerRef.current?.clientWidth ?? 800;
-              const containerH = containerRef.current?.clientHeight ?? 600;
-              setZoom(Math.min((containerW - 40) / imageSize.w, (containerH - 40) / imageSize.h, 1));
-            }} className="brush-tool-btn" title="맞춤"><Maximize2 size={18} /></button>
+
+          <div className="flex-1" />
+
+          {/* Color Picker Section (Photoshop Style) */}
+          <div className="flex flex-col items-center gap-2 mb-4 relative">
+            <div className="relative w-8 h-8">
+              {/* Background Color Square (Decorative for now to match PS look) */}
+              <div
+                className="absolute bottom-0 right-0 w-5 h-5 border border-[#111] bg-white z-0 rounded-sm shadow-lg"
+                title="Background Color (Fixed White for UI)"
+              />
+              {/* Foreground Color Square (Active) */}
+              <div
+                className="absolute top-0 left-0 w-6 h-6 border border-[#111] z-10 rounded-sm shadow-md cursor-pointer transition-transform hover:scale-110 active:scale-95"
+                style={{ backgroundColor: brushColor }}
+                title="Click to change foreground color"
+                onClick={() => document.getElementById('global-color-picker')?.click()}
+              />
+              <input
+                id="global-color-picker"
+                type="color"
+                value={brushColor}
+                onChange={(e) => setBrushColor(e.target.value)}
+                className="absolute inset-0 opacity-0 pointer-events-none"
+              />
+            </div>
           </div>
+
+          <div className="w-8 h-[1px] bg-[#333] mb-2" />
+          <button onClick={() => setZoom(z => Math.min(8, z + 0.2))} className="brush-tool-btn" title="확대">
+            <PlusCircle size={18} />
+          </button>
+          <button onClick={() => setZoom(z => Math.max(0.1, z - 0.2))} className="brush-tool-btn" title="축소">
+            <MinusCircle size={18} />
+          </button>
+          <button onClick={() => {
+            const containerW = containerRef.current?.clientWidth ?? 800;
+            const containerH = containerRef.current?.clientHeight ?? 600;
+            setZoom(Math.min((containerW - 40) / imageSize.w, (containerH - 40) / imageSize.h, 1));
+          }} className="brush-tool-btn" title="맞춤"><Maximize2 size={18} /></button>
         </div>
 
         {/* Center Canvas Area */}
@@ -2150,7 +2196,7 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
 
               <button
                 onClick={resetMask}
-                className="brush-btn-erase w-full h-8 mt-auto text-[10px] font-black uppercase italic rounded-none"
+                className="brush-btn-erase w-full h-8 mt-auto text-[10px] font-black uppercase italic rounded-none border-t border-[#333]"
               >
                 Reset All Changes
               </button>
@@ -2192,24 +2238,13 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
               <p>정말로 목록으로 돌아가시겠습니까?</p>
             </div>
             <div className="brush-modal-footer">
-              <button
-                onClick={() => setShowExitConfirm(false)}
-                className="brush-modal-btn brush-modal-btn-cancel"
-              >
-                취소
-              </button>
-              <button
-                onClick={onReset}
-                className="brush-modal-btn brush-modal-btn-confirm"
-              >
-                돌아가기
-              </button>
+              <button onClick={() => setShowExitConfirm(false)} className="brush-modal-btn brush-modal-btn-cancel">취소</button>
+              <button onClick={onReset} className="brush-modal-btn brush-modal-btn-confirm">돌아가기</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* 숨겨진 임시 캔버스들 */}
       <div className="hidden">
         <canvas ref={maskSnapshotRef} />
         <canvas ref={tempCanvasRef} />

@@ -210,3 +210,182 @@ export function removeColorMatch(data: Uint8ClampedArray, originalData: Uint8Cla
         }
     }
 }
+
+// ── box blur 기반 선택 영역 부드럽게 처리 ──────────────────
+export function boxBlur01(sel: Uint8Array, w: number, h: number, r: number): Float32Array {
+    const tmp = new Float32Array(w * h);
+    const out = new Float32Array(w * h);
+    for (let y = 0; y < h; y++) {
+        const row = y * w;
+        let sum = 0;
+        for (let x = -r; x <= r; x++) {
+            const xx = Math.min(w - 1, Math.max(0, x));
+            sum += sel[row + xx];
+        }
+        tmp[row] = sum;
+        for (let x = 1; x < w; x++) {
+            const addX = Math.min(w - 1, x + r);
+            const subX = Math.max(0, x - r - 1);
+            sum += sel[row + addX] - sel[row + subX];
+            tmp[row + x] = sum;
+        }
+    }
+    const denom = (2 * r + 1) * (2 * r + 1);
+    for (let x = 0; x < w; x++) {
+        let sum = 0;
+        for (let y = -r; y <= r; y++) {
+            const yy = Math.min(h - 1, Math.max(0, y));
+            sum += tmp[yy * w + x];
+        }
+        out[x] = sum / denom;
+        for (let y = 1; y < h; y++) {
+            const addY = Math.min(h - 1, y + r);
+            const subY = Math.max(0, y - r - 1);
+            sum += tmp[addY * w + x] - tmp[subY * w + x];
+            out[y * w + x] = sum / denom;
+        }
+    }
+    return out;
+}
+
+export function threshold01ToBinary(a: Float32Array, cutoff: number): Uint8Array {
+    const out = new Uint8Array(a.length);
+    for (let i = 0; i < a.length; i++) out[i] = a[i] >= cutoff ? 1 : 0;
+    return out;
+}
+
+export function blurAndThresholdBinary(
+    sel: Uint8Array, w: number, h: number,
+    radius: number, cutoff = 0.5, iterations = 1
+): Uint8Array {
+    if (radius <= 0 || iterations <= 0) return sel;
+    let cur = sel;
+    for (let it = 0; it < iterations; it++) {
+        const blurred = boxBlur01(cur, w, h, radius);
+        cur = threshold01ToBinary(blurred, cutoff);
+    }
+    return cur;
+}
+
+export function expandSelection(sel: Uint8Array, width: number, height: number, amount: number): Uint8Array {
+    if (amount === 0) return sel;
+    let current = sel;
+    const abs = Math.abs(amount);
+    const expand = amount > 0;
+
+    for (let step = 0; step < abs; step++) {
+        const next = new Uint8Array(current.length);
+        for (let y = 0; y < height; y++) {
+            for (let x = 0; x < width; x++) {
+                const pos = y * width + x;
+                if (expand) {
+                    if (
+                        current[pos] ||
+                        (x > 0 && current[pos - 1]) ||
+                        (x < width - 1 && current[pos + 1]) ||
+                        (y > 0 && current[pos - width]) ||
+                        (y < height - 1 && current[pos + width])
+                    ) {
+                        next[pos] = 1;
+                    }
+                } else {
+                    if (
+                        current[pos] &&
+                        (x === 0 || current[pos - 1]) &&
+                        (x === width - 1 || current[pos + 1]) &&
+                        (y === 0 || current[pos - width]) &&
+                        (y === height - 1 || current[pos + width])
+                    ) {
+                        next[pos] = 1;
+                    }
+                }
+            }
+        }
+        current = next;
+    }
+    return current;
+}
+
+export function floodFillSelect(
+    imageData: ImageData,
+    startX: number,
+    startY: number,
+    tolerance: number
+): Uint8Array {
+    const { width, height, data } = imageData;
+    const selected = new Uint8Array(width * height);
+
+    const idx = (x: number, y: number) => (y * width + x) * 4;
+    const startIdx = idx(startX, startY);
+    const sr = data[startIdx]!;
+    const sg = data[startIdx + 1]!;
+    const sb = data[startIdx + 2]!;
+    const sa = data[startIdx + 3]!;
+
+    const colorDiff = (i: number) => {
+        const dr = data[i]! - sr;
+        const dg = data[i + 1]! - sg;
+        const db = data[i + 2]! - sb;
+        const da = data[i + 3]! - sa;
+        return Math.sqrt(dr * dr + dg * dg + db * db + da * da);
+    };
+
+    const stack: number[] = [startX + startY * width];
+    const visited = new Uint8Array(width * height);
+    visited[startX + startY * width] = 1;
+
+    while (stack.length > 0) {
+        const pos = stack.pop()!;
+        const x = pos % width;
+        const y = Math.floor(pos / width);
+
+        if (colorDiff(idx(x, y)) <= tolerance) {
+            selected[pos] = 1;
+
+            const neighbors = [
+                [x - 1, y], [x + 1, y], [x, y - 1], [x, y + 1],
+            ];
+            for (const [nx, ny] of neighbors) {
+                if (nx! >= 0 && nx! < width && ny! >= 0 && ny! < height) {
+                    const npos = nx! + ny! * width;
+                    if (!visited[npos]) {
+                        visited[npos] = 1;
+                        stack.push(npos);
+                    }
+                }
+            }
+        }
+    }
+
+    return selected;
+}
+
+// ── 투명 픽셀 기준 자동 크롭 bounds 계산 ──────────────────
+export function getAutoCropBounds(canvas: HTMLCanvasElement, margin = 0) {
+    const ctx = canvas.getContext('2d')!;
+    const { width, height } = canvas;
+    const data = ctx.getImageData(0, 0, width, height).data;
+
+    let minX = width, minY = height, maxX = 0, maxY = 0;
+
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+            const a = data[(y * width + x) * 4 + 3]!;
+            if (a > 10) {
+                if (x < minX) minX = x;
+                if (x > maxX) maxX = x;
+                if (y < minY) minY = y;
+                if (y > maxY) maxY = y;
+            }
+        }
+    }
+
+    if (minX > maxX || minY > maxY) return null; // 완전 투명
+
+    return {
+        x: Math.max(0, minX - margin),
+        y: Math.max(0, minY - margin),
+        w: Math.min(width, maxX + 1 + margin) - Math.max(0, minX - margin),
+        h: Math.min(height, maxY + 1 + margin) - Math.max(0, minY - margin),
+    };
+}

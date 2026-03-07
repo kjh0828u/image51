@@ -1,0 +1,6 @@
+
+C:\workspace\image51New\src\components\BrushEditor.tsx
+  1860:8  error  Parsing error: ')' expected
+
+✖ 1 problem (1 error, 0 warnings)
+

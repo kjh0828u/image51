@@ -1,0 +1,2 @@
+src/components/BrushEditor.tsx(1860,5): error TS1005: ')' expected.
+src/components/BrushEditor.tsx(1861,3): error TS1109: Expression expected.

@@ -1,0 +1,50 @@
+src/components/BrushEditor.tsx(59,9): error TS2451: Cannot redeclare block-scoped variable 'canvasRef'.
+src/components/BrushEditor.tsx(60,9): error TS2451: Cannot redeclare block-scoped variable 'overlayRef'.
+src/components/BrushEditor.tsx(61,9): error TS2451: Cannot redeclare block-scoped variable 'originalRef'.
+src/components/BrushEditor.tsx(62,9): error TS2451: Cannot redeclare block-scoped variable 'maskRef'.
+src/components/BrushEditor.tsx(63,9): error TS2451: Cannot redeclare block-scoped variable 'aiResultRef'.
+src/components/BrushEditor.tsx(64,9): error TS2451: Cannot redeclare block-scoped variable 'maskSnapshotRef'.
+src/components/BrushEditor.tsx(65,9): error TS2451: Cannot redeclare block-scoped variable 'tempCanvasRef'.
+src/components/BrushEditor.tsx(66,9): error TS2451: Cannot redeclare block-scoped variable 'originalSnapshotRef'.
+src/components/BrushEditor.tsx(67,9): error TS2451: Cannot redeclare block-scoped variable 'blurCacheRef'.
+src/components/BrushEditor.tsx(147,5): error TS2451: Cannot redeclare block-scoped variable 'canvasRef'.
+src/components/BrushEditor.tsx(147,16): error TS2451: Cannot redeclare block-scoped variable 'overlayRef'.
+src/components/BrushEditor.tsx(147,28): error TS2451: Cannot redeclare block-scoped variable 'originalRef'.
+src/components/BrushEditor.tsx(147,41): error TS2451: Cannot redeclare block-scoped variable 'maskRef'.
+src/components/BrushEditor.tsx(147,50): error TS2451: Cannot redeclare block-scoped variable 'aiResultRef'.
+src/components/BrushEditor.tsx(148,5): error TS2451: Cannot redeclare block-scoped variable 'maskSnapshotRef'.
+src/components/BrushEditor.tsx(148,22): error TS2451: Cannot redeclare block-scoped variable 'tempCanvasRef'.
+src/components/BrushEditor.tsx(148,37): error TS2451: Cannot redeclare block-scoped variable 'originalSnapshotRef'.
+src/components/BrushEditor.tsx(148,58): error TS2451: Cannot redeclare block-scoped variable 'blurCacheRef'.
+src/components/BrushEditor.tsx(149,5): error TS2451: Cannot redeclare block-scoped variable 'containerRectRef'.
+src/components/BrushEditor.tsx(155,5): error TS2322: Type 'RefObject<HTMLCanvasElement | null>' is not assignable to type 'RefObject<HTMLCanvasElement>'.
+  Type 'HTMLCanvasElement | null' is not assignable to type 'HTMLCanvasElement'.
+    Type 'null' is not assignable to type 'HTMLCanvasElement'.
+src/components/BrushEditor.tsx(155,18): error TS2322: Type 'RefObject<HTMLCanvasElement | null>' is not assignable to type 'RefObject<HTMLCanvasElement>'.
+  Type 'HTMLCanvasElement | null' is not assignable to type 'HTMLCanvasElement'.
+    Type 'null' is not assignable to type 'HTMLCanvasElement'.
+src/components/BrushEditor.tsx(155,27): error TS2322: Type 'RefObject<HTMLCanvasElement | null>' is not assignable to type 'RefObject<HTMLCanvasElement>'.
+  Type 'HTMLCanvasElement | null' is not assignable to type 'HTMLCanvasElement'.
+    Type 'null' is not assignable to type 'HTMLCanvasElement'.
+src/components/BrushEditor.tsx(166,5): error TS2451: Cannot redeclare block-scoped variable 'drawMarching'.
+src/components/BrushEditor.tsx(166,19): error TS2451: Cannot redeclare block-scoped variable 'startMarching'.
+src/components/BrushEditor.tsx(166,34): error TS2451: Cannot redeclare block-scoped variable 'stopMarching'.
+src/components/BrushEditor.tsx(167,5): error TS2451: Cannot redeclare block-scoped variable 'handleWand'.
+src/components/BrushEditor.tsx(167,17): error TS2451: Cannot redeclare block-scoped variable 'applySelectionToMask'.
+src/components/BrushEditor.tsx(175,5): error TS2322: Type 'RefObject<HTMLCanvasElement | null>' is not assignable to type 'RefObject<HTMLCanvasElement>'.
+  Type 'HTMLCanvasElement | null' is not assignable to type 'HTMLCanvasElement'.
+    Type 'null' is not assignable to type 'HTMLCanvasElement'.
+src/components/BrushEditor.tsx(175,16): error TS2322: Type 'RefObject<HTMLCanvasElement | null>' is not assignable to type 'RefObject<HTMLCanvasElement>'.
+  Type 'HTMLCanvasElement | null' is not assignable to type 'HTMLCanvasElement'.
+    Type 'null' is not assignable to type 'HTMLCanvasElement'.
+src/components/BrushEditor.tsx(175,29): error TS2322: Type 'RefObject<HTMLCanvasElement | null>' is not assignable to type 'RefObject<HTMLCanvasElement>'.
+  Type 'HTMLCanvasElement | null' is not assignable to type 'HTMLCanvasElement'.
+    Type 'null' is not assignable to type 'HTMLCanvasElement'.
+src/components/BrushEditor.tsx(271,9): error TS2451: Cannot redeclare block-scoped variable 'drawMarching'.
+src/components/BrushEditor.tsx(392,9): error TS2451: Cannot redeclare block-scoped variable 'startMarching'.
+src/components/BrushEditor.tsx(416,9): error TS2451: Cannot redeclare block-scoped variable 'stopMarching'.
+src/components/BrushEditor.tsx(442,7): error TS2552: Cannot find name 'setImageSize'. Did you mean 'imageSize'?
+src/components/BrushEditor.tsx(476,7): error TS2552: Cannot find name 'setHistoryIndex'. Did you mean 'historyIndex'?
+src/components/BrushEditor.tsx(545,9): error TS2451: Cannot redeclare block-scoped variable 'handleWand'.
+src/components/BrushEditor.tsx(613,9): error TS2451: Cannot redeclare block-scoped variable 'applySelectionToMask'.
+src/components/BrushEditor.tsx(782,9): error TS2451: Cannot redeclare block-scoped variable 'containerRectRef'.

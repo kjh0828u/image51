@@ -1,0 +1,24 @@
+Failed to compile.
+
+./src/components/BrushEditor.tsx
+Error:   [31mx[0m Unterminated regexp literal
+      ,-[[36;1;4mC:\workspace\image51New\src\components\BrushEditor.tsx[0m:1860:1]
+ [2m1857[0m |               <canvas ref={aiResultRef} />
+ [2m1858[0m |             </div>
+ [2m1859[0m |           </div>
+ [2m1860[0m |     </div >
+      : [35;1m     ^^^^^^[0m
+ [2m1861[0m |   );
+ [2m1862[0m | }
+      `----
+
+Caused by:
+    Syntax Error
+
+Import trace for requested module:
+./src/components/BrushEditor.tsx
+./src/components/index.ts
+./src/app/page.tsx
+
+
+> Build failed because of webpack errors

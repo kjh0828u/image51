@@ -35,9 +35,16 @@ import {
   LifeBuoy,
   Droplets
 } from 'lucide-react';
-
-type Tool = 'erase' | 'restore' | 'wand' | 'crop' | 'paint' | 'bucket' | 'eyedropper' | 'marquee-rect' | 'marquee-circle' | 'move' | 'text' | 'clone' | 'heal' | 'blur-brush';
-type BrushShape = 'circle' | 'square' | 'rect-h' | 'rect-v' | 'rect-h-thin' | 'rect-v-thin' | 'diamond';
+import {
+  blurAndThresholdBinary,
+  expandSelection,
+  floodFillSelect,
+  getAutoCropBounds
+} from '../lib/canvasUtils';
+import { useBrushConfig, Tool, BrushShape } from './hooks/useBrushConfig';
+import { useCanvasCore } from './hooks/useCanvasCore';
+import { useHistory } from './hooks/useHistory';
+import { useSelectionTools } from './hooks/useSelectionTools';
 
 interface BrushEditorProps {
   imageUrl: string;
@@ -46,197 +53,9 @@ interface BrushEditorProps {
 
 const EYEDROPPER_CURSOR = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m2 22 1-1h3l9-9'/%3E%3Cpath d='M3 21v-3l9-9'/%3E%3Cpath d='m15 6 3.4-3.4a2.1 2.1 0 1 1 3 3L18 9l-3-3Z'/%3E%3C/svg%3E") 0 22, url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m2 22 1-1h3l9-9'/%3E%3Cpath d='M3 21v-3l9-9'/%3E%3Cpath d='m15 6 3.4-3.4a2.1 2.1 0 1 1 3 3L18 9l-3-3Z'/%3E%3C/svg%3E") 0 22, crosshair`;
 
-// ── box blur 기반 선택 영역 부드럽게 처리 ──────────────────
-function boxBlur01(sel: Uint8Array, w: number, h: number, r: number): Float32Array {
-  const tmp = new Float32Array(w * h);
-  const out = new Float32Array(w * h);
-  for (let y = 0; y < h; y++) {
-    const row = y * w;
-    let sum = 0;
-    for (let x = -r; x <= r; x++) {
-      const xx = Math.min(w - 1, Math.max(0, x));
-      sum += sel[row + xx];
-    }
-    tmp[row] = sum;
-    for (let x = 1; x < w; x++) {
-      const addX = Math.min(w - 1, x + r);
-      const subX = Math.max(0, x - r - 1);
-      sum += sel[row + addX] - sel[row + subX];
-      tmp[row + x] = sum;
-    }
-  }
-  const denom = (2 * r + 1) * (2 * r + 1);
-  for (let x = 0; x < w; x++) {
-    let sum = 0;
-    for (let y = -r; y <= r; y++) {
-      const yy = Math.min(h - 1, Math.max(0, y));
-      sum += tmp[yy * w + x];
-    }
-    out[x] = sum / denom;
-    for (let y = 1; y < h; y++) {
-      const addY = Math.min(h - 1, y + r);
-      const subY = Math.max(0, y - r - 1);
-      sum += tmp[addY * w + x] - tmp[subY * w + x];
-      out[y * w + x] = sum / denom;
-    }
-  }
-  return out;
-}
 
-function threshold01ToBinary(a: Float32Array, cutoff: number): Uint8Array {
-  const out = new Uint8Array(a.length);
-  for (let i = 0; i < a.length; i++) out[i] = a[i] >= cutoff ? 1 : 0;
-  return out;
-}
-
-function blurAndThresholdBinary(
-  sel: Uint8Array, w: number, h: number,
-  radius: number, cutoff = 0.5, iterations = 1
-): Uint8Array {
-  if (radius <= 0 || iterations <= 0) return sel;
-  let cur = sel;
-  for (let it = 0; it < iterations; it++) {
-    const blurred = boxBlur01(cur, w, h, radius);
-    cur = threshold01ToBinary(blurred, cutoff);
-  }
-  return cur;
-}
-
-function expandSelection(sel: Uint8Array, width: number, height: number, amount: number): Uint8Array {
-  if (amount === 0) return sel;
-  let current = sel;
-  const abs = Math.abs(amount);
-  const expand = amount > 0;
-
-  for (let step = 0; step < abs; step++) {
-    const next = new Uint8Array(current.length);
-    for (let y = 0; y < height; y++) {
-      for (let x = 0; x < width; x++) {
-        const pos = y * width + x;
-        if (expand) {
-          if (
-            current[pos] ||
-            (x > 0 && current[pos - 1]) ||
-            (x < width - 1 && current[pos + 1]) ||
-            (y > 0 && current[pos - width]) ||
-            (y < height - 1 && current[pos + width])
-          ) {
-            next[pos] = 1;
-          }
-        } else {
-          if (
-            current[pos] &&
-            (x === 0 || current[pos - 1]) &&
-            (x === width - 1 || current[pos + 1]) &&
-            (y === 0 || current[pos - width]) &&
-            (y === height - 1 || current[pos + width])
-          ) {
-            next[pos] = 1;
-          }
-        }
-      }
-    }
-    current = next;
-  }
-  return current;
-}
-
-function floodFillSelect(
-  imageData: ImageData,
-  startX: number,
-  startY: number,
-  tolerance: number
-): Uint8Array {
-  const { width, height, data } = imageData;
-  const selected = new Uint8Array(width * height);
-
-  const idx = (x: number, y: number) => (y * width + x) * 4;
-  const startIdx = idx(startX, startY);
-  const sr = data[startIdx];
-  const sg = data[startIdx + 1];
-  const sb = data[startIdx + 2];
-  const sa = data[startIdx + 3];
-
-  const colorDiff = (i: number) => {
-    const dr = data[i] - sr;
-    const dg = data[i + 1] - sg;
-    const db = data[i + 2] - sb;
-    const da = data[i + 3] - sa;
-    return Math.sqrt(dr * dr + dg * dg + db * db + da * da);
-  };
-
-  const stack: number[] = [startX + startY * width];
-  const visited = new Uint8Array(width * height);
-  visited[startX + startY * width] = 1;
-
-  while (stack.length > 0) {
-    const pos = stack.pop()!;
-    const x = pos % width;
-    const y = Math.floor(pos / width);
-
-    if (colorDiff(idx(x, y)) <= tolerance) {
-      selected[pos] = 1;
-
-      const neighbors = [
-        [x - 1, y], [x + 1, y], [x, y - 1], [x, y + 1],
-      ];
-      for (const [nx, ny] of neighbors) {
-        if (nx! >= 0 && nx! < width && ny! >= 0 && ny! < height) {
-          const npos = nx! + ny! * width;
-          if (!visited[npos]) {
-            visited[npos] = 1;
-            stack.push(npos);
-          }
-        }
-      }
-    }
-  }
-
-  return selected;
-}
-
-// ── 투명 픽셀 기준 자동 크롭 bounds 계산 ──────────────────
-function getAutoCropBounds(canvas: HTMLCanvasElement, margin = 0) {
-  const ctx = canvas.getContext('2d')!;
-  const { width, height } = canvas;
-  const data = ctx.getImageData(0, 0, width, height).data;
-
-  let minX = width, minY = height, maxX = 0, maxY = 0;
-
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const a = data[(y * width + x) * 4 + 3];
-      if (a > 10) {
-        if (x < minX) minX = x;
-        if (x > maxX) maxX = x;
-        if (y < minY) minY = y;
-        if (y > maxY) maxY = y;
-      }
-    }
-  }
-
-  if (minX > maxX || minY > maxY) return null; // 완전 투명
-
-  return {
-    x: Math.max(0, minX - margin),
-    y: Math.max(0, minY - margin),
-    w: Math.min(width, maxX + 1 + margin) - Math.max(0, minX - margin),
-    h: Math.min(height, maxY + 1 + margin) - Math.max(0, minY - margin),
-  };
-}
 
 export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const overlayRef = useRef<HTMLCanvasElement>(null);
-  const originalRef = useRef<HTMLCanvasElement>(null);
-  const maskRef = useRef<HTMLCanvasElement>(null);
-  const aiResultRef = useRef<HTMLCanvasElement>(null);
-  const maskSnapshotRef = useRef<HTMLCanvasElement>(null);
-  const tempCanvasRef = useRef<HTMLCanvasElement>(null);
-  const originalSnapshotRef = useRef<HTMLCanvasElement | null>(null);
-  const blurCacheRef = useRef<HTMLCanvasElement | null>(null);
-
-  const containerRef = useRef<HTMLDivElement>(null);
   const isPainting = useRef(false);
   const lastPos = useRef<{ x: number; y: number } | null>(null);
 
@@ -259,33 +78,13 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
   const cloneSourceRef = useRef<{ x: number; y: number } | null>(null);
   const [hasCloneSource, setHasCloneSource] = useState(false);
 
-  const [tool, setTool] = useState<Tool>('wand');
-  const [brushSize, setBrushSize] = useState(30);
-  const [brushOpacity, setBrushOpacity] = useState(100);
-  const [brushColor, setBrushColor] = useState('#4f46e5');
-  const [brushShape, setBrushShape] = useState<BrushShape>('circle');
-  const [brushHardness, setBrushHardness] = useState(50);
-  const [tolerance, setTolerance] = useState(30);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [aiDone, setAiDone] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [imageSize, setImageSize] = useState({ w: 0, h: 0 });
-  const [zoom, setZoom] = useState(1);
-
   // 성능 최적화용 Ref (고빈도 이벤트 처리용)
-  const toolRef = useRef<Tool>(tool);
-  const zoomRef = useRef<number>(zoom);
   const isDraggingHandleRef = useRef<string | null>(null);
   const rafId = useRef<number | null>(null);
 
-  useEffect(() => { toolRef.current = tool; }, [tool]);
-  useEffect(() => { zoomRef.current = zoom; }, [zoom]);
   useEffect(() => { isDraggingHandleRef.current = isDraggingHandle; }, [isDraggingHandle]);
 
   const brushCursorRef = useRef<HTMLDivElement>(null);
-  const [hasSelection, setHasSelection] = useState(false);
-  const [wandExpand, setWandExpand] = useState(0);
-  const [wandSmooth, setWandSmooth] = useState(1);
   const [bgPreset, setBgPreset] = useState(0);
   const expandRafRef = useRef<number | null>(null);
 
@@ -314,18 +113,61 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
   // 뒤로가기 컨펌 모달
   const [showExitConfirm, setShowExitConfirm] = useState(false);
 
-  // 히스토리 아이템 타입
-  interface HistoryItem {
-    mask: ImageData;
-    original: ImageData;
-    label: string;
-    time: string;
-  }
+  // 1. 도구(Tool) 및 브러시 설정 가져오기
+  const {
+    tool, setTool, toolRef,
+    brushSize, setBrushSize,
+    brushOpacity, setBrushOpacity,
+    brushColor, setBrushColor,
+    brushShape, setBrushShape,
+    brushHardness, setBrushHardness,
+    tolerance, setTolerance,
+    wandExpand, setWandExpand,
+    wandSmooth, setWandSmooth
+  } = useBrushConfig();
 
-  // 히스토리 관리 (전문화된 선형 스택)
-  const historyStack = useRef<HistoryItem[]>([]);
-  const [historyIndex, setHistoryIndex] = useState(-1);
-  const [historyVersion, setHistoryVersion] = useState(0);
+  // 2. 캔버스 상태 가져오기
+  const core = useCanvasCore(imageUrl, () => {
+    resetHistory();
+    saveMaskSnapshot('Open');
+  });
+
+  const {
+    canvasRef, overlayRef, originalRef, maskRef, aiResultRef,
+    maskSnapshotRef, tempCanvasRef, originalSnapshotRef, blurCacheRef,
+    containerRef, containerRectRef, imageSize, zoom, setZoom, zoomRef,
+    updateCanvasSize, compositeAndRender
+  } = core;
+
+  // 3. Selection Tools
+  const selectionTools = useSelectionTools({
+    originalRef, maskRef, overlayRef,
+    overlayCache, selectionRef, baseSelectionRef,
+    cachedSelKey, marchingSegs, marchingOffset, isSliding,
+    tolerance, wandSmooth, wandExpand,
+    compositeAndRender, toolRef, cropRectRef,
+    saveMaskSnapshot: (label) => saveMaskSnapshot(label),
+    drawCropOverlay: (rect) => drawCropOverlay(rect)
+  });
+
+  const {
+    hasSelection, setHasSelection,
+    drawMarching, startMarching, stopMarching,
+    handleWand, applySelectionToMask
+  } = selectionTools;
+
+  // 4. 히스토리 상태 가져오기
+  const {
+    historyStack, historyIndex, historyVersion, setHistoryVersion,
+    saveMaskSnapshot, jumpToHistory, undo, redo, canUndo, canRedo, resetHistory
+  } = useHistory({
+    canvasRef, originalRef, maskRef, updateCanvasSize,
+    compositeAndRender, stopMarching, setHasSelection
+  });
+
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [aiDone, setAiDone] = useState(false);
+  const [progress, setProgress] = useState(0);
 
   // 히스토리 추가 시 하단 자동 스크롤
   useEffect(() => {
@@ -337,83 +179,6 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
     }
   }, [historyIndex, historyStack.current.length]);
 
-  // ── 핵심 드로잉/유틸리티 함수 (히스토리에서 호출하므로 상단 배치) ────────────────
-  const compositeAndRender = useCallback(() => {
-    if (!canvasRef.current || !originalRef.current || !maskRef.current) return;
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d')!;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.drawImage(originalRef.current, 0, 0);
-    ctx.globalCompositeOperation = 'destination-in';
-    ctx.drawImage(maskRef.current, 0, 0);
-    ctx.globalCompositeOperation = 'source-over';
-  }, []);
-
-  const updateCanvasSize = useCallback((w: number, h: number) => {
-    [canvasRef, overlayRef, originalRef, maskRef, aiResultRef].forEach((ref) => {
-      if (ref.current) {
-        ref.current.width = w;
-        ref.current.height = h;
-      }
-    });
-    setImageSize({ w, h });
-  }, []);
-
-  const saveMaskSnapshot = useCallback((label: string) => {
-    if (!maskRef.current || !originalRef.current) return;
-    const mCtx = maskRef.current.getContext('2d', { willReadFrequently: true })!;
-    const oCtx = originalRef.current.getContext('2d', { willReadFrequently: true })!;
-    const mSnap = mCtx.getImageData(0, 0, maskRef.current.width, maskRef.current.height);
-    const oSnap = oCtx.getImageData(0, 0, originalRef.current.width, originalRef.current.height);
-
-    const now = new Date();
-    const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
-
-    const newItem: HistoryItem = {
-      mask: mSnap,
-      original: oSnap,
-      label,
-      time: timeStr
-    };
-
-    // 현재 인덱스 이후의 히스토리는 삭제 (새로운 분기 시작)
-    const newStack = historyStack.current.slice(0, historyIndex + 1);
-    newStack.push(newItem);
-    historyStack.current = newStack;
-    setHistoryIndex(newStack.length - 1);
-    setHistoryVersion(v => v + 1);
-  }, [historyIndex]);
-
-  const jumpToHistory = useCallback((index: number) => {
-    if (index < 0 || index >= historyStack.current.length) return;
-    const item = historyStack.current[index]!;
-
-    if (!maskRef.current || !originalRef.current) return;
-    const mCtx = maskRef.current.getContext('2d')!;
-    const oCtx = originalRef.current.getContext('2d')!;
-
-    if (item.mask.width !== maskRef.current.width || item.mask.height !== maskRef.current.height) {
-      updateCanvasSize(item.mask.width, item.mask.height);
-    }
-
-    mCtx.putImageData(item.mask, 0, 0);
-    oCtx.putImageData(item.original, 0, 0);
-
-    setHistoryIndex(index);
-    compositeAndRender();
-    setHistoryVersion(v => v + 1);
-  }, [compositeAndRender, updateCanvasSize]);
-
-  const undo = useCallback(() => {
-    if (historyIndex > 0) jumpToHistory(historyIndex - 1);
-  }, [historyIndex, jumpToHistory]);
-
-  const redo = useCallback(() => {
-    if (historyIndex < historyStack.current.length - 1) jumpToHistory(historyIndex + 1);
-  }, [historyIndex, jumpToHistory]);
-
-  const canUndo = historyIndex > 0;
-  const canRedo = historyIndex < historyStack.current.length - 1;
 
 
 
@@ -492,218 +257,7 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
     }
   }, []);
 
-  const drawMarching = useCallback(() => {
-    const overlay = overlayRef.current;
-    const sel = selectionRef.current;
-    if (!overlay || !sel) return;
-
-    const w = overlay.width;
-    const h = overlay.height;
-    const ctx = overlay.getContext('2d')!;
-
-    if (cachedSelKey.current !== sel) {
-      cachedSelKey.current = sel;
-
-      // 다운샘플링 배수 계산 (최대 너비를 800px 정도로 제한하여 성능 확보)
-      const MAX_CALC_SIZE = 800;
-      const calcScale = Math.min(1, MAX_CALC_SIZE / Math.max(w, h));
-      const sw = Math.floor(w * calcScale);
-      const sh = Math.floor(h * calcScale);
-
-      const highlight = new ImageData(w, h);
-      const buf = highlight.data;
-      for (let i = 0; i < sel.length; i++) {
-        if (!sel[i]) continue;
-        buf[i * 4] = 100;
-        buf[i * 4 + 1] = 180;
-        buf[i * 4 + 2] = 255;
-        buf[i * 4 + 3] = 60;
-      }
-      overlayCache.current = highlight;
-
-      const segs: number[] = [];
-      const s = (x: number, y: number) => {
-        const ox = Math.min(w - 1, Math.floor(x / calcScale));
-        const oy = Math.min(h - 1, Math.floor(y / calcScale));
-        return sel[oy * w + ox] || 0;
-      };
-
-      for (let cy = 0; cy < sh; cy++) {
-        for (let cx = 0; cx < sw; cx++) {
-          const tl = s(cx, cy);
-          const tr = s(cx + 1, cy);
-          const br = s(cx + 1, cy + 1);
-          const bl = s(cx, cy + 1);
-          const idx = (tl << 3) | (tr << 2) | (br << 1) | bl;
-          if (idx === 0 || idx === 15) continue;
-
-          const tx = (cx + 0.5) / calcScale, ty = cy / calcScale;
-          const rx = (cx + 1) / calcScale, ry = (cy + 0.5) / calcScale;
-          const bx = (cx + 0.5) / calcScale, by = (cy + 1) / calcScale;
-          const lx = cx / calcScale, ly = (cy + 0.5) / calcScale;
-
-          switch (idx) {
-            case 1: segs.push(bx, by, lx, ly); break;
-            case 2: segs.push(rx, ry, bx, by); break;
-            case 3: segs.push(rx, ry, lx, ly); break;
-            case 4: segs.push(tx, ty, rx, ry); break;
-            case 5: segs.push(tx, ty, lx, ly); segs.push(rx, ry, bx, by); break;
-            case 6: segs.push(tx, ty, bx, by); break;
-            case 7: segs.push(tx, ty, lx, ly); break;
-            case 8: segs.push(lx, ly, tx, ty); break;
-            case 9: segs.push(bx, by, tx, ty); break;
-            case 10: segs.push(lx, ly, bx, by); segs.push(tx, ty, rx, ry); break;
-            case 11: segs.push(rx, ry, tx, ty); break;
-            case 12: segs.push(lx, ly, rx, ry); break;
-            case 13: segs.push(bx, by, rx, ry); break;
-            case 14: segs.push(lx, ly, bx, by); break;
-          }
-        }
-      }
-      marchingSegs.current = segs;
-    }
-
-    ctx.clearRect(0, 0, w, h);
-    if (overlayCache.current) ctx.putImageData(overlayCache.current, 0, 0);
-
-    if (isSliding.current) return;
-
-    const segs = marchingSegs.current;
-    if (!segs || segs.length === 0) return;
-
-    const t = marchingOffset.current;
-    const colors = [
-      [168, 85, 247],
-      [255, 255, 255],
-      [56, 189, 248],
-      [236, 72, 153],
-      [255, 255, 255],
-      [168, 85, 247],
-    ];
-    const steps = colors.length - 1;
-    const pos = t * steps;
-    const idx = Math.floor(pos);
-    const frac = pos - idx;
-    const [r1, g1, b1] = colors[idx]!;
-    const [r2, g2, b2] = colors[idx + 1]!;
-    const r = Math.round(r1 + (r2 - r1) * frac);
-    const g = Math.round(g1 + (g2 - g1) * frac);
-    const b = Math.round(b1 + (b2 - b1) * frac);
-
-    const drawPath = () => {
-      ctx.beginPath();
-      for (let i = 0; i < segs.length; i += 4) {
-        ctx.moveTo(segs[i]!, segs[i + 1]!);
-        ctx.lineTo(segs[i + 2]!, segs[i + 3]!);
-      }
-      ctx.stroke();
-    };
-
-    ctx.save();
-    ctx.setLineDash([]);
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = 'rgba(0,0,0,0.5)';
-    drawPath();
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = `rgb(${r},${g},${b})`;
-    drawPath();
-    ctx.restore();
-  }, []);
-
-  const marchingRafId = useRef<number | null>(null);
-  const lastMarchingTime = useRef<number>(0);
-
-  const startMarching = useCallback(() => {
-    const loop = (time: number) => {
-      if (!lastMarchingTime.current) lastMarchingTime.current = time;
-      const dt = (time - lastMarchingTime.current) / 1000;
-      lastMarchingTime.current = time;
-
-      if (!isSliding.current) {
-        marchingOffset.current = (marchingOffset.current + 0.2 * dt) % 1;
-
-        const currentTool = toolRef.current;
-        if ((currentTool === 'wand' || currentTool === 'marquee-rect' || currentTool === 'marquee-circle') && selectionRef.current) {
-          drawMarching();
-        } else if (currentTool === 'crop' && cropRectRef.current) {
-          drawCropOverlay(cropRectRef.current);
-        } else if ((currentTool === 'marquee-rect' || currentTool === 'marquee-circle') && cropRectRef.current) {
-          drawCropOverlay(cropRectRef.current);
-        }
-      }
-      marchingRafId.current = requestAnimationFrame(loop);
-    };
-    if (marchingRafId.current) cancelAnimationFrame(marchingRafId.current);
-    marchingRafId.current = requestAnimationFrame(loop);
-  }, [drawMarching, drawCropOverlay]);
-
-  const stopMarching = useCallback(() => {
-    if (marchingRafId.current) {
-      cancelAnimationFrame(marchingRafId.current);
-      marchingRafId.current = null;
-    }
-    if (overlayRef.current) {
-      overlayRef.current.getContext('2d')!.clearRect(
-        0, 0,
-        overlayRef.current.width,
-        overlayRef.current.height
-      );
-    }
-    selectionRef.current = null;
-    baseSelectionRef.current = null;
-    overlayCache.current = null;
-    marchingSegs.current = [];
-    cachedSelKey.current = null;
-    isSliding.current = false;
-    setHasSelection(false);
-  }, []);
-
-  useEffect(() => {
-    const img = new Image();
-    img.onload = () => {
-      const w = img.naturalWidth;
-      const h = img.naturalHeight;
-      setImageSize({ w, h });
-
-      const containerW = containerRef.current?.clientWidth ?? 800;
-      const containerH = containerRef.current?.clientHeight ?? 600;
-      setZoom(Math.min((containerW - 40) / w, (containerH - 40) / h, 1));
-
-      [canvasRef, overlayRef, originalRef, maskRef, aiResultRef].forEach((ref) => {
-        if (ref.current) {
-          ref.current.width = w;
-          ref.current.height = h;
-        }
-      });
-
-      originalRef.current!.getContext('2d')!.drawImage(img, 0, 0);
-      const oCtx = originalRef.current!.getContext('2d')!;
-      const imgData = oCtx.getImageData(0, 0, w, h);
-
-      const maskCtx = maskRef.current!.getContext('2d')!;
-      const mData = maskCtx.createImageData(w, h);
-
-      // 투명 PNG인 경우 알파 값을 마스크에 복사 (0=투명, 255=불투명)
-      for (let i = 0; i < imgData.data.length; i += 4) {
-        mData.data[i] = 0;
-        mData.data[i + 1] = 0;
-        mData.data[i + 2] = 0;
-        mData.data[i + 3] = imgData.data[i + 3];
-      }
-      maskCtx.putImageData(mData, 0, 0);
-
-      aiResultRef.current!.getContext('2d')!.drawImage(img, 0, 0);
-      compositeAndRender();
-
-      // 초기 상태 기록
-      historyStack.current = [];
-      setHistoryIndex(-1);
-      saveMaskSnapshot('Open');
-    };
-    img.src = imageUrl;
-
-    return () => stopMarching();
-  }, [imageUrl, compositeAndRender, stopMarching]);
+  // ── 크롭 오버레이 그리기 ──────────────────────────────────
 
   const runAI = useCallback(async () => {
     if (!originalRef.current || !maskRef.current || !aiResultRef.current) return;
@@ -766,47 +320,6 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
     };
   }, []);
 
-  const handleWand = useCallback(
-    (pos: { x: number; y: number }, additive: boolean) => {
-      if (!originalRef.current) return;
-      const w = originalRef.current.width;
-      const h = originalRef.current.height;
-
-      // 이미지 범위를 벗어난 클릭은 무시
-      if (pos.x < 0 || pos.x >= w || pos.y < 0 || pos.y >= h) return;
-
-      const x = Math.max(0, Math.min(w - 1, pos.x));
-      const y = Math.max(0, Math.min(h - 1, pos.y));
-
-      const origData = originalRef.current.getContext('2d')!.getImageData(0, 0, w, h);
-      const rawSel = floodFillSelect(origData, x, y, tolerance);
-      const radius = Math.min(3, Math.floor(wandSmooth / 6));
-      const iterations = wandSmooth >= 12 ? 2 : 1;
-      const newSel = radius > 0
-        ? blurAndThresholdBinary(rawSel, w, h, radius, 0.5, iterations)
-        : rawSel;
-
-      let baseSel: Uint8Array;
-      if (additive && baseSelectionRef.current) {
-        baseSel = new Uint8Array(baseSelectionRef.current.length);
-        for (let i = 0; i < baseSel.length; i++) {
-          baseSel[i] = baseSelectionRef.current[i]! | newSel[i]!;
-        }
-      } else {
-        baseSel = newSel;
-      }
-
-      baseSelectionRef.current = baseSel;
-      const expanded = expandSelection(baseSel, w, h, wandExpand + 1);
-      selectionRef.current = expanded;
-
-      setHasSelection(true);
-      drawMarching();
-      startMarching();
-    },
-    [tolerance, wandExpand, wandSmooth, drawMarching, startMarching]
-  );
-
   const handleExpandChange = useCallback(
     (value: number) => {
       setWandExpand(value);
@@ -831,36 +344,7 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
         });
       });
     },
-    [drawMarching]
-  );
-
-  const applySelectionToMask = useCallback(
-    (mode: 'erase' | 'restore') => {
-      const sel = selectionRef.current;
-      if (!sel || !maskRef.current) return;
-
-      const maskCtx = maskRef.current.getContext('2d')!;
-      const maskData = maskCtx.getImageData(
-        0, 0,
-        maskRef.current.width,
-        maskRef.current.height
-      );
-      const val = mode === 'erase' ? 0 : 255;
-
-      for (let i = 0; i < sel.length; i++) {
-        if (sel[i]) {
-          maskData.data[i * 4] = 0;
-          maskData.data[i * 4 + 1] = 0;
-          maskData.data[i * 4 + 2] = 0;
-          maskData.data[i * 4 + 3] = val;
-        }
-      }
-      maskCtx.putImageData(maskData, 0, 0);
-      compositeAndRender();
-      stopMarching();
-      saveMaskSnapshot(mode === 'erase' ? 'Erase Selection' : 'Restore Selection');
-    },
-    [compositeAndRender, stopMarching, saveMaskSnapshot]
+    [drawMarching, setWandExpand]
   );
 
   const fillSelectionWithColor = useCallback(() => {
@@ -1003,7 +487,6 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
 
   // ── 성능 최적화용 캐시 및 Ref ──────────────────────────────────
   const brushTipRef = useRef<HTMLCanvasElement | null>(null);
-  const containerRectRef = useRef<DOMRect | null>(null);
 
   // 브러시 팁 캐시 생성 (모양/크기/색상이 바뀔 때만 업데이트)
   const updateBrushTip = useCallback(() => {
@@ -1574,7 +1057,7 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [hasSelection, applySelectionToMask, undo, redo, tool, cancelCrop, applyCrop, cropRect]);
+  }, [hasSelection, applySelectionToMask, undo, redo, tool, cancelCrop, applyCrop, cropRect, startMarching, stopMarching, setTool]);
 
   // ── 전역 마우스/터치 이동 리스너 (캔버스 밖에서도 작업 유지) ─────────────────
   const handleMouseMove = useCallback((e: MouseEvent | TouchEvent) => {

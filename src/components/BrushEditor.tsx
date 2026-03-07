@@ -30,10 +30,13 @@ import {
   Sliders,
   Move,
   Type,
-  Circle as CircleIcon
+  Circle as CircleIcon,
+  Stamp,
+  LifeBuoy,
+  Droplets
 } from 'lucide-react';
 
-type Tool = 'erase' | 'restore' | 'wand' | 'crop' | 'paint' | 'bucket' | 'eyedropper' | 'marquee-rect' | 'marquee-circle' | 'move' | 'text';
+type Tool = 'erase' | 'restore' | 'wand' | 'crop' | 'paint' | 'bucket' | 'eyedropper' | 'marquee-rect' | 'marquee-circle' | 'move' | 'text' | 'clone' | 'heal' | 'blur-brush';
 type BrushShape = 'circle' | 'square' | 'rect-h' | 'rect-v' | 'rect-h-thin' | 'rect-v-thin' | 'diamond';
 
 interface BrushEditorProps {
@@ -228,6 +231,8 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
   const aiResultRef = useRef<HTMLCanvasElement>(null);
   const maskSnapshotRef = useRef<HTMLCanvasElement>(null);
   const tempCanvasRef = useRef<HTMLCanvasElement>(null);
+  const originalSnapshotRef = useRef<HTMLCanvasElement | null>(null);
+  const blurCacheRef = useRef<HTMLCanvasElement | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const isPainting = useRef(false);
@@ -249,12 +254,15 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
   const cropRectRef = useRef<{ x: number; y: number; w: number; h: number } | null>(null);
   const [cropRect, setCropRect] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const [isDraggingHandle, setIsDraggingHandle] = useState<string | null>(null);
+  const cloneSourceRef = useRef<{ x: number; y: number } | null>(null);
+  const [hasCloneSource, setHasCloneSource] = useState(false);
 
   const [tool, setTool] = useState<Tool>('wand');
   const [brushSize, setBrushSize] = useState(30);
   const [brushOpacity, setBrushOpacity] = useState(100);
   const [brushColor, setBrushColor] = useState('#4f46e5');
   const [brushShape, setBrushShape] = useState<BrushShape>('circle');
+  const [brushHardness, setBrushHardness] = useState(50);
   const [tolerance, setTolerance] = useState(30);
   const [isProcessing, setIsProcessing] = useState(false);
   const [aiDone, setAiDone] = useState(false);
@@ -965,6 +973,18 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
     ctx.fill();
   };
 
+  const applySoftMask = (ctx: CanvasRenderingContext2D, x: number, y: number, size: number, hardness: number) => {
+    const r = size / 2;
+    const grad = ctx.createRadialGradient(x, y, r * (hardness / 100), x, y, r);
+    grad.addColorStop(0, 'rgba(0,0,0,1)');
+    grad.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = grad;
+    ctx.globalCompositeOperation = 'destination-in';
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+  };
+
   const paint = useCallback(
     (pos: { x: number; y: number }) => {
       if (!maskRef.current || !originalRef.current) return;
@@ -999,24 +1019,104 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
         maskCtx.globalCompositeOperation = 'source-over';
         maskCtx.globalAlpha = 1; // 마스크는 항상 100%로 채움 (보여야 하니까)
         maskCtx.fillStyle = 'black';
+      } else if (tool === 'blur-brush') {
+        // 흐림 도구: 현재 위치 주변 픽셀을 Blur 시켜서 원본에 덮음
+        origCtx.globalAlpha = alpha;
+        maskCtx.globalAlpha = 0; // 마스크는 변경 안함
+      } else if (tool === 'clone' || tool === 'heal') {
+        origCtx.globalAlpha = alpha;
+        maskCtx.globalAlpha = 0;
       }
 
       // stamping
       const dx = pos.x - from.x;
       const dy = pos.y - from.y;
       const distance = Math.sqrt(dx * dx + dy * dy);
-      const step = Math.max(1, brushSize / 10);
+
+      // 최적화된 로직이므로 간격을 아주 좁혀서(질감 향상) 렉 없이 처리 가능
+      const step = Math.max(1, brushSize / 15);
       const steps = Math.ceil(distance / step);
+
+      // Aligned Offset 계산 (단일 드래그 세션 동안 고정)
+      let startOffset = { x: 0, y: 0 };
+      if ((tool === 'clone' || tool === 'heal') && cloneSourceRef.current && initialMousePos.current) {
+        startOffset = {
+          x: cloneSourceRef.current.x - initialMousePos.current.x,
+          y: cloneSourceRef.current.y - initialMousePos.current.y
+        };
+      }
 
       for (let i = 0; i <= steps; i++) {
         const px = from.x + (dx * i) / Math.max(1, steps);
         const py = from.y + (dy * i) / Math.max(1, steps);
 
+        // 1. 임시 캔버스에 "무엇을 그릴지" 준비
+        const tCanvas = tempCanvasRef.current;
+        if (!tCanvas) return;
+        tCanvas.width = brushSize;
+        tCanvas.height = brushSize;
+        const tCtx = tCanvas.getContext('2d')!;
+        tCtx.clearRect(0, 0, brushSize, brushSize);
+
         if (tool === 'paint') {
-          drawShape(origCtx, px, py, brushSize, brushShape);
-          drawShape(maskCtx, px, py, brushSize, brushShape);
-        } else {
-          drawShape(maskCtx, px, py, brushSize, brushShape);
+          tCtx.fillStyle = brushColor;
+          tCtx.fillRect(0, 0, brushSize, brushSize);
+        } else if (tool === 'blur-brush' && blurCacheRef.current) {
+          tCtx.drawImage(
+            blurCacheRef.current,
+            Math.round(px - brushSize / 2), Math.round(py - brushSize / 2), Math.round(brushSize), Math.round(brushSize),
+            0, 0, brushSize, brushSize
+          );
+        } else if ((tool === 'clone' || tool === 'heal') && originalSnapshotRef.current) {
+          const finalSrcX = px + startOffset.x;
+          const finalSrcY = py + startOffset.y;
+          tCtx.drawImage(
+            originalSnapshotRef.current,
+            Math.round(finalSrcX - brushSize / 2), Math.round(finalSrcY - brushSize / 2), Math.round(brushSize), Math.round(brushSize),
+            0, 0, brushSize, brushSize
+          );
+        }
+
+        // 2. 부드러운 마스크 적용 (자국 제거의 핵심)
+        if (['paint', 'clone', 'heal', 'blur-brush'].includes(tool)) {
+          applySoftMask(tCtx, brushSize / 2, brushSize / 2, brushSize, brushHardness);
+        }
+
+        // 3. 메인 캔버스에 합성
+        if (['paint', 'clone', 'heal', 'blur-brush'].includes(tool)) {
+          origCtx.save();
+          if (tool === 'heal') {
+            origCtx.globalAlpha = alpha * 0.7;
+          } else {
+            origCtx.globalAlpha = alpha;
+          }
+          // [해결] 임시 캔버스(부드럽게 마스킹된 상태)를 메인 캔버스에 그립니다.
+          origCtx.drawImage(tCanvas, Math.round(px - brushSize / 2), Math.round(py - brushSize / 2));
+          origCtx.restore();
+
+          // 브러시 도구인 경우 마스크도 동일하게 소프트 마스크 적용
+          if (tool === 'paint') {
+            maskCtx.save();
+            maskCtx.globalAlpha = 1;
+            maskCtx.drawImage(tCanvas, Math.round(px - brushSize / 2), Math.round(py - brushSize / 2));
+            maskCtx.restore();
+          }
+        } else if (tool === 'erase' || tool === 'restore') {
+          const tCanvas = tempCanvasRef.current;
+          if (!tCanvas) return;
+          tCanvas.width = brushSize; tCanvas.height = brushSize;
+          const tCtx = tCanvas.getContext('2d')!;
+          tCtx.clearRect(0, 0, brushSize, brushSize);
+          tCtx.fillStyle = 'black';
+          tCtx.fillRect(0, 0, brushSize, brushSize);
+
+          applySoftMask(tCtx, brushSize / 2, brushSize / 2, brushSize, brushHardness);
+
+          maskCtx.save();
+          maskCtx.globalAlpha = alpha;
+          maskCtx.globalCompositeOperation = tool === 'erase' ? 'destination-out' : 'source-over';
+          maskCtx.drawImage(tCanvas, Math.round(px - brushSize / 2), Math.round(py - brushSize / 2));
+          maskCtx.restore();
         }
       }
 
@@ -1030,14 +1130,24 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
       }
       compositeAndRender();
     },
-    [tool, brushSize, brushOpacity, brushShape, brushColor, compositeAndRender]
+    [tool, brushSize, brushOpacity, brushShape, brushColor, brushHardness, compositeAndRender, originalSnapshotRef, blurCacheRef]
   );
 
+
+  const initialMousePos = useRef({ x: 0, y: 0 });
 
   const handleMouseDown = useCallback(
     (e: React.MouseEvent | React.TouchEvent) => {
       e.preventDefault();
       const pos = getCanvasPos(e);
+      const isAlt = (e as any).altKey;
+
+      if ((tool === 'clone' || tool === 'heal') && isAlt) {
+        cloneSourceRef.current = pos;
+        setHasCloneSource(true);
+        return;
+      }
+
       if (tool === 'wand') {
         const isCtrl = 'ctrlKey' in e ? (e as any).ctrlKey || (e as any).shiftKey : false;
         handleWand(pos, isCtrl);
@@ -1078,13 +1188,36 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
         setCropRect({ x: pos.x, y: pos.y, w: 0, h: 0 });
         isPainting.current = true;
       } else {
+        // 도구별 작업 시작 시 스냅샷/캐시 생성 (성능 및 품질 핵심)
+        if (originalRef.current) {
+          const w = originalRef.current.width;
+          const h = originalRef.current.height;
+
+          // 1. 원본 스냅샷 (Clone/Heal용)
+          if (!originalSnapshotRef.current) originalSnapshotRef.current = document.createElement('canvas');
+          originalSnapshotRef.current.width = w;
+          originalSnapshotRef.current.height = h;
+          originalSnapshotRef.current.getContext('2d')!.drawImage(originalRef.current, 0, 0);
+
+          // 2. 전체 블러 캐시 (Blur Tool용 - 미리 한 번만 연산)
+          if (tool === 'blur-brush') {
+            if (!blurCacheRef.current) blurCacheRef.current = document.createElement('canvas');
+            blurCacheRef.current.width = w;
+            blurCacheRef.current.height = h;
+            const bCtx = blurCacheRef.current.getContext('2d')!;
+            bCtx.filter = `blur(${Math.max(1, brushSize / 5)}px)`;
+            bCtx.drawImage(originalRef.current, 0, 0);
+          }
+        }
+
         isPainting.current = true;
         hasStrokeRef.current = false;
         lastPos.current = pos;
+        initialMousePos.current = pos;
         paint(pos);
       }
     },
-    [tool, getCanvasPos, handleWand, handleBucket, handleEyedropper, paint, saveMaskSnapshot, drawCropOverlay, cropRect, zoom]
+    [tool, getCanvasPos, handleWand, handleBucket, handleEyedropper, paint, saveMaskSnapshot, drawCropOverlay, cropRect, zoom, brushSize, originalSnapshotRef, blurCacheRef]
   );
 
 
@@ -1135,7 +1268,15 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
       applyMarqueeSelection();
     }
     if (isPainting.current && hasStrokeRef.current) {
-      const label = toolRef.current === 'erase' ? 'Eraser' : toolRef.current === 'restore' ? 'Restore' : toolRef.current === 'paint' ? 'Paint' : 'Brush';
+      let label = 'Edit';
+      const t = toolRef.current;
+      if (t === 'erase') label = 'Eraser';
+      else if (t === 'restore') label = 'Restore';
+      else if (t === 'paint') label = 'Brush';
+      else if (t === 'clone') label = 'Clone Stamp';
+      else if (t === 'heal') label = 'Healing';
+      else if (t === 'blur-brush') label = 'Blur';
+
       saveMaskSnapshot(label);
     }
     isPainting.current = false;
@@ -1402,7 +1543,8 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
     if (brushCursor) {
       brushCursor.style.left = `${lx}px`;
       brushCursor.style.top = `${ly}px`;
-      brushCursor.style.display = (toolRef.current === 'erase' || toolRef.current === 'restore' || toolRef.current === 'paint') ? 'block' : 'none';
+      const needsBrush = (toolRef.current === 'erase' || toolRef.current === 'restore' || toolRef.current === 'paint' || toolRef.current === 'clone' || toolRef.current === 'heal' || toolRef.current === 'blur-brush');
+      brushCursor.style.display = needsBrush ? 'block' : 'none';
     }
 
     const canvasPos = getCanvasPos(e as any);
@@ -1430,6 +1572,10 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
         }
       }
       overlay.style.cursor = found || 'crosshair';
+    } else if (toolRef.current === 'text') {
+      overlay.style.cursor = 'text';
+    } else if (!isPainting.current) {
+      overlay.style.cursor = (toolRef.current === 'wand' || toolRef.current === 'crop' || toolRef.current === 'bucket' || toolRef.current === 'eyedropper' || toolRef.current.startsWith('marquee')) ? 'crosshair' : 'none';
     }
 
     if (isPainting.current) {
@@ -1437,8 +1583,25 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
 
       if (rafId.current) cancelAnimationFrame(rafId.current);
       rafId.current = requestAnimationFrame(() => {
-        const pos = canvasPos;
         const currentTool = toolRef.current;
+        const pos = canvasPos;
+
+        // Aligned Source Preview for Clone/Heal
+        if ((currentTool === 'clone' || currentTool === 'heal') && cloneSourceRef.current && initialMousePos.current) {
+          const ctx = overlay.getContext('2d')!;
+          ctx.clearRect(0, 0, overlay.width, overlay.height);
+          const mouseOffset = { x: pos.x - initialMousePos.current.x, y: pos.y - initialMousePos.current.y };
+          const srcX = cloneSourceRef.current.x + mouseOffset.x;
+          const srcY = cloneSourceRef.current.y + mouseOffset.y;
+
+          ctx.strokeStyle = 'white';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(srcX - 5, srcY); ctx.lineTo(srcX + 5, srcY);
+          ctx.moveTo(srcX, srcY - 5); ctx.lineTo(srcX, srcY + 5);
+          ctx.stroke();
+        }
+
         const draggingHnd = isDraggingHandleRef.current;
         const curCropRect = cropRectRef.current;
 
@@ -1470,7 +1633,7 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
             cropRectRef.current = newRect;
             drawCropOverlay(newRect);
           }
-        } else if (currentTool === 'erase' || currentTool === 'restore' || currentTool === 'paint') {
+        } else if (currentTool === 'erase' || currentTool === 'restore' || currentTool === 'paint' || currentTool === 'clone' || currentTool === 'heal' || currentTool === 'blur-brush') {
           paint(pos);
         } else if (currentTool === 'eyedropper') {
           handleEyedropper(pos);
@@ -1495,9 +1658,19 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
       if (isPainting.current) {
         // 드래그 종료 시 최종 상태 동기화
         if (toolRef.current === 'crop' || toolRef.current === 'marquee-rect' || toolRef.current === 'marquee-circle') {
-          setCropRect({ ...cropRectRef.current });
+          if (cropRectRef.current) setCropRect({ ...cropRectRef.current });
         }
         handleMouseUp();
+      }
+
+      // 메모리 해제
+      if (originalSnapshotRef.current) {
+        originalSnapshotRef.current.width = 0; originalSnapshotRef.current.height = 0;
+        originalSnapshotRef.current = null;
+      }
+      if (blurCacheRef.current) {
+        blurCacheRef.current.width = 0; blurCacheRef.current.height = 0;
+        blurCacheRef.current = null;
       }
     };
     window.addEventListener('mouseup', handleGlobalUp);
@@ -1674,6 +1847,16 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
             <button onClick={() => { stopMarching(); cancelCrop(); setTool('restore'); }} className={`brush-tool-btn ${tool === 'restore' ? 'brush-tool-btn-active' : ''}`} title="Restore (R)"><RefreshCcw size={18} /></button>
             <button onClick={() => { stopMarching(); cancelCrop(); setTool('bucket'); }} className={`brush-tool-btn ${tool === 'bucket' ? 'brush-tool-btn-active' : ''}`} title="Fill (G)"><PaintBucket size={18} /></button>
           </div>
+          <div className="w-8 h-[1px] bg-[#333] mb-2" />
+          <div className="flex flex-col gap-1 mb-2">
+            <button onClick={() => { stopMarching(); cancelCrop(); setTool('clone'); }} className={`brush-tool-btn ${tool === 'clone' ? 'brush-tool-btn-active' : ''}`} title="Clone Stamp (S, Alt+Click to set source)"><Stamp size={18} /></button>
+            <button onClick={() => { stopMarching(); cancelCrop(); setTool('heal'); }} className={`brush-tool-btn ${tool === 'heal' ? 'brush-tool-btn-active' : ''}`} title="Healing Brush (H, Alt+Click to set source)"><LifeBuoy size={18} /></button>
+            <button onClick={() => { stopMarching(); cancelCrop(); setTool('blur-brush'); }} className={`brush-tool-btn ${tool === 'blur-brush' ? 'brush-tool-btn-active' : ''}`} title="Blur Tool"><Droplets size={18} /></button>
+          </div>
+          <div className="w-8 h-[1px] bg-[#333] mb-2" />
+          <div className="flex flex-col gap-1 mb-2">
+            <button onClick={() => { stopMarching(); cancelCrop(); setTool('text'); }} className={`brush-tool-btn ${tool === 'text' ? 'brush-tool-btn-active' : ''}`} title="Horizontal Type Tool (T)"><Type size={18} /></button>
+          </div>
           <div className="mt-auto flex flex-col gap-1">
             <button onClick={() => setZoom(z => Math.min(8, z + 0.2))} className="brush-tool-btn" title="확대">
               <PlusCircle size={18} />
@@ -1703,6 +1886,10 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
               {tool === 'paint' && <Brush size={16} className="text-gray-400" />}
               {tool === 'bucket' && <PaintBucket size={16} className="text-gray-400" />}
               {tool === 'crop' && <Crop size={16} className="text-gray-400" />}
+              {tool === 'clone' && <Stamp size={16} className="text-gray-400" />}
+              {tool === 'heal' && <LifeBuoy size={16} className="text-gray-400" />}
+              {tool === 'blur-brush' && <Droplets size={16} className="text-gray-400" />}
+              {tool === 'text' && <Type size={16} className="text-gray-400" />}
               <span className="text-[10px] font-bold text-gray-500 uppercase">{tool.replace('-', ' ')}</span>
             </div>
             {/* Tool Options */}
@@ -1722,18 +1909,30 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
                 </>
               )}
 
-              {(tool === 'erase' || tool === 'restore' || tool === 'paint') && (
+              {(tool === 'erase' || tool === 'restore' || tool === 'paint' || tool === 'heal' || tool === 'clone' || tool === 'blur-brush') && (
                 <>
                   <div className="flex items-center gap-2">
                     <span className="text-[10px] font-bold text-gray-400">SIZE</span>
-                    <input type="range" min={5} max={300} value={brushSize} onChange={(e) => setBrushSize(Number(e.target.value))} className="w-32 h-1 range-slider" />
+                    <input type="range" min={5} max={300} value={brushSize} onChange={(e) => setBrushSize(Number(e.target.value))} className="w-24 h-1 range-slider" />
                     <span className="text-[11px] font-mono text-indigo-400 w-10">{brushSize}px</span>
                   </div>
                   <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-bold text-gray-400">HARDNESS</span>
+                    <input type="range" min={0} max={100} value={brushHardness} onChange={(e) => setBrushHardness(Number(e.target.value))} className="w-20 h-1 range-slider" />
+                    <span className="text-[11px] font-mono text-indigo-400 w-10">{brushHardness}%</span>
+                  </div>
+                  <div className="flex items-center gap-2">
                     <span className="text-[10px] font-bold text-gray-400">OPACITY</span>
-                    <input type="range" min={10} max={100} value={brushOpacity} onChange={(e) => setBrushOpacity(Number(e.target.value))} className="w-24 h-1 range-slider" />
+                    <input type="range" min={10} max={100} value={brushOpacity} onChange={(e) => setBrushOpacity(Number(e.target.value))} className="w-20 h-1 range-slider" />
                     <span className="text-[11px] font-mono text-indigo-400 w-10">{brushOpacity}%</span>
                   </div>
+                  {(tool === 'clone' || tool === 'heal') && (
+                    <div className="flex items-center gap-2 border-l border-[#444] pl-4">
+                      <span className={`text-[9px] font-bold ${hasCloneSource ? 'text-green-400' : 'text-amber-500 animate-pulse'}`}>
+                        {hasCloneSource ? 'SOURCE SET' : 'ALT+CLICK SOURCE'}
+                      </span>
+                    </div>
+                  )}
                   <div className="flex gap-1">
                     {['circle', 'square', 'diamond'].map(s => (
                       <button key={s} onClick={() => setBrushShape(s as BrushShape)} className={`w-6 h-6 rounded flex items-center justify-center ${brushShape === s ? 'bg-[#555] text-white' : 'text-gray-500 hover:text-gray-300'}`}>
@@ -1822,9 +2021,9 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
                   style={{
                     width: (brushShape === 'rect-v' || brushShape === 'rect-v-thin') ? (brushSize / (brushShape === 'rect-v' ? 2 : 4)) * zoom : brushSize * zoom,
                     height: (brushShape === 'rect-h' || brushShape === 'rect-h-thin') ? (brushSize / (brushShape === 'rect-h' ? 2 : 4)) * zoom : brushSize * zoom,
-                    display: (tool === 'erase' || tool === 'restore' || tool === 'paint') ? 'block' : 'none',
-                    borderColor: tool === 'erase' ? '#ef4444' : tool === 'paint' ? brushColor : '#22c55e',
-                    backgroundColor: tool === 'erase' ? 'rgba(239,68,68,0.15)' : tool === 'paint' ? `${brushColor}33` : 'rgba(34,197,94,0.15)',
+                    display: (tool === 'erase' || tool === 'restore' || tool === 'paint' || tool === 'clone' || tool === 'heal' || tool === 'blur-brush') ? 'block' : 'none',
+                    borderColor: tool === 'erase' ? '#ef4444' : tool === 'paint' ? brushColor : (tool === 'blur-brush' || tool === 'heal') ? '#38bdf8' : '#22c55e',
+                    backgroundColor: tool === 'erase' ? 'rgba(239,68,68,0.15)' : tool === 'paint' ? `${brushColor}33` : 'rgba(56,189,248,0.15)',
                   }}
                 />
               </div>

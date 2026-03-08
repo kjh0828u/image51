@@ -6,14 +6,15 @@ export function useImageProcessing() {
   const store = useAppStore();
 
   const performDownload = async (blob: Blob, filename: string, skipPermissionRequest = false) => {
+    const currentState = useAppStore.getState();
     let dirHandle = null;
 
-    if (store.downloadMode === 'custom' && store.customDirectoryHandle) {
-      const hasPerm = await verifyPermission(store.customDirectoryHandle, true, !skipPermissionRequest);
+    if (currentState.downloadMode === 'custom' && currentState.customDirectoryHandle) {
+      const hasPerm = await verifyPermission(currentState.customDirectoryHandle, true, !skipPermissionRequest);
       if (hasPerm) {
         const d = new Date();
         const folderName = `${String(d.getFullYear()).slice(2)}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-        dirHandle = await (store.customDirectoryHandle as any).getDirectoryHandle(folderName, { create: true });
+        dirHandle = await (currentState.customDirectoryHandle as any).getDirectoryHandle(folderName, { create: true });
       }
     }
 
@@ -27,15 +28,16 @@ export function useImageProcessing() {
   };
 
   const handleDownloadAll = async ({ skipPermissionRequest = false }: { skipPermissionRequest?: boolean } = {}) => {
-    const targetImages = store.images.filter(img => img.status === 'done' && img.processedUrl && !img.isDownloaded);
+    const currentState = useAppStore.getState();
+    const targetImages = currentState.images.filter(img => img.status === 'done' && img.processedUrl && !img.isDownloaded);
     if (targetImages.length === 0) return;
 
-    if (store.downloadMode === 'custom' && store.customDirectoryHandle) {
-      const hasPerm = await verifyPermission(store.customDirectoryHandle, true, !skipPermissionRequest);
+    if (currentState.downloadMode === 'custom' && currentState.customDirectoryHandle) {
+      const hasPerm = await verifyPermission(currentState.customDirectoryHandle, true, !skipPermissionRequest);
       if (hasPerm) {
         const d = new Date();
         const folderName = `${String(d.getFullYear()).slice(2)}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-        const dirHandle = await (store.customDirectoryHandle as any).getDirectoryHandle(folderName, { create: true });
+        const dirHandle = await (currentState.customDirectoryHandle as any).getDirectoryHandle(folderName, { create: true });
 
         for (const img of targetImages) {
           try {
@@ -43,7 +45,7 @@ export function useImageProcessing() {
             const blob = await res.blob();
             const filename = getDownloadFilename(img.file.name, blob.type);
             await saveBlobToDirectory(dirHandle, blob, filename);
-            store.updateImageStatus(img.id, { isDownloaded: true });
+            currentState.updateImageStatus(img.id, { isDownloaded: true });
           } catch (e) { console.error(e); }
         }
         return;
@@ -55,50 +57,53 @@ export function useImageProcessing() {
       await handleSingleDownload(targetImages[0], skipPermissionRequest);
     } else {
       await downloadAsZip(targetImages);
-      targetImages.forEach(img => store.updateImageStatus(img.id, { isDownloaded: true }));
+      targetImages.forEach(img => currentState.updateImageStatus(img.id, { isDownloaded: true }));
     }
   };
 
   const handleSingleDownload = async (img: ImageItem, skipPermissionRequest = false) => {
+    const currentState = useAppStore.getState();
     if (!img.processedUrl) return;
     try {
       const res = await fetch(img.processedUrl);
       const blob = await res.blob();
       const filename = getDownloadFilename(img.file.name, blob.type);
       await performDownload(blob, filename, skipPermissionRequest);
-      store.updateImageStatus(img.id, { isDownloaded: true });
+      currentState.updateImageStatus(img.id, { isDownloaded: true });
     } catch (e) {
       console.error(e);
       // fallback to old method if fetch fails
       await downloadSingleImage(img);
-      store.updateImageStatus(img.id, { isDownloaded: true });
+      currentState.updateImageStatus(img.id, { isDownloaded: true });
     }
   };
 
   const handleStartProcessing = async (onResizeError: (msg: string | null) => void) => {
-    if (store.enableResize && !store.resizeWidth.trim() && !store.resizeHeight.trim()) {
+    const initialState = useAppStore.getState();
+    if (initialState.enableResize && !initialState.resizeWidth.trim() && !initialState.resizeHeight.trim()) {
       onResizeError('가로 또는 세로 크기를 한 개 이상 입력해주세요.');
       return;
     }
     onResizeError(null);
 
-    const pendingImages = store.images.filter(img => img.status === 'pending');
+    const pendingImages = initialState.images.filter(img => img.status === 'pending');
     if (pendingImages.length === 0) return;
 
     for (const img of pendingImages) {
-      store.updateImageStatus(img.id, { status: 'processing' });
+      initialState.updateImageStatus(img.id, { status: 'processing' });
       try {
-        const resultUrl = await processImage(img.file, store);
+        const currentOptions = useAppStore.getState();
+        const resultUrl = await processImage(img.file, currentOptions);
         const req = await fetch(resultUrl);
         const blob = await req.blob();
-        store.updateImageStatus(img.id, { status: 'done', processedUrl: resultUrl, processedSize: blob.size });
+        initialState.updateImageStatus(img.id, { status: 'done', processedUrl: resultUrl, processedSize: blob.size });
       } catch (err) {
         console.error(err);
-        store.updateImageStatus(img.id, { status: 'error' });
+        initialState.updateImageStatus(img.id, { status: 'error' });
       }
     }
 
-    if (store.autoDownloadAfterProcessing) {
+    if (useAppStore.getState().autoDownloadAfterProcessing) {
       await handleDownloadAll({ skipPermissionRequest: true });
     }
   };

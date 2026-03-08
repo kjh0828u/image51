@@ -147,7 +147,7 @@ const LayerItem = memo(({ layer, active, onSelect, onSetVisible, layerDragOver, 
       <div className="layer-info">
         <span className={cn('layer-name', active && 'layer-name-active')}>{layer.name}</span>
       </div>
-    </div>
+    </div >
   );
 });
 LayerItem.displayName = 'LayerItem';
@@ -395,6 +395,16 @@ export function BrushEditor({
   useEffect(() => {
     resetLayers();
   }, [imageUrl, resetLayers]);
+
+  // ── 폰트로딩 완료 시 재렌더링 ──────────────────────────────
+  useEffect(() => {
+    if (document.fonts && document.fonts.ready) {
+      document.fonts.ready.then(() => {
+        // 모든 폰트가 로드되었을 때 현재 레이어 기준으로 캔버스 재렌더링
+        compositeLayersAndRender(layersHook.layers);
+      });
+    }
+  }, [layersHook.layers, compositeLayersAndRender]);
 
   // 이미지 로드 완료 콜백 등록 (addImageLayer가 선언된 이후)
   useEffect(() => {
@@ -711,7 +721,15 @@ export function BrushEditor({
       if (w > maxW) maxW = w;
     }
     const h = lines.length * lineH;
-    return { x, y, w: maxW, h };
+
+    let boxX = x;
+    if (ts.align === 'center') {
+      boxX = x - maxW / 2;
+    } else if (ts.align === 'right') {
+      boxX = x - maxW;
+    }
+
+    return { x: boxX, y, w: maxW, h, anchorX: x };
   }, []);
 
   // ── 텍스트 아웃라인 오버레이 그리기 (마칭 앤츠 스타일) ──
@@ -2509,6 +2527,15 @@ export function BrushEditor({
     const editId = editingTextLayerIdRef.current;
     const selId = selectedTextLayerIdRef.current;
 
+    // 선택된 폰트가 구글폰트 등 외부 폰트인 경우 적용 시간을 피하기 위해 명시적 로딩 요청 후 랜더링
+    if (style.fontFamily) {
+      try {
+        document.fonts.load(`${style.fontWeight || 'normal'} ${style.fontSize || 16}px "${style.fontFamily}"`).then(() => {
+          compositeLayersAndRender(layersRef.current);
+        });
+      } catch (e) { }
+    }
+
     if (editId) {
       // 편집 중: textarea CSS만 업데이트 (캔버스는 편집 레이어 숨김 상태)
       if (textareaRef.current) {
@@ -2964,11 +2991,23 @@ export function BrushEditor({
                   <select
                     value={textStyle.fontFamily}
                     onChange={(e) => { const v = { ...textStyleRef.current, fontFamily: e.target.value }; textStyleRef.current = v; setTextStyle(v); applyTextStyleLive(v); commitTextStyleChange(v); }}
-                    className="h-6 bg-[#333] text-gray-300 text-[10px] border-0 rounded px-1"
+                    className="h-6 bg-[#333] text-gray-300 text-[10px] border-0 rounded px-1 max-w-[120px]"
                   >
-                    {['sans-serif', 'serif', 'monospace', 'cursive', 'Arial', 'Georgia', 'Courier New'].map(f => (
-                      <option key={f} value={f}>{f}</option>
-                    ))}
+                    <optgroup label="국문 (Korean)">
+                      {['Noto Sans KR', 'Noto Serif KR', 'Nanum Gothic', 'Nanum Myeongjo', 'Nanum Pen Script', 'Black Han Sans', 'Do Hyeon', 'Jua', 'Kirang Haerang', 'Yeon Sung', 'Bagel Fat One', 'Gowun Batang', 'Gowun Dodum', 'Song Myung', 'Poor Story', 'IBM Plex Sans KR', 'Gamja Flower', 'Sunflower', 'Gugi', 'Cute Font'].sort().map(f => (
+                        <option key={f} value={f}>{f}</option>
+                      ))}
+                    </optgroup>
+                    <optgroup label="영문 (English)">
+                      {['Roboto', 'Open Sans', 'Montserrat', 'Lato', 'Oswald', 'Playfair Display', 'Merriweather', 'Poppins', 'Raleway', 'Ubuntu', 'Roboto Mono', 'Fira Sans', 'Inter', 'Kanit', 'Prompt', 'Nunito', 'Titillium Web', 'Orbitron', 'Bebas Neue', 'Anton', 'Lobster', 'Pacifico', 'Caveat', 'Dancing Script', 'Righteous', 'Cinzel', 'Cormorant Garamond', 'Exo 2', 'Teko', 'Archivo', 'Jost'].sort().map(f => (
+                        <option key={f} value={f}>{f}</option>
+                      ))}
+                    </optgroup>
+                    <optgroup label="System">
+                      {['sans-serif', 'serif', 'monospace', 'cursive', 'Arial', 'Georgia', 'Courier New'].map(f => (
+                        <option key={f} value={f}>{f}</option>
+                      ))}
+                    </optgroup>
                   </select>
                   <input
                     type="number" min={8} max={300} value={textStyle.fontSize}
@@ -3104,6 +3143,7 @@ export function BrushEditor({
                     style={{
                       left: textPosRef.current.x * zoom,
                       top: textPosRef.current.y * zoom,
+                      transform: textStyle.align === 'center' ? 'translateX(-50%)' : textStyle.align === 'right' ? 'translateX(-100%)' : 'none',
                     }}
                   >
                     <textarea
@@ -3134,6 +3174,8 @@ export function BrushEditor({
                         color: textStyle.color,
                         letterSpacing: `${(textStyle.letterSpacing ?? 0) * zoom}px`,
                         lineHeight: textStyle.lineHeight ?? 1.3,
+                        textAlign: textStyle.align,
+                        whiteSpace: 'pre',
                       }}
                       placeholder="텍스트 입력 후 Enter…"
                       rows={1}

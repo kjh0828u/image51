@@ -1,3 +1,4 @@
+@import url('https://fonts.googleapis.com/css2?family=Anton&family=Archivo:wght@400;700&family=Bagel+Fat+One&family=Bebas+Neue&family=Black+Han+Sans&family=Caveat:wght@400;700&family=Cinzel:wght@400;700&family=Cormorant+Garamond:wght@400;700&family=Cute+Font&family=Dancing+Script:wght@400;700&family=Do+Hyeon&family=Exo+2:wght@400;700&family=Fira+Sans:wght@400;700&family=Gamja+Flower&family=Gowun+Batang:wght@400;700&family=Gowun+Dodum&family=Gugi&family=IBM+Plex+Sans+KR:wght@400;700&family=Inter:wght@400;700&family=Jost:wght@400;700&family=Jua&family=Kanit:wght@400;700&family=Kirang+Haerang&family=Lato:wght@400;700&family=Lobster&family=Merriweather:wght@400;700&family=Montserrat:wght@400;700&family=Nanum+Gothic:wght@400;700&family=Nanum+Myeongjo:wght@400;700&family=Nanum+Pen+Script&family=Noto+Sans+KR:wght@400;700&family=Noto+Serif+KR:wght@400;700&family=Nunito:wght@400;700&family=Open+Sans:wght@400;700&family=Orbitron:wght@400;700&family=Oswald:wght@400;700&family=Pacifico&family=Playfair+Display:wght@400;700&family=Poor+Story&family=Poppins:wght@400;700&family=Prompt:wght@400;700&family=Raleway:wght@400;700&family=Righteous&family=Roboto+Mono:wght@400;700&family=Roboto:wght@400;700&family=Song+Myung&family=Sunflower:wght@300;500;700&family=Teko:wght@400;700&family=Titillium+Web:wght@400;700&family=Ubuntu:wght@400;700&family=Yeon+Sung&display=swap');
 @import "tailwindcss";
 
 :root {
@@ -2427,7 +2428,7 @@ body::before {
 }
 
 .layer-panel-btn:hover {
-  background: rgba(255,255,255,0.08);
+  background: rgba(255, 255, 255, 0.08);
   color: #ddd;
 }
 
@@ -2454,21 +2455,21 @@ body::before {
 }
 
 .layer-item:hover {
-  background: rgba(255,255,255,0.04);
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .layer-item-active {
-  background: rgba(79,163,156,0.15);
+  background: rgba(79, 163, 156, 0.15);
   border-left: 2px solid #4fa39c;
 }
 
 .layer-item-active:hover {
-  background: rgba(79,163,156,0.2);
+  background: rgba(79, 163, 156, 0.2);
 }
 
 .layer-item-drag-over {
   border-top: 2px solid #4fa39c;
-  background: rgba(79,163,156,0.1);
+  background: rgba(79, 163, 156, 0.1);
 }
 
 .layer-vis-btn {
@@ -2568,14 +2569,14 @@ body::before {
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: #888;
-  background: rgba(255,255,255,0.05);
+  background: rgba(255, 255, 255, 0.05);
   border: 1px solid #333;
   cursor: pointer;
   transition: background 0.15s, color 0.15s;
 }
 
 .layer-panel-footer-btn:hover {
-  background: rgba(255,255,255,0.1);
+  background: rgba(255, 255, 255, 0.1);
   color: #ddd;
 }
 
@@ -2592,7 +2593,7 @@ body::before {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0,0,0,0.75);
+  background: rgba(0, 0, 0, 0.75);
   backdrop-filter: blur(4px);
 }
 
@@ -2602,7 +2603,7 @@ body::before {
   border-radius: 12px;
   padding: 28px 32px;
   width: 340px;
-  box-shadow: 0 24px 48px rgba(0,0,0,0.7);
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.7);
 }
 
 .layer-drop-dialog-title {
@@ -2624,9 +2625,9 @@ body::before {
   font-weight: 700;
   margin-bottom: 20px;
   padding: 6px 10px;
-  background: rgba(79,163,156,0.1);
+  background: rgba(79, 163, 156, 0.1);
   border-radius: 6px;
-  border: 1px solid rgba(79,163,156,0.2);
+  border: 1px solid rgba(79, 163, 156, 0.2);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2664,7 +2665,7 @@ body::before {
   gap: 8px;
   padding: 10px 16px;
   border-radius: 8px;
-  background: rgba(255,255,255,0.06);
+  background: rgba(255, 255, 255, 0.06);
   color: #ccc;
   font-size: 12px;
   font-weight: 700;
@@ -2675,7 +2676,7 @@ body::before {
 }
 
 .layer-drop-btn-secondary:hover {
-  background: rgba(255,255,255,0.1);
+  background: rgba(255, 255, 255, 0.1);
 }
 
 /* Text Tool 오버레이 */

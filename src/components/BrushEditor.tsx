@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  ArrowLeft,
   Wand2,
   Eraser,
   Undo2,
@@ -112,8 +111,6 @@ export function BrushEditor({ imageUrl, originalName, onImageChange, onReset }: 
   const [exposure, setExposure] = useState(0);
   const [blur, setBlur] = useState(0);
   const [showAdjustPanel, setShowAdjustPanel] = useState(false);
-
-  const [showExitConfirm, setShowExitConfirm] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDraggingFile, setIsDraggingFile] = useState(false);
@@ -1440,47 +1437,18 @@ export function BrushEditor({ imageUrl, originalName, onImageChange, onReset }: 
             <ImagePlus size={32} className="text-white animate-bounce" />
           </div>
           <p className="text-white font-black text-xl drop-shadow-lg">이곳에 이미지를 놓아 새 탭으로 열기</p>
-          <p className="text-indigo-200 text-sm mt-2">현재 작업은 그대로 유지됩니다</p>
+          <p className="text-indigo-200 text-sm mt-3">현재 작업 내용은 분리된 탭에 보존됩니다</p>
         </div>
       )}
+
       {/* ── TOP BAR (Header) ────────────────────────────────── */}
       <div className="brush-top-bar">
-        <button onClick={() => setShowExitConfirm(true)} className="brush-tool-btn" title="목록으로">
-          <ArrowLeft size={20} />
-        </button>
-        <div className="brush-top-sep" />
-
         <div className="flex items-center gap-1">
           <button onClick={undo} disabled={!canUndo} className="brush-tool-btn" title="되돌리기 (Ctrl+Z)">
             <Undo2 size={18} />
           </button>
           <button onClick={redo} disabled={!canRedo} className="brush-tool-btn" title="다시 실행 (Ctrl+Y)">
             <Redo2 size={18} />
-          </button>
-        </div>
-
-        <div className="brush-top-sep" />
-
-        <div className="flex items-center gap-1">
-          <input
-            type="file"
-            ref={fileInputRef}
-            className="hidden"
-            accept="image/*"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) onImageChange(file);
-              // Reset input so the same file can be selected again
-              e.target.value = '';
-            }}
-          />
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="brush-tool-btn text-indigo-400 hover:text-indigo-300"
-            title="새 이미지를 탭으로 열기"
-          >
-            <ImagePlus size={18} />
-            <span className="text-[10px] ml-1 font-bold hidden sm:inline">탭 추가</span>
           </button>
         </div>
 
@@ -1947,26 +1915,6 @@ export function BrushEditor({ imageUrl, originalName, onImageChange, onReset }: 
         </div>
       </div>
 
-      {/* Modals & Hidden Canvases */}
-      {showExitConfirm && (
-        <div className="brush-modal-overlay">
-          <div className="brush-modal-content">
-            <div className="brush-modal-header text-orange-400">
-              <AlertCircle size={24} />
-              <h3 className="text-lg font-bold">작업 취소 확인</h3>
-            </div>
-            <div className="brush-modal-body text-gray-300">
-              <p>현재까지 작업한 모든 내용이 사라집니다.</p>
-              <p>정말로 목록으로 돌아가시겠습니까?</p>
-            </div>
-            <div className="brush-modal-footer">
-              <button onClick={() => setShowExitConfirm(false)} className="brush-modal-btn brush-modal-btn-cancel">취소</button>
-              <button onClick={onReset} className="brush-modal-btn brush-modal-btn-confirm">돌아가기</button>
-            </div>
-          </div>
-        </div>
-      )}
-
       <div className="hidden">
         <canvas ref={maskSnapshotRef} />
         <canvas ref={tempCanvasRef} />
@@ -1974,39 +1922,6 @@ export function BrushEditor({ imageUrl, originalName, onImageChange, onReset }: 
         <canvas ref={maskRef} />
         <canvas ref={aiResultRef} />
       </div>
-
-      {/* ── 나가기 컨펌 모달 ────────────────────────────── */}
-      {showExitConfirm && (
-        <div className="modal-overlay z-[3000]" onClick={() => setShowExitConfirm(false)}>
-          <div className="modal-container max-w-sm" onClick={e => e.stopPropagation()}>
-            <div className="modal-content p-6 bg-[#1a1a1b] border border-white/10 rounded-2xl shadow-2xl">
-              <div className="flex flex-col items-center text-center">
-                <div className="w-12 h-12 bg-red-500/20 text-red-500 rounded-full flex items-center justify-center mb-4">
-                  <AlertCircle size={24} />
-                </div>
-                <h3 className="text-white text-lg font-bold mb-2">편집을 중단하시겠습니까?</h3>
-                <p className="text-gray-400 text-sm mb-6 leading-relaxed">
-                  나가면 현재 이미지의 <span className="text-white font-bold">편집 내용이 저장되지 않습니다.</span><br />정말 목록으로 돌아가시겠습니까?
-                </p>
-                <div className="flex gap-2 w-full">
-                  <button
-                    onClick={() => setShowExitConfirm(false)}
-                    className="flex-1 h-10 rounded-xl bg-white/5 text-gray-400 font-bold hover:bg-white/10 transition-colors"
-                  >
-                    취소
-                  </button>
-                  <button
-                    onClick={onReset}
-                    className="flex-1 h-10 rounded-xl bg-red-500 text-white font-bold hover:bg-red-400 shadow-lg shadow-red-500/20 transition-all"
-                  >
-                    나가기
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

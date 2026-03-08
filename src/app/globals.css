@@ -2148,7 +2148,6 @@ body::before {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  height: calc(100vh - 64px);
 }
 
 /* ========== BrushEditor 상단 툴바 (옵션 바) ========== */
@@ -2755,7 +2754,7 @@ body::before {
   border: 2px solid #fff;
   border-radius: 50%;
   transform: translate(-50%, -50%);
-  box-shadow: 0 0 0 1px rgba(0,0,0,0.5);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5);
   pointer-events: none;
   z-index: 1;
 }
@@ -2780,7 +2779,7 @@ body::before {
   background: #fff;
   border-radius: 2px;
   transform: translateY(-50%);
-  box-shadow: 0 0 0 1px rgba(0,0,0,0.3);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.3);
   pointer-events: none;
 }
 

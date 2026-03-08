@@ -242,7 +242,7 @@ export default function Home() {
 
       {/* 개별 처리 탭 */}
       {activeTab === 'individual' && (
-        <div className="individual-tab-content h-full flex flex-col pt-1">
+        <div className="individual-tab-content flex-1 flex flex-col pt-1">
           <div className="flex-1 relative bg-[#0a0a0b]">
             {individualTabs.length > 0 ? (
               individualTabs.map((tab) => (

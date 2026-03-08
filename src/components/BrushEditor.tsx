@@ -168,6 +168,7 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
   const [isProcessing, setIsProcessing] = useState(false);
   const [aiDone, setAiDone] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [aiThreshold, setAiThreshold] = useState(1); // 1-255, 기본값 1 (최소한의 알파라도 있으면 유지)
 
   // 히스토리 추가 시 하단 자동 스크롤
   useEffect(() => {
@@ -259,6 +260,22 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
 
   // ── 크롭 오버레이 그리기 ──────────────────────────────────
 
+  const applyAiThreshold = useCallback((threshold: number) => {
+    if (!aiResultRef.current || !maskRef.current) return;
+    const aiCtx = aiResultRef.current.getContext('2d')!;
+    const aiData = aiCtx.getImageData(0, 0, aiResultRef.current.width, aiResultRef.current.height);
+    const maskCtx = maskRef.current.getContext('2d')!;
+    const maskData = maskCtx.getImageData(0, 0, maskRef.current.width, maskRef.current.height);
+
+    for (let i = 0; i < aiData.data.length; i += 4) {
+      const a = aiData.data[i + 3];
+      // 임계값보다 낮은 알파는 0으로, 그 외에는 원래 알파 유지
+      maskData.data[i + 3] = a < threshold ? 0 : a;
+    }
+    maskCtx.putImageData(maskData, 0, 0);
+    compositeAndRender();
+  }, [compositeAndRender]);
+
   const runAI = useCallback(async () => {
     if (!originalRef.current || !maskRef.current || !aiResultRef.current) return;
     setIsProcessing(true);
@@ -283,21 +300,8 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
         ctx.clearRect(0, 0, aiResultRef.current!.width, aiResultRef.current!.height);
         ctx.drawImage(resultImg, 0, 0);
 
-        const aiData = ctx.getImageData(0, 0, aiResultRef.current!.width, aiResultRef.current!.height);
-        const maskCtx = maskRef.current!.getContext('2d')!;
-        const maskData = maskCtx.getImageData(0, 0, maskRef.current!.width, maskRef.current!.height);
-
-        for (let i = 0; i < aiData.data.length; i += 4) {
-          const a = aiData.data[i + 3]!;
-          // 알파 마스크 방식으로 저장
-          maskData.data[i] = 0;
-          maskData.data[i + 1] = 0;
-          maskData.data[i + 2] = 0;
-          maskData.data[i + 3] = a;
-        }
-        maskCtx.putImageData(maskData, 0, 0);
+        applyAiThreshold(aiThreshold);
         URL.revokeObjectURL(resultUrl);
-        compositeAndRender();
         saveMaskSnapshot('AI Removal');
         setIsProcessing(false);
         setAiDone(true);
@@ -307,7 +311,14 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
       console.error('배경제거 실패:', err);
       setIsProcessing(false);
     }
-  }, [compositeAndRender, saveMaskSnapshot]);
+  }, [compositeAndRender, saveMaskSnapshot, aiThreshold, applyAiThreshold]);
+
+  // 임계값 변경 시 즉시 반영
+  useEffect(() => {
+    if (aiDone && !isProcessing) {
+      applyAiThreshold(aiThreshold);
+    }
+  }, [aiThreshold, aiDone, isProcessing, applyAiThreshold]);
 
   const getCanvasPos = useCallback((e: React.MouseEvent | React.TouchEvent) => {
     const canvas = canvasRef.current!;
@@ -1337,6 +1348,21 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
           <Sparkles size={14} className={isProcessing ? "animate-spin" : ""} />
           {isProcessing ? `AI 처리 중... ${progress}%` : aiDone ? 'AI 처리 완료' : 'AI 배경 제거'}
         </button>
+
+        {aiDone && (
+          <div className="flex items-center gap-2 ml-4">
+            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-tighter">AI Threshold</span>
+            <input
+              type="range"
+              min={1}
+              max={254}
+              value={aiThreshold}
+              onChange={(e) => setAiThreshold(Number(e.target.value))}
+              className="w-32 h-1 range-slider"
+            />
+            <span className="text-[10px] font-mono text-indigo-400 w-8">{Math.round((aiThreshold / 255) * 100)}%</span>
+          </div>
+        )}
 
         <div className="flex-1" />
 

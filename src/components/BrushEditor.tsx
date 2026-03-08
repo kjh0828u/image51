@@ -1251,6 +1251,9 @@ export function BrushEditor({
         }
       } else if (tool === 'text') {
         // ── Text 툴 상태 머신 (모두 ref 기반 — stale closure 없음) ──
+        // 캔버스 영역 밖 클릭이면 무시
+        const canvas = canvasRef.current;
+        if (!canvas || pos.x < 0 || pos.y < 0 || pos.x > canvas.width || pos.y > canvas.height) return;
 
         // 0. 더블클릭 감지: 300ms 이내 같은 레이어 재클릭 → 즉시 편집 모드
         const now = Date.now();
@@ -1441,16 +1444,14 @@ export function BrushEditor({
     if (toolRef.current === 'move' && moveDragStart.current) {
       // Move 드래그 완료 → live 위치를 state에 커밋 (히스토리 1회)
       const livePos = moveLivePosRef.current;
-      if (livePos) {
-        setLayers(prev => {
-          const dragId = moveDragStart.current ? activeLayerId : null;
-          const next = dragId ? prev.map(l => l.id === dragId ? { ...l, x: livePos.x, y: livePos.y } : l) : prev;
-          commitLayerMove(next, activeLayerId);
-          return next;
-        });
-      }
       moveDragStart.current = null;
       moveLivePosRef.current = null;
+      if (livePos) {
+        const next = layersRef.current.map(l => l.id === activeLayerId ? { ...l, x: livePos.x, y: livePos.y } : l);
+        layersRef.current = next;
+        setLayers(next);
+        commitLayerMove(next, activeLayerId);
+      }
     }
     if (toolRef.current === 'text' && textDragRef.current) {
       const livePos = textLivePosRef.current;
@@ -1464,12 +1465,10 @@ export function BrushEditor({
 
       if (didDrag && livePos) {
         // 실제 이동 → 커밋 (히스토리 1회)
-        setLayers(prev => {
-          const next = prev.map(l => l.id === dragLayerId ? { ...l, x: livePos.x, y: livePos.y } : l);
-          layersRef.current = next;
-          commitLayerMove(next, dragLayerId);
-          return next;
-        });
+        const next = layersRef.current.map(l => l.id === dragLayerId ? { ...l, x: livePos.x, y: livePos.y } : l);
+        layersRef.current = next;
+        setLayers(next);
+        commitLayerMove(next, dragLayerId);
         selectedTextLayerIdRef.current = dragLayerId;
         textMarchLayerIdRef.current = dragLayerId;
         textMarchModeRef.current = 'selected';
@@ -1510,14 +1509,12 @@ export function BrushEditor({
       if (liveSize !== null) {
         const finalX = liveOverride?.x ?? drag.baseX;
         const finalY = liveOverride?.y ?? drag.baseY;
-        setLayers(prev => {
-          const next = prev.map(l => l.id === scaleLayerId
-            ? { ...l, x: finalX, y: finalY, textStyle: { ...l.textStyle, fontSize: liveSize } }
-            : l);
-          layersRef.current = next;
-          commitLayerMove(next, scaleLayerId);
-          return next;
-        });
+        const next = layersRef.current.map(l => l.id === scaleLayerId
+          ? { ...l, x: finalX, y: finalY, textStyle: { ...l.textStyle, fontSize: liveSize } }
+          : l);
+        layersRef.current = next;
+        setLayers(next);
+        commitLayerMove(next, scaleLayerId);
         textStyleRef.current = { ...textStyleRef.current, fontSize: liveSize };
         setTextStyle(s => ({ ...s, fontSize: liveSize }));
       }

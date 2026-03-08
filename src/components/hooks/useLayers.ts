@@ -159,22 +159,30 @@ function snapshotToLayer(snap: LayerSnapshot, docW: number, docH: number): Layer
 export function useLayers(docW: number, docH: number) {
   const [layers, setLayers] = useState<Layer[]>([]);
   const [activeLayerId, setActiveLayerId] = useState<string>('');
-  // historyVersion: 히스토리 패널 표시용 — 리렌더 최소화를 위해 ref 사용
   const historyVersion = useRef(0);
 
-  // 히스토리 스택 — 모두 ref (히스토리 저장이 리렌더를 트리거하지 않음)
   const historyStack = useRef<LayerHistoryEntry[]>([]);
   const historyIndexRef = useRef(-1);
-  // canUndo/canRedo는 버튼 활성화를 위해 최소한의 state 유지
   const [historyIndex, setHistoryIndex] = useState(-1);
 
+  // ── Pre-snapshot: mousedown 시점에 미리 찍어두는 Promise ──────────────
+  // mouseup에서는 이미 완료된 Promise를 push → 0ms 블로킹
+  const pendingSnapshotRef = useRef<Promise<LayerSnapshot> | null>(null);
+  const pendingSnapshotLayerIdRef = useRef<string | null>(null);
+
   // ── 히스토리 저장 ──────────────────────────────────────────────────────
+
+  /** mousedown 시 즉시 호출 — 활성 레이어를 백그라운드에서 스냅샷 시작 */
+  const prepareSnapshot = useCallback((layerId: string, layer: Layer) => {
+    pendingSnapshotLayerIdRef.current = layerId;
+    pendingSnapshotRef.current = layerToSnapshotAsync(layer);
+  }, []);
 
   const saveSnapshot = useCallback(async (
     currentLayers: Layer[],
     currentActiveId: string,
     label: string,
-    changedLayerId?: string   // 지정하면 해당 레이어만 새로 스냅샷, 나머지는 이전 엔트리에서 재사용
+    changedLayerId?: string
   ) => {
     const now = new Date();
     const time = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
@@ -184,13 +192,19 @@ export function useLayers(docW: number, docH: number) {
     let snapshots: LayerSnapshot[];
 
     if (changedLayerId && prevEntry) {
-      // 변경된 레이어 하나만 새로 찍고, 나머지는 이전 스냅샷 재사용 (복사 없음)
-      const changedLayer = currentLayers.find(l => l.id === changedLayerId);
-      const newSnap = changedLayer ? await layerToSnapshotAsync(changedLayer) : null;
+      // pending Promise가 있으면 (mousedown에서 미리 시작한 것) await — 이미 완료됐을 확률 높음
+      const usePending = pendingSnapshotRef.current
+        && pendingSnapshotLayerIdRef.current === changedLayerId;
+
+      const newSnap = usePending
+        ? await pendingSnapshotRef.current!
+        : await layerToSnapshotAsync(currentLayers.find(l => l.id === changedLayerId)!);
+
+      pendingSnapshotRef.current = null;
+      pendingSnapshotLayerIdRef.current = null;
 
       snapshots = currentLayers.map(layer => {
-        if (layer.id === changedLayerId && newSnap) return newSnap;
-        // 이전 엔트리에서 같은 id의 스냅샷 재사용
+        if (layer.id === changedLayerId) return { ...newSnap, x: layer.x, y: layer.y };
         return prevEntry.layers.find(s => s.id === layer.id)
           ?? { id: layer.id, name: layer.name, type: layer.type, visible: layer.visible,
                opacity: layer.opacity, blendMode: layer.blendMode, locked: layer.locked,
@@ -199,7 +213,6 @@ export function useLayers(docW: number, docH: number) {
                textContent: layer.textContent, textStyle: { ...layer.textStyle } };
       });
     } else {
-      // 전체 스냅샷 (레이어 추가/삭제/병합 등 구조 변경 시)
       snapshots = await Promise.all(currentLayers.map(layerToSnapshotAsync));
     }
 
@@ -694,6 +707,7 @@ export function useLayers(docW: number, docH: number) {
     // 현재 레이어 접근
     getActiveLayer,
     getActiveLayerCanvases,
+    prepareSnapshot,
     savePixelSnapshot,
 
     // 초기화

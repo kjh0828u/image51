@@ -200,7 +200,7 @@ export function BrushEditor({
     moveLayerPosition, commitLayerMove,
     mergeDown, flattenAll,
     getActiveLayer, getActiveLayerCanvases,
-    savePixelSnapshot, resetLayers, commitLayers,
+    savePixelSnapshot, prepareSnapshot, resetLayers, commitLayers,
   } = layersHook;
 
   // imageUrl 변경 시 레이어 초기화 (새 이미지 로드 준비)
@@ -1405,6 +1405,11 @@ export function BrushEditor({
           }
         }
 
+        // 스트로크 시작 시 즉시 pre-snapshot 시작 (백그라운드 비동기)
+        // mouseup 때 이미 완료된 Promise를 그냥 사용 → 0ms 블로킹
+        const activeLayer = layersRef.current.find(l => l.id === activeLayerIdRef.current);
+        if (activeLayer) prepareSnapshot(activeLayerIdRef.current, activeLayer);
+
         isPainting.current = true;
         hasStrokeRef.current = false;
         lastPos.current = pos;
@@ -1412,7 +1417,7 @@ export function BrushEditor({
         paint(pos);
       }
     },
-    [tool, getCanvasPos, handleWand, handleBucket, handleEyedropper, paint, saveMaskSnapshot, drawCropOverlay, cropRect, zoom, brushSize, originalSnapshotRef, blurCacheRef, getActiveOriginal, getActiveLayer, hitTestTextCorner, hitTestTextLayer, stopTextMarching, startTextMarching, bumpTextUI]
+    [tool, getCanvasPos, handleWand, handleBucket, handleEyedropper, paint, saveMaskSnapshot, drawCropOverlay, cropRect, zoom, brushSize, originalSnapshotRef, blurCacheRef, getActiveOriginal, getActiveLayer, hitTestTextCorner, hitTestTextLayer, stopTextMarching, startTextMarching, bumpTextUI, prepareSnapshot]
   );
 
 

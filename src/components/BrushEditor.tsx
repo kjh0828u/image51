@@ -46,6 +46,7 @@ import {
   AlignCenter,
   AlignRight,
 } from 'lucide-react';
+import { Glass } from './Glass';
 import {
   blurAndThresholdBinary,
   expandSelection,
@@ -158,7 +159,7 @@ const ColorPickerPopup = memo(({ color, onChange, size = 24, className = '', tit
     if (!isOpen) return;
     const handleClick = (e: MouseEvent) => {
       if (containerRef.current && !containerRef.current.contains(e.target as Node) &&
-          popupRef.current && !popupRef.current.contains(e.target as Node)) {
+        popupRef.current && !popupRef.current.contains(e.target as Node)) {
         setIsOpen(false);
       }
     };
@@ -1702,6 +1703,7 @@ export function BrushEditor({
 
   const handleMouseDown = useCallback(
     (e: React.MouseEvent | React.TouchEvent) => {
+      if (!imageUrl) return;
       e.preventDefault();
       if (canvasRef.current) containerRectRef.current = canvasRef.current.getBoundingClientRect();
       const pos = getCanvasPos(e);
@@ -3403,115 +3405,146 @@ export function BrushEditor({
               onMouseDown={handleMouseDown}
               onTouchStart={handleMouseDown}
             >
-              <div
-                className="brush-canvas-frame"
-                style={{ width: displayWidth, height: displayHeight, ...BG_PRESETS[bgPreset]!.style }}
-              >
-                <canvas ref={canvasRef} style={{ width: displayWidth, height: displayHeight, display: 'block' }} />
-                <canvas
-                  ref={overlayRef}
-                  style={{
-                    position: 'absolute', top: 0, left: 0,
-                    width: displayWidth, height: displayHeight,
-                    cursor: (tool === 'wand' || tool === 'crop' || tool === 'bucket' || tool === 'eyedropper' || tool.startsWith('marquee')) ? 'crosshair' : 'none',
-                    touchAction: 'none',
-                  }}
-                />
+              {imageUrl ? (
                 <div
-                  ref={brushCursorRef}
-                  className={`brush-cursor-preview brush-cursor-${brushShape}`}
-                  style={{
-                    width: (brushShape === 'rect-v' || brushShape === 'rect-v-thin') ? (brushSize / (brushShape === 'rect-v' ? 2 : 4)) * zoom : brushSize * zoom,
-                    height: (brushShape === 'rect-h' || brushShape === 'rect-h-thin') ? (brushSize / (brushShape === 'rect-h' ? 2 : 4)) * zoom : brushSize * zoom,
-                    display: (tool === 'erase' || tool === 'restore' || tool === 'paint' || tool === 'clone' || tool === 'heal' || tool === 'blur-brush') ? 'block' : 'none',
-                    borderColor: tool === 'erase' ? '#ef4444' : tool === 'paint' ? brushColor : (tool === 'blur-brush' || tool === 'heal') ? '#38bdf8' : '#22c55e',
-                    backgroundColor: tool === 'erase' ? 'rgba(239,68,68,0.15)' : tool === 'paint' ? `${brushColor}33` : 'rgba(56,189,248,0.15)',
-                  }}
-                />
+                  className="brush-canvas-frame"
+                  style={{ width: displayWidth, height: displayHeight, ...BG_PRESETS[bgPreset]!.style }}
+                >
+                  <canvas ref={canvasRef} style={{ width: displayWidth, height: displayHeight, display: 'block' }} />
+                  <canvas
+                    ref={overlayRef}
+                    style={{
+                      position: 'absolute', top: 0, left: 0,
+                      width: displayWidth, height: displayHeight,
+                      cursor: (tool === 'wand' || tool === 'crop' || tool === 'bucket' || tool === 'eyedropper' || tool.startsWith('marquee')) ? 'crosshair' : 'none',
+                      touchAction: 'none',
+                    }}
+                  />
+                  <div
+                    ref={brushCursorRef}
+                    className={`brush-cursor-preview brush-cursor-${brushShape}`}
+                    style={{
+                      width: (brushShape === 'rect-v' || brushShape === 'rect-v-thin') ? (brushSize / (brushShape === 'rect-v' ? 2 : 4)) * zoom : brushSize * zoom,
+                      height: (brushShape === 'rect-h' || brushShape === 'rect-h-thin') ? (brushSize / (brushShape === 'rect-h' ? 2 : 4)) * zoom : brushSize * zoom,
+                      display: (tool === 'erase' || tool === 'restore' || tool === 'paint' || tool === 'clone' || tool === 'heal' || tool === 'blur-brush') ? 'block' : 'none',
+                      borderColor: tool === 'erase' ? '#ef4444' : tool === 'paint' ? brushColor : (tool === 'blur-brush' || tool === 'heal') ? '#38bdf8' : '#22c55e',
+                      backgroundColor: tool === 'erase' ? 'rgba(239,68,68,0.15)' : tool === 'paint' ? `${brushColor}33` : 'rgba(56,189,248,0.15)',
+                    }}
+                  />
 
-                {/* 텍스트 레이어 DOM 오버레이 — 벡터 화질로 표시 (편집 중이 아닌 레이어) */}
-                {layers.filter(l => l.type === 'text' && l.visible && l.id !== editingTextLayerIdRef.current && l.id !== domHiddenTextId).map(layer => {
-                  const ts = layer.textStyle;
-                  const lh = ts.lineHeight ?? 1.3;
-                  const ls = ts.letterSpacing ?? 0;
-                  const lx = (textLiveOverrideRef.current?.x != null && layer.id === textMarchLayerIdRef.current ? textLiveOverrideRef.current.x : layer.x) * zoom;
-                  const ly = (textLiveOverrideRef.current?.y != null && layer.id === textMarchLayerIdRef.current ? textLiveOverrideRef.current.y : layer.y) * zoom;
-                  const fontSize = (textLiveOverrideRef.current?.fontSize != null && layer.id === textMarchLayerIdRef.current ? textLiveOverrideRef.current.fontSize : ts.fontSize) * zoom;
-                  return (
+                  {/* 텍스트 레이어 DOM 오버레이 — 벡터 화질로 표시 (편집 중이 아닌 레이어) */}
+                  {layers.filter(l => l.type === 'text' && l.visible && l.id !== editingTextLayerIdRef.current && l.id !== domHiddenTextId).map(layer => {
+                    const ts = layer.textStyle;
+                    const lh = ts.lineHeight ?? 1.3;
+                    const ls = ts.letterSpacing ?? 0;
+                    const lx = (textLiveOverrideRef.current?.x != null && layer.id === textMarchLayerIdRef.current ? textLiveOverrideRef.current.x : layer.x) * zoom;
+                    const ly = (textLiveOverrideRef.current?.y != null && layer.id === textMarchLayerIdRef.current ? textLiveOverrideRef.current.y : layer.y) * zoom;
+                    const fontSize = (textLiveOverrideRef.current?.fontSize != null && layer.id === textMarchLayerIdRef.current ? textLiveOverrideRef.current.fontSize : ts.fontSize) * zoom;
+                    return (
+                      <div
+                        key={layer.id}
+                        className="text-layer-dom-overlay"
+                        style={{
+                          position: 'absolute',
+                          left: lx,
+                          top: ly,
+                          opacity: layer.opacity / 100,
+                          pointerEvents: 'none',
+                          whiteSpace: 'pre',
+                          fontFamily: ts.fontFamily,
+                          fontSize: `${fontSize}px`,
+                          fontWeight: ts.fontWeight,
+                          fontStyle: ts.fontStyle,
+                          color: ts.color,
+                          letterSpacing: `${ls * zoom}px`,
+                          lineHeight: lh,
+                          textAlign: ts.align,
+                          transform: ts.align === 'center' ? 'translateX(-50%)' : ts.align === 'right' ? 'translateX(-100%)' : 'none',
+                          userSelect: 'none',
+                        }}
+                      >
+                        {layer.textContent}
+                      </div>
+                    );
+                  })}
+
+                  {/* 텍스트 툴 입력 오버레이 — uncontrolled textarea (렉 없음) */}
+                  {isEditingTextRef.current && textPosRef.current && (
                     <div
-                      key={layer.id}
-                      className="text-layer-dom-overlay"
+                      className="text-tool-overlay"
                       style={{
-                        position: 'absolute',
-                        left: lx,
-                        top: ly,
-                        opacity: layer.opacity / 100,
-                        pointerEvents: 'none',
-                        whiteSpace: 'pre',
-                        fontFamily: ts.fontFamily,
-                        fontSize: `${fontSize}px`,
-                        fontWeight: ts.fontWeight,
-                        fontStyle: ts.fontStyle,
-                        color: ts.color,
-                        letterSpacing: `${ls * zoom}px`,
-                        lineHeight: lh,
-                        textAlign: ts.align,
-                        transform: ts.align === 'center' ? 'translateX(-50%)' : ts.align === 'right' ? 'translateX(-100%)' : 'none',
-                        userSelect: 'none',
+                        left: textPosRef.current.x * zoom,
+                        top: textPosRef.current.y * zoom,
+                        transform: textStyle.align === 'center' ? 'translateX(-50%)' : textStyle.align === 'right' ? 'translateX(-100%)' : 'none',
                       }}
                     >
-                      {layer.textContent}
+                      <textarea
+                        ref={textareaRef}
+                        className="text-tool-input"
+                        defaultValue={textInputRef.current}
+                        onChange={(e) => {
+                          textInputRef.current = e.target.value;
+                          // 내용에 맞게 높이 자동 조절
+                          e.target.style.height = 'auto';
+                          e.target.style.height = e.target.scrollHeight + 'px';
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); commitTextLayer(); }
+                          if (e.key === 'Escape') {
+                            isEditingTextRef.current = false;
+                            textPosRef.current = null;
+                            textInputRef.current = '';
+                            editingTextLayerIdRef.current = null;
+                            bumpTextUI();
+                          }
+                        }}
+                        style={{
+                          fontSize: `${textStyle.fontSize * zoom}px`,
+                          fontFamily: textStyle.fontFamily,
+                          fontWeight: textStyle.fontWeight,
+                          fontStyle: textStyle.fontStyle,
+                          color: textStyle.color,
+                          letterSpacing: `${(textStyle.letterSpacing ?? 0) * zoom}px`,
+                          lineHeight: textStyle.lineHeight ?? 1.3,
+                          textAlign: textStyle.align,
+                          whiteSpace: 'pre',
+                        }}
+                        placeholder="텍스트 입력 후 Enter…"
+                        rows={1}
+                      />
                     </div>
-                  );
-                })}
-
-                {/* 텍스트 툴 입력 오버레이 — uncontrolled textarea (렉 없음) */}
-                {isEditingTextRef.current && textPosRef.current && (
+                  )}
+                </div>
+              ) : (
+                <div
+                  className="absolute inset-0 flex items-center justify-center p-8 pointer-events-none"
+                  style={{ paddingLeft: '110px', paddingTop: '110px' }} // 눈금자 제외 중앙
+                >
                   <div
-                    className="text-tool-overlay"
-                    style={{
-                      left: textPosRef.current.x * zoom,
-                      top: textPosRef.current.y * zoom,
-                      transform: textStyle.align === 'center' ? 'translateX(-50%)' : textStyle.align === 'right' ? 'translateX(-100%)' : 'none',
+                    className="pointer-events-auto w-full max-w-lg"
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      if (e.dataTransfer.files?.length) {
+                        Array.from(e.dataTransfer.files).forEach(file => onImageChange(file));
+                      }
                     }}
+                    onClick={() => onAddNewTab?.()}
                   >
-                    <textarea
-                      ref={textareaRef}
-                      className="text-tool-input"
-                      defaultValue={textInputRef.current}
-                      onChange={(e) => {
-                        textInputRef.current = e.target.value;
-                        // 내용에 맞게 높이 자동 조절
-                        e.target.style.height = 'auto';
-                        e.target.style.height = e.target.scrollHeight + 'px';
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); commitTextLayer(); }
-                        if (e.key === 'Escape') {
-                          isEditingTextRef.current = false;
-                          textPosRef.current = null;
-                          textInputRef.current = '';
-                          editingTextLayerIdRef.current = null;
-                          bumpTextUI();
-                        }
-                      }}
-                      style={{
-                        fontSize: `${textStyle.fontSize * zoom}px`,
-                        fontFamily: textStyle.fontFamily,
-                        fontWeight: textStyle.fontWeight,
-                        fontStyle: textStyle.fontStyle,
-                        color: textStyle.color,
-                        letterSpacing: `${(textStyle.letterSpacing ?? 0) * zoom}px`,
-                        lineHeight: textStyle.lineHeight ?? 1.3,
-                        textAlign: textStyle.align,
-                        whiteSpace: 'pre',
-                      }}
-                      placeholder="텍스트 입력 후 Enter…"
-                      rows={1}
-                    />
+                    <div
+                      className="glass-interactive individual-upload-glass w-full aspect-video bg-[#252526] border border-white/10 rounded-[var(--radius-3xl)] shadow-2xl flex flex-col items-center justify-center relative overflow-hidden"
+                    >
+                      <div className="upload-icon-container mb-6 bg-indigo-500/10 p-5 rounded-full ring-1 ring-indigo-500/20">
+                        <ImagePlus className="w-12 h-12 text-indigo-400" />
+                      </div>
+                      <p className="upload-text text-2xl font-black text-white text-center">
+                        이미지를 드래그하거나 클릭하여 열기<br />
+                        <span className="text-sm font-bold text-indigo-400 uppercase tracking-widest mt-2 block">이미지 배경제거, 자르기 등 여러 도구를 이용해보세요.</span>
+                      </p>
+                    </div>
                   </div>
-                )}
-              </div>
+                </div>
+              )}
             </div>
           </div>
         </div>

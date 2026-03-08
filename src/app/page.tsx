@@ -243,57 +243,39 @@ export default function Home() {
       {/* 개별 처리 탭 */}
       {activeTab === 'individual' && (
         <div className="individual-tab-content h-full flex flex-col pt-1">
-          {individualTabs.length > 0 ? (
-            <>
-              {/* Editor Viewports */}
-              <div className="flex-1 relative bg-[#0a0a0b]">
-                {individualTabs.map((tab) => (
-                  <div
-                    key={tab.id}
-                    className={cn(
-                      "absolute inset-0 transition-opacity duration-300",
-                      activeTabId === tab.id ? "opacity-100 z-10 block" : "opacity-0 z-0 hidden"
-                    )}
-                  >
-                    <BrushEditor
-                      imageUrl={tab.url}
-                      originalName={tab.name}
-                      onImageChange={handleIndividualFile}
-                      onReset={() => handleCloseTab(tab.id, { stopPropagation: () => { } } as any)}
-                      tabs={individualTabs}
-                      activeTabId={activeTabId}
-                      setActiveTabId={setActiveTabId}
-                      onCloseTab={handleCloseTab}
-                      onAddNewTab={() => individualFileInputRef.current?.click()}
-                    />
-                  </div>
-                ))}
-              </div>
-            </>
-          ) : (
-            <div
-              className="individual-upload-area relative flex-1 flex flex-col items-center justify-center m-8"
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={handleIndividualDrop}
-              onClick={() => individualFileInputRef.current?.click()}
-            >
-              <Glass
-                variant="bright"
-                className="glass-interactive individual-upload-glass max-w-lg w-full aspect-video"
-                contentClassName="glass-content individual-upload-content flex flex-col items-center justify-center"
-              >
-                <div className="liquidGlass-effect"></div>
-                <div className="upload-icon-container mb-6 bg-indigo-500/10 p-5 rounded-full ring-1 ring-indigo-500/20">
-                  <ImagePlus className="w-12 h-12 text-indigo-400" />
+          <div className="flex-1 relative bg-[#0a0a0b]">
+            {individualTabs.length > 0 ? (
+              individualTabs.map((tab) => (
+                <div
+                  key={tab.id}
+                  className={cn(
+                    "absolute inset-0 transition-opacity duration-300",
+                    activeTabId === tab.id ? "opacity-100 z-10 block" : "opacity-0 z-0 hidden"
+                  )}
+                >
+                  <BrushEditor
+                    imageUrl={tab.url}
+                    originalName={tab.name}
+                    onImageChange={handleIndividualFile}
+                    onReset={() => handleCloseTab(tab.id, { stopPropagation: () => { } } as any)}
+                    tabs={individualTabs}
+                    activeTabId={activeTabId}
+                    setActiveTabId={setActiveTabId}
+                    onCloseTab={handleCloseTab}
+                    onAddNewTab={() => individualFileInputRef.current?.click()}
+                  />
                 </div>
-                <p className="upload-text text-2xl font-black text-white text-center">
-                  이미지를 드래그하거나 클릭하여 열기<br />
-                  <span className="text-sm font-bold text-indigo-400 uppercase tracking-widest mt-2 block">이미지 배경제거, 자르기 등 여러 도구를 이용해보세요.</span>
-                </p>
-                <p className="individual-upload-hint text-gray-500 text-sm mt-6"></p>
-              </Glass>
-            </div>
-          )}
+              ))
+            ) : (
+              <BrushEditor
+                imageUrl=""
+                originalName=""
+                onImageChange={handleIndividualFile}
+                onReset={() => { }}
+                onAddNewTab={() => individualFileInputRef.current?.click()}
+              />
+            )}
+          </div>
           <input
             ref={individualFileInputRef}
             type="file"

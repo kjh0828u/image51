@@ -8,6 +8,7 @@ export function useBrushConfig() {
     const [brushSize, setBrushSize] = useState(30);
     const [brushOpacity, setBrushOpacity] = useState(100);
     const [brushColor, setBrushColor] = useState('#4f46e5');
+    const [brushBgColor, setBrushBgColor] = useState('#ffffff');
     const [brushShape, setBrushShape] = useState<BrushShape>('circle');
     const [brushHardness, setBrushHardness] = useState(50);
     const [brushBlur, setBrushBlur] = useState(1);
@@ -24,6 +25,19 @@ export function useBrushConfig() {
         toolRef.current = tool;
     }, [tool]);
 
+    const swapColors = useCallback(() => {
+        setBrushColor(prev => {
+            const currentBg = brushBgColor;
+            setBrushBgColor(prev);
+            return currentBg;
+        });
+    }, [brushBgColor]);
+
+    const resetColors = useCallback(() => {
+        setBrushColor('#000000');
+        setBrushBgColor('#ffffff');
+    }, []);
+
     return {
         tool,
         setTool,
@@ -34,6 +48,10 @@ export function useBrushConfig() {
         setBrushOpacity,
         brushColor,
         setBrushColor,
+        brushBgColor,
+        setBrushBgColor,
+        swapColors,
+        resetColors,
         brushShape,
         setBrushShape,
         brushHardness,

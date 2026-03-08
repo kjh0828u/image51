@@ -45,6 +45,7 @@ import {
   AlignLeft,
   AlignCenter,
   AlignRight,
+  ArrowLeftRight,
 } from 'lucide-react';
 import { Glass } from './Glass';
 import {
@@ -585,6 +586,9 @@ export function BrushEditor({
     brushSize, setBrushSize,
     brushOpacity, setBrushOpacity,
     brushColor, setBrushColor,
+    brushBgColor, setBrushBgColor,
+    swapColors,
+    resetColors,
     brushShape, setBrushShape,
     brushHardness, setBrushHardness,
     brushBlur, setBrushBlur,
@@ -2349,6 +2353,8 @@ export function BrushEditor({
       if (key === 'c') { setTool('crop'); stopMarching(); startMarching(); }
       if (key === 'r') { setTool('restore'); stopMarching(); cancelCrop(); }
       if (key === 'i') { setTool('eyedropper'); stopMarching(); cancelCrop(); }
+      if (key === 'x') { e.preventDefault(); swapColors(); }
+      if (key === 'd') { e.preventDefault(); resetColors(); }
 
       // Brush Size shortcuts: + (or =), -, [ , ]
       if (['paint', 'erase', 'restore', 'clone', 'heal', 'blur-brush'].includes(tool)) {
@@ -3132,21 +3138,50 @@ export function BrushEditor({
           <div className="w-8 h-[1px] bg-[#333] mb-3" />
 
           {/* Color Picker Section (Photoshop Style) */}
-          <div className="flex flex-col items-center gap-2 mb-3 relative">
-            <div className="relative w-8 h-8">
-              {/* Background Color Square (Decorative for now to match PS look) */}
-              <div
-                className="absolute bottom-0 right-0 w-5 h-5 border border-[#111] bg-white z-0 rounded-sm shadow-lg"
-                title="Background Color (Fixed White for UI)"
-              />
-              {/* Foreground Color Square (Active) */}
-              <ColorPickerPopup
-                color={brushColor}
-                onChange={setBrushColor}
-                size={24}
-                className="absolute top-0 left-0 z-10"
-                title="전경색 변경"
-              />
+          <div className="flex flex-col items-center gap-2 mb-3 mt-2 relative">
+            <div className="relative w-10 h-10">
+              {/* Background Color Square */}
+              <div className="absolute bottom-0 right-0 z-0">
+                <ColorPickerPopup
+                  color={brushBgColor}
+                  onChange={setBrushBgColor}
+                  size={24}
+                  className="shadow-lg"
+                  title="배경색 변경"
+                />
+              </div>
+
+              {/* Foreground Color Square */}
+              <div className="absolute top-0 left-0 z-10">
+                <ColorPickerPopup
+                  color={brushColor}
+                  onChange={setBrushColor}
+                  size={24}
+                  className="shadow-xl"
+                  title="전경색 변경"
+                />
+              </div>
+
+              {/* Swap Colors Button */}
+              <button
+                onClick={swapColors}
+                className="absolute top-0 right-0 z-20 p-0.5 bg-[#444] rounded-full hover:bg-[#555] text-gray-400 hover:text-white transition-colors shadow-md"
+                title="전경색/배경색 스왑 (X)"
+              >
+                <ArrowLeftRight size={10} className="-scale-x-100" />
+              </button>
+
+              {/* Reset Colors Button */}
+              <button
+                onClick={resetColors}
+                className="absolute bottom-0 left-0 z-20 flex flex-col items-center justify-center p-0.5 bg-[#444] rounded-sm hover:bg-[#555] transition-colors shadow-md"
+                title="기본 색상으로 초기화 (D)"
+              >
+                <div className="flex gap-[1px]">
+                  <div className="w-1.5 h-1.5 bg-black border border-white/20" />
+                  <div className="w-1.5 h-1.5 bg-white border border-black/20" />
+                </div>
+              </button>
             </div>
           </div>
 

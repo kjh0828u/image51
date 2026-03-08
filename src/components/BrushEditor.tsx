@@ -1334,14 +1334,19 @@ export function BrushEditor({
       let startOffset = { x: 0, y: 0 };
       const currentTool = toolRef.current;
       if ((currentTool === 'clone' || currentTool === 'heal') && cloneSourceRef.current) {
-        // Aligned behavior: use fixed offset if exists, otherwise set it on first mouse down
+        // Aligned behavior: establish offset for this stroke based on its start point
+        // If you want "Non-Aligned" (always start from S on every click), 
+        // we should ALWAYS calculate offset at start of stroke.
         if (!cloneOffsetRef.current && initialMousePos.current) {
           cloneOffsetRef.current = {
-            x: cloneSourceRef.current.x - initialMousePos.current.x,
-            y: cloneSourceRef.current.y - initialMousePos.current.y
+            x: Math.round(cloneSourceRef.current.x - initialMousePos.current.x),
+            y: Math.round(cloneSourceRef.current.y - initialMousePos.current.y)
           };
         }
-        startOffset = cloneOffsetRef.current || { x: 0, y: 0 };
+        startOffset = cloneOffsetRef.current || {
+          x: Math.round(cloneSourceRef.current.x - pos.x),
+          y: Math.round(cloneSourceRef.current.y - pos.y)
+        };
       }
 
       const tipCanvas = brushTipRef.current;
@@ -1432,7 +1437,10 @@ export function BrushEditor({
       e.preventDefault();
       if (canvasRef.current) containerRectRef.current = canvasRef.current.getBoundingClientRect();
       const pos = getCanvasPos(e);
-      const isAlt = (e as any).altKey || isAltPressedRef.current;
+      // isAlt 감지 시 브라우저 기본 altKey 속성을 최우선 참조
+      const isAlt = (e as any).altKey ||
+        (e.nativeEvent && (e.nativeEvent as any).altKey) ||
+        isAltPressedRef.current;
       const clientX = 'touches' in e ? (e as React.TouchEvent).touches[0]!.clientX : (e as React.MouseEvent).clientX;
       const clientY = 'touches' in e ? (e as React.TouchEvent).touches[0]!.clientY : (e as React.MouseEvent).clientY;
 
@@ -2090,11 +2098,17 @@ export function BrushEditor({
       }
     };
 
+    const handleBlur = () => {
+      isAltPressedRef.current = false;
+    };
+
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('blur', handleBlur);
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('blur', handleBlur);
     };
   }, [hasSelection, applySelectionToMask, undo, redo, tool, cancelCrop, applyCrop, cropRect, startMarching, stopMarching, setTool, stopTextMarching, startTextMarching, bumpTextUI, setBrushSize]);
 
@@ -2110,12 +2124,12 @@ export function BrushEditor({
 
     const lx = clientX - rect.left;
     const ly = clientY - rect.top;
+    const isAltHeld = (e as any).altKey || isAltPressedRef.current;
 
     if (brushCursor) {
       brushCursor.style.left = `${lx}px`;
       brushCursor.style.top = `${ly}px`;
       const needsBrush = (toolRef.current === 'erase' || toolRef.current === 'restore' || toolRef.current === 'paint' || toolRef.current === 'clone' || toolRef.current === 'heal' || toolRef.current === 'blur-brush');
-      const isAltHeld = (e as any).altKey || isAltPressedRef.current;
       const isPickMode = (toolRef.current === 'clone' || toolRef.current === 'heal' || toolRef.current === 'paint' || toolRef.current === 'bucket' || toolRef.current === 'eyedropper') && isAltHeld;
       brushCursor.style.display = (needsBrush && !isPickMode) ? 'block' : 'none';
       if (isPickMode) overlay.style.cursor = 'crosshair';
@@ -2186,7 +2200,7 @@ export function BrushEditor({
         }
       }
     } else if (!isPainting.current) {
-      const t = toolRef.current;
+      const t = toolRef.current as string;
       const needsBrush = (t === 'erase' || t === 'restore' || t === 'paint' || t === 'clone' || t === 'heal' || t === 'blur-brush');
       const isPickMode = (t === 'clone' || t === 'heal' || t === 'paint' || t === 'bucket' || t === 'eyedropper') && isAltHeld;
 
@@ -2204,20 +2218,46 @@ export function BrushEditor({
         const draggingHnd = isDraggingHandleRef.current;
         const curCropRect = cropRectRef.current;
 
-        // Aligned Source Preview for Clone/Heal
-        if ((currentTool === 'clone' || currentTool === 'heal') && cloneSourceRef.current && initialMousePos.current) {
+        // Clone/Heal Source Preview
+        const t = currentTool as string;
+        if ((t === 'clone' || t === 'heal') && (cloneSourceRef.current || isAltHeld)) {
           const ctx = overlay.getContext('2d')!;
+          // 샘플링 지점 잔상을 방지하기 위해 항상 클리어
           ctx.clearRect(0, 0, overlay.width, overlay.height);
-          const mouseOffset = { x: pos.x - initialMousePos.current.x, y: pos.y - initialMousePos.current.y };
-          const srcX = cloneSourceRef.current.x + mouseOffset.x;
-          const srcY = cloneSourceRef.current.y + mouseOffset.y;
 
-          ctx.strokeStyle = 'white';
-          ctx.lineWidth = 1;
-          ctx.beginPath();
-          ctx.moveTo(srcX - 5, srcY); ctx.lineTo(srcX + 5, srcY);
-          ctx.moveTo(srcX, srcY - 5); ctx.lineTo(srcX, srcY + 5);
-          ctx.stroke();
+          let srcX, srcY;
+
+          if (isAltHeld) {
+            // 소스 지정 중: 마우스 위치가 소스 후보
+            srcX = pos.x;
+            srcY = pos.y;
+          } else if (isPainting.current && cloneOffsetRef.current) {
+            // 페인팅 중: 고정된 오프셋 적용
+            srcX = pos.x + cloneOffsetRef.current.x;
+            srcY = pos.y + cloneOffsetRef.current.y;
+          } else if (cloneSourceRef.current) {
+            // 대기 중: 마지막 소스 위치 표시 (정렬 모드면 마우스 + 기존 오프셋)
+            if (cloneOffsetRef.current) {
+              srcX = pos.x + cloneOffsetRef.current.x;
+              srcY = pos.y + cloneOffsetRef.current.y;
+            } else {
+              srcX = cloneSourceRef.current.x;
+              srcY = cloneSourceRef.current.y;
+            }
+          }
+
+          if (srcX !== undefined && srcY !== undefined) {
+            ctx.save();
+            ctx.strokeStyle = 'white';
+            ctx.shadowBlur = 2;
+            ctx.shadowColor = 'black';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(srcX - 8, srcY); ctx.lineTo(srcX + 8, srcY);
+            ctx.moveTo(srcX, srcY - 8); ctx.lineTo(srcX, srcY + 8);
+            ctx.stroke();
+            ctx.restore();
+          }
         }
 
         if (currentTool === 'crop') {

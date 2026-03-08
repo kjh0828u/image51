@@ -2325,7 +2325,7 @@ body::before {
   height: 20px;
   background: #252526;
   border-bottom: 1px solid #111;
-  z-index: 100;
+  z-index: 10;
   overflow: hidden;
 }
 
@@ -2337,7 +2337,7 @@ body::before {
   width: 20px;
   background: #252526;
   border-right: 1px solid #111;
-  z-index: 100;
+  z-index: 10;
   overflow: hidden;
 }
 

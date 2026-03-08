@@ -134,20 +134,24 @@ const ColorPickerPopup = memo(({ color, onChange, size = 24, className = '', tit
   const popupRef = useRef<HTMLDivElement>(null);
   const [hexInput, setHexInput] = useState(color);
 
-  // HSV 상태
-  const hsv = hexToHsv(color);
-  const [hue, setHue] = useState(hsv.h);
-  const [sat, setSat] = useState(hsv.s);
-  const [val, setVal] = useState(hsv.v);
+  // HSV 상태 (ref로 관리하여 드래그 중 리렌더 방지)
+  const hsvRef = useRef(hexToHsv(color));
+  const [hue, setHue] = useState(hsvRef.current.h);
+  const [sat, setSat] = useState(hsvRef.current.s);
+  const [val, setVal] = useState(hsvRef.current.v);
+  const isDraggingRef = useRef(false);
 
-  // 외부 색상 변경 동기화
+  // 외부 색상 변경 동기화 (팝업 닫혀있을 때만)
   useEffect(() => {
-    const newHsv = hexToHsv(color);
-    setHue(newHsv.h);
-    setSat(newHsv.s);
-    setVal(newHsv.v);
-    setHexInput(color);
-  }, [color]);
+    if (!isOpen) {
+      const newHsv = hexToHsv(color);
+      hsvRef.current = newHsv;
+      setHue(newHsv.h);
+      setSat(newHsv.s);
+      setVal(newHsv.v);
+      setHexInput(color);
+    }
+  }, [color, isOpen]);
 
   // 외부 클릭 시 닫기
   useEffect(() => {
@@ -181,15 +185,37 @@ const ColorPickerPopup = memo(({ color, onChange, size = 24, className = '', tit
     });
   }, [isOpen]);
 
-  // 색상 변경 핸들러
-  const handleColorChange = useCallback((newHue: number, newSat: number, newVal: number) => {
-    setHue(newHue);
-    setSat(newSat);
-    setVal(newVal);
-    const hex = hsvToHex(newHue, newSat, newVal);
+  // 드래그 종료 시 onChange 호출
+  const commitColor = useCallback(() => {
+    const hex = hsvToHex(hsvRef.current.h, hsvRef.current.s, hsvRef.current.v);
     setHexInput(hex);
     onChange(hex);
   }, [onChange]);
+
+  // 채도/명도 영역 클릭/드래그
+  const svRef = useRef<HTMLDivElement>(null);
+
+  const handleSvInteraction = useCallback((clientX: number, clientY: number) => {
+    if (!svRef.current) return;
+    const rect = svRef.current.getBoundingClientRect();
+    const newSat = Math.max(0, Math.min(100, ((clientX - rect.left) / rect.width) * 100));
+    const newVal = Math.max(0, Math.min(100, 100 - ((clientY - rect.top) / rect.height) * 100));
+    hsvRef.current.s = newSat;
+    hsvRef.current.v = newVal;
+    setSat(newSat);
+    setVal(newVal);
+  }, []);
+
+  // Hue 슬라이더 (세로)
+  const hueRef = useRef<HTMLDivElement>(null);
+
+  const handleHueInteraction = useCallback((clientY: number) => {
+    if (!hueRef.current) return;
+    const rect = hueRef.current.getBoundingClientRect();
+    const newHue = Math.max(0, Math.min(360, ((clientY - rect.top) / rect.height) * 360));
+    hsvRef.current.h = newHue;
+    setHue(newHue);
+  }, []);
 
   // HEX 입력 변경
   const handleHexChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -198,35 +224,13 @@ const ColorPickerPopup = memo(({ color, onChange, size = 24, className = '', tit
     setHexInput(val);
     if (/^#[0-9A-Fa-f]{6}$/.test(val)) {
       const newHsv = hexToHsv(val);
+      hsvRef.current = newHsv;
       setHue(newHsv.h);
       setSat(newHsv.s);
       setVal(newHsv.v);
       onChange(val);
     }
   }, [onChange]);
-
-  // 채도/명도 영역 클릭/드래그
-  const svRef = useRef<HTMLDivElement>(null);
-  const [isDraggingSv, setIsDraggingSv] = useState(false);
-
-  const handleSvInteraction = useCallback((clientX: number, clientY: number) => {
-    if (!svRef.current) return;
-    const rect = svRef.current.getBoundingClientRect();
-    const newSat = Math.max(0, Math.min(100, ((clientX - rect.left) / rect.width) * 100));
-    const newVal = Math.max(0, Math.min(100, 100 - ((clientY - rect.top) / rect.height) * 100));
-    handleColorChange(hue, newSat, newVal);
-  }, [hue, handleColorChange]);
-
-  // Hue 슬라이더 (세로)
-  const hueRef = useRef<HTMLDivElement>(null);
-  const [isDraggingHue, setIsDraggingHue] = useState(false);
-
-  const handleHueInteraction = useCallback((clientY: number) => {
-    if (!hueRef.current) return;
-    const rect = hueRef.current.getBoundingClientRect();
-    const newHue = Math.max(0, Math.min(360, ((clientY - rect.top) / rect.height) * 360));
-    handleColorChange(newHue, sat, val);
-  }, [sat, val, handleColorChange]);
 
   return (
     <div ref={containerRef} className={`relative ${className}`}>
@@ -247,14 +251,22 @@ const ColorPickerPopup = memo(({ color, onChange, size = 24, className = '', tit
                 backgroundColor: `hsl(${hue}, 100%, 50%)`
               }}
               onMouseDown={(e) => {
-                setIsDraggingSv(true);
+                isDraggingRef.current = true;
                 handleSvInteraction(e.clientX, e.clientY);
               }}
               onMouseMove={(e) => {
-                if (isDraggingSv) handleSvInteraction(e.clientX, e.clientY);
+                if (isDraggingRef.current) handleSvInteraction(e.clientX, e.clientY);
               }}
-              onMouseUp={() => setIsDraggingSv(false)}
-              onMouseLeave={() => setIsDraggingSv(false)}
+              onMouseUp={() => {
+                isDraggingRef.current = false;
+                commitColor();
+              }}
+              onMouseLeave={() => {
+                if (isDraggingRef.current) {
+                  isDraggingRef.current = false;
+                  commitColor();
+                }
+              }}
             >
               <div className="color-picker-sv-white" />
               <div className="color-picker-sv-black" />
@@ -266,14 +278,22 @@ const ColorPickerPopup = memo(({ color, onChange, size = 24, className = '', tit
               ref={hueRef}
               className="color-picker-hue"
               onMouseDown={(e) => {
-                setIsDraggingHue(true);
+                isDraggingRef.current = true;
                 handleHueInteraction(e.clientY);
               }}
               onMouseMove={(e) => {
-                if (isDraggingHue) handleHueInteraction(e.clientY);
+                if (isDraggingRef.current) handleHueInteraction(e.clientY);
               }}
-              onMouseUp={() => setIsDraggingHue(false)}
-              onMouseLeave={() => setIsDraggingHue(false)}
+              onMouseUp={() => {
+                isDraggingRef.current = false;
+                commitColor();
+              }}
+              onMouseLeave={() => {
+                if (isDraggingRef.current) {
+                  isDraggingRef.current = false;
+                  commitColor();
+                }
+              }}
             >
               <div className="color-picker-hue-cursor" style={{ top: `${(hue / 360) * 100}%` }} />
             </div>
@@ -3076,10 +3096,10 @@ export function BrushEditor({
             <button onClick={() => { stopMarching(); cancelCrop(); setTool('text'); }} className={`brush-tool-btn ${tool === 'text' ? 'brush-tool-btn-active' : ''}`} title="Horizontal Type Tool (T)"><Type size={18} /></button>
           </div>
 
-          <div className="flex-1" />
+          <div className="w-8 h-[1px] bg-[#333] mb-3" />
 
           {/* Color Picker Section (Photoshop Style) */}
-          <div className="flex flex-col items-center gap-2 mb-4 relative">
+          <div className="flex flex-col items-center gap-2 mb-3 relative">
             <div className="relative w-8 h-8">
               {/* Background Color Square (Decorative for now to match PS look) */}
               <div
@@ -3096,6 +3116,8 @@ export function BrushEditor({
               />
             </div>
           </div>
+
+          <div className="flex-1" />
 
           <div className="w-8 h-[1px] bg-[#333] mb-2" />
           <button onClick={() => setZoom(z => Math.min(8, z + 0.2))} className="brush-tool-btn" title="확대">

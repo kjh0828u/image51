@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, memo } from 'react';
 import { cn } from '@/lib/utils';
 import {
   Wand2,
@@ -55,11 +55,10 @@ import {
 } from '../lib/canvasUtils';
 import { useBrushConfig, Tool, BrushShape } from './hooks/useBrushConfig';
 import { useCanvasCore } from './hooks/useCanvasCore';
-import { useHistory } from './hooks/useHistory';
+import { useLayers, type Layer, type TextStyle, type LayerHistoryEntry } from './hooks/useLayers';
 import { useSelectionTools } from './hooks/useSelectionTools';
 import { useImageProcessing } from '@/hooks/useImageProcessing';
 import { getDownloadFilename } from '@/lib/fileUtils';
-import { useLayers, type Layer, type TextStyle } from './hooks/useLayers';
 
 interface BrushEditorProps {
   imageUrl: string;
@@ -81,6 +80,52 @@ interface DropDialogState {
 }
 
 const EYEDROPPER_CURSOR = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m2 22 1-1h3l9-9'/%3E%3Cpath d='M3 21v-3l9-9'/%3E%3Cpath d='m15 6 3.4-3.4a2.1 2.1 0 1 1 3 3L18 9l-3-3Z'/%3E%3C/svg%3E") 0 22, url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m2 22 1-1h3l9-9'/%3E%3Cpath d='M3 21v-3l9-9'/%3E%3Cpath d='m15 6 3.4-3.4a2.1 2.1 0 1 1 3 3L18 9l-3-3Z'/%3E%3C/svg%3E") 0 22, crosshair`;
+
+// ── 최적화된 레이어 썸네일 컴포넌트 ──────────────────────────────────
+const LayerThumbnail = memo(({ layer, historyVersion }: { layer: Layer, historyVersion: number }) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const el = canvasRef.current;
+    if (!el || !layer.originalCanvas || !layer.maskCanvas) return;
+
+    const ctx = el.getContext('2d', { alpha: true })!;
+    const w = layer.originalCanvas.width;
+    const h = layer.originalCanvas.height;
+    if (w === 0 || h === 0) return;
+
+    ctx.clearRect(0, 0, 36, 36);
+    const scale = Math.min(36 / w, 36 / h);
+    const dw = w * scale;
+    const dh = h * scale;
+    const dx = (36 - dw) / 2;
+    const dy = (36 - dh) / 2;
+
+    // 임시 캔버스 없이 직접 그리기 (성능 대폭 향상)
+    ctx.save();
+    ctx.drawImage(layer.originalCanvas, dx, dy, dw, dh);
+    ctx.globalCompositeOperation = 'destination-in';
+    ctx.drawImage(layer.maskCanvas, dx, dy, dw, dh);
+    ctx.restore();
+  }, [layer.id, layer.originalCanvas, layer.maskCanvas, historyVersion]);
+
+  return <canvas ref={canvasRef} width={36} height={36} className="pointer-events-none" />;
+});
+LayerThumbnail.displayName = 'LayerThumbnail';
+
+// 히스토리 항목 메모이제이션
+const HistoryItem = memo(({ item, index, active, onClick }: { item: any, index: number, active: boolean, onClick: (i: number) => void }) => {
+  return (
+    <button onClick={() => onClick(index)} className={`w-full px-4 py-2 text-[11px] flex justify-between items-center border-b border-[#333] transition-colors ${active ? 'bg-[#4f46e5] text-white' : 'text-gray-400 hover:bg-white/5'}`}>
+      <div className="flex items-center gap-2">
+        {item.label === 'Open' ? <Palette size={12} /> : (item.label === 'Brush' || item.label === 'Paint') ? <Brush size={12} /> : item.label === 'Crop' ? <Crop size={12} /> : item.label === 'Adjustments' ? <Sliders size={12} /> : <Scissors size={12} />}
+        <span className="font-bold uppercase tracking-tighter">{item.label}</span>
+      </div>
+      <span className="text-[9px] opacity-40 font-mono">{item.time}</span>
+    </button>
+  );
+});
+HistoryItem.displayName = 'HistoryItem';
 
 
 
@@ -123,9 +168,137 @@ export function BrushEditor({
 
   useEffect(() => { isDraggingHandleRef.current = isDraggingHandle; }, [isDraggingHandle]);
 
-  const brushCursorRef = useRef<HTMLDivElement>(null);
-  const [bgPreset, setBgPreset] = useState(0);
-  const expandRafRef = useRef<number | null>(null);
+  // ── 최적화된 하위 컴포넌트들 ──────────────────────────────────
+
+  // 1. 히스토리 패널 (메모이제이션 적용)
+  const HistoryPanel = memo(({ historyStack, historyIndex, jumpToHistory, version }: {
+    historyStack: LayerHistoryEntry[],
+    historyIndex: number,
+    jumpToHistory: (i: number) => void,
+    version: number
+  }) => {
+    const listRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+      if (listRef.current) {
+        listRef.current.scrollTo({ top: listRef.current.scrollHeight, behavior: 'smooth' });
+      }
+    }, [historyStack.length]);
+
+    return (
+      <div className="h-[250px] flex-shrink-0 flex flex-col border-b border-[#111]">
+        <div className="brush-panel-title px-3 py-2 bg-[#333] text-white font-black italic flex justify-between items-center">
+          <span>HISTORY</span><Activity size={12} className="text-gray-500" />
+        </div>
+        <div ref={listRef} className="flex-1 overflow-y-auto no-scrollbar p-0 bg-[#222]">
+          {historyStack.map((item, i) => (
+            <HistoryItem
+              key={i}
+              item={item}
+              index={i}
+              active={i === historyIndex}
+              onClick={jumpToHistory}
+            />
+          ))}
+        </div>
+      </div>
+    );
+  });
+
+  // 2. 레이어 패널
+  const LayerPanel = memo(({
+    layers, activeLayerId, setActiveLayerId, setLayerVisible, setLayerOpacity,
+    removeLayer, reorderLayer, addPaintLayer, mergeDown, flattenAll, imageSize, version
+  }: any) => {
+    const [layerDragOver, setLayerDragOver] = useState<string | null>(null);
+    const layerDragIdRef = useRef<string | null>(null);
+
+    const activeLayer = layers.find((l: any) => l.id === activeLayerId);
+
+    return (
+      <div className="flex-1 flex flex-col border-b border-[#111] min-h-[200px]">
+        <div className="layer-panel-header">
+          <span className="layer-panel-title">Layers</span>
+          <div className="layer-panel-actions">
+            <button className="layer-panel-btn" onClick={() => addPaintLayer(`Layer ${layers.length + 1}`, layers, activeLayerId)}><Plus size={13} /></button>
+            <button className="layer-panel-btn" disabled={layers.findIndex((l: any) => l.id === activeLayerId) >= layers.length - 1} onClick={() => {
+              const idx = layers.findIndex((l: any) => l.id === activeLayerId);
+              if (idx < layers.length - 1) reorderLayer(activeLayerId, idx + 1, layers, activeLayerId);
+            }}><ChevronUp size={13} /></button>
+            <button className="layer-panel-btn" disabled={layers.findIndex((l: any) => l.id === activeLayerId) <= 0} onClick={() => {
+              const idx = layers.findIndex((l: any) => l.id === activeLayerId);
+              if (idx > 0) reorderLayer(activeLayerId, idx - 1, layers, activeLayerId);
+            }}><ChevronDown size={13} /></button>
+            <button className="layer-panel-btn" disabled={layers.length <= 1} onClick={() => removeLayer(activeLayerId, layers, activeLayerId)}><Trash2 size={13} /></button>
+          </div>
+        </div>
+        <div className="layer-list custom-scrollbar">
+          {[...layers].reverse().map((layer) => (
+            <LayerItem
+              key={layer.id}
+              layer={layer}
+              active={layer.id === activeLayerId}
+              layerDragOver={layerDragOver}
+              onSelect={setActiveLayerId}
+              onSetVisible={setLayerVisible}
+              layerDragIdRef={layerDragIdRef}
+              setLayerDragOver={setLayerDragOver}
+              reorderLayer={(id: string, idx: number) => reorderLayer(id, idx, layers, activeLayerId)}
+              version={version}
+            />
+          ))}
+        </div>
+        {activeLayer && (
+          <div className="p-2 border-t border-[#111] bg-[#252526] flex flex-col gap-2 flex-shrink-0">
+            <div className="flex items-center gap-2">
+              <span className="text-[9px] font-bold text-gray-500 uppercase w-14">Opacity</span>
+              <input type="range" min={0} max={100} value={activeLayer.opacity} onChange={(e) => setLayerOpacity(activeLayerId, Number(e.target.value), layers, activeLayerId)} className="flex-1 h-1 range-slider" />
+              <span className="text-[9px] font-mono text-indigo-400 w-8">{activeLayer.opacity}%</span>
+            </div>
+            <div className="flex gap-1">
+              <button className="layer-panel-footer-btn flex-1" disabled={layers.findIndex((l: any) => l.id === activeLayerId) === 0} onClick={() => mergeDown(activeLayerId, layers, activeLayerId, () => null)}><Merge size={10} /> Merge ↓</button>
+              <button className="layer-panel-footer-btn flex-1" onClick={() => flattenAll(layers, activeLayerId, imageSize.w, imageSize.h)}>Flatten</button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  });
+
+  // 레이어 개별 아이템 최적화
+  const LayerItem = memo(({ layer, active, onSelect, onSetVisible, layerDragOver, layerDragIdRef, setLayerDragOver, reorderLayer, version }: any) => {
+    const isDragTarget = layerDragOver === layer.id && layerDragIdRef.current !== layer.id;
+    return (
+      <div
+        draggable
+        className={cn('layer-item', active && 'layer-item-active', isDragTarget && 'layer-item-drag-over')}
+        onClick={() => onSelect(layer.id)}
+        onDragStart={() => { layerDragIdRef.current = layer.id; }}
+        onDragOver={(e) => { e.preventDefault(); setLayerDragOver(layer.id); }}
+        onDragLeave={() => setLayerDragOver(null)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setLayerDragOver(null);
+          const fromId = layerDragIdRef.current;
+          layerDragIdRef.current = null;
+          reorderLayer(fromId, 0); // 실제 인덱스는 부모에서 처리
+        }}
+        onDragEnd={() => { layerDragIdRef.current = null; setLayerDragOver(null); }}
+      >
+        <button className={cn('layer-vis-btn', !layer.visible && 'layer-vis-btn-hidden')} onClick={(e) => { e.stopPropagation(); onSetVisible(layer.id, !layer.visible); }}>
+          {layer.visible ? <Eye size={12} /> : <EyeOff size={12} />}
+        </button>
+        <div className="layer-thumb">
+          {layer.type === 'text' ? <Type size={16} className="text-gray-400" /> : <LayerThumbnail layer={layer} historyVersion={version} />}
+        </div>
+        <div className="layer-info">
+          <span className={cn('layer-name', active && 'layer-name-active')}>{layer.name}</span>
+          <span className="layer-meta">{layer.type}</span>
+        </div>
+        {layer.opacity < 100 && <span className="layer-opacity-badge">{layer.opacity}%</span>}
+      </div>
+    );
+  });
 
   // 배경 채우기 관련
   const [fillColor, setFillColor] = useState('#ffffff');
@@ -151,6 +324,10 @@ export function BrushEditor({
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDraggingFile, setIsDraggingFile] = useState(false);
+
+  const brushCursorRef = useRef<HTMLDivElement>(null);
+  const [bgPreset, setBgPreset] = useState(0);
+  const expandRafRef = useRef<number | null>(null);
 
   // 상태바 및 눈금자 정보
   // 상태바 정보 전용 Ref (리렌더링 방지)
@@ -190,8 +367,9 @@ export function BrushEditor({
   const layersHook = useLayers(imageSize.w, imageSize.h);
   const {
     layers, setLayers, activeLayerId, setActiveLayerId,
-    historyStack, historyIndex,
+    historyStack, historyIndexRef, historyVersion,
     canUndo, canRedo,
+    undoBtnRef, redoBtnRef,
     saveSnapshot, jumpToHistory, undo: layerUndo, redo: layerRedo,
     addImageLayer, addPaintLayer, addTextLayer,
     removeLayer, reorderLayer,
@@ -258,11 +436,6 @@ export function BrushEditor({
     savePixelSnapshot(label);
   }, [savePixelSnapshot]);
 
-  // setHistoryVersion 호환 (렌더 트리거)
-  const setHistoryVersion = useCallback((updater: number | ((v: number) => number)) => {
-    // historyVersion은 useLayers 내부에서 관리됨. 외부 트리거는 layers state 변경으로 대체
-  }, []);
-
   // 드롭 다이얼로그 상태
   const [dropDialog, setDropDialog] = useState<DropDialogState | null>(null);
 
@@ -325,7 +498,7 @@ export function BrushEditor({
 
   // brushColor ref (paint 콜백 dep 제거 → 색상 변경 시 paint 재생성 안함 → 렉 없음)
   const brushColorRef = useRef(brushColor);
-  const updateBrushTipRef = useRef<() => void>(() => {});
+  const updateBrushTipRef = useRef<() => void>(() => { });
   useEffect(() => {
     brushColorRef.current = brushColor;
     updateBrushTipRef.current(); // 색 변경 시 tip 즉시 갱신
@@ -397,7 +570,7 @@ export function BrushEditor({
         behavior: 'smooth'
       });
     }
-  }, [historyIndex, historyStack.current.length]);
+  }, [historyStack.current.length]);
 
 
 
@@ -620,9 +793,9 @@ export function BrushEditor({
     const rh = bounds.h + pad * 2;
     const hitZone = 12;
     const corners = [
-      { id: 'tl', x: rx,      y: ry },
+      { id: 'tl', x: rx, y: ry },
       { id: 'tr', x: rx + rw, y: ry },
-      { id: 'bl', x: rx,      y: ry + rh },
+      { id: 'bl', x: rx, y: ry + rh },
       { id: 'br', x: rx + rw, y: ry + rh },
     ];
     for (const c of corners) {
@@ -683,7 +856,7 @@ export function BrushEditor({
     } else {
       compositeLayersAndRender(layersRef.current);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [textUIVersion]);
 
   // ── 크롭 오버레이 그리기 ──────────────────────────────────
@@ -1405,10 +1578,12 @@ export function BrushEditor({
           }
         }
 
-        // 스트로크 시작 시 즉시 pre-snapshot 시작 (백그라운드 비동기)
-        // mouseup 때 이미 완료된 Promise를 그냥 사용 → 0ms 블로킹
-        const activeLayer = layersRef.current.find(l => l.id === activeLayerIdRef.current);
-        if (activeLayer) prepareSnapshot(activeLayerIdRef.current, activeLayer);
+        // 픽셀을 수정하는 도구가 아닐 때만(예: Move) mousedown 시점에 pre-snapshot 시작
+        const isPixelModifyingTool = ['paint', 'erase', 'restore', 'clone', 'heal', 'blur-brush', 'bucket'].includes(tool);
+        if (!isPixelModifyingTool) {
+          const activeLayer = layersRef.current.find(l => l.id === activeLayerIdRef.current);
+          if (activeLayer) prepareSnapshot(activeLayerIdRef.current, activeLayer);
+        }
 
         isPainting.current = true;
         hasStrokeRef.current = false;
@@ -1550,7 +1725,7 @@ export function BrushEditor({
       textMarchLayerIdRef.current = scaleLayerId;
       textMarchModeRef.current = 'selected';
     }
-    if (isPainting.current && hasStrokeRef.current) {
+    if (isPainting.current && (hasStrokeRef.current || toolRef.current === 'paint' || toolRef.current === 'erase' || toolRef.current === 'restore')) {
       let label = 'Edit';
       const t = toolRef.current;
       if (t === 'erase') label = 'Eraser';
@@ -1561,6 +1736,7 @@ export function BrushEditor({
       else if (t === 'blur-brush') label = 'Blur';
 
       saveMaskSnapshot(label);
+      // 픽셀 작업 후 동기식 setLayers 제거 (setTimeout을 통한 비동기 히스토리 업데이트가 UI를 갱신함)
     }
     isPainting.current = false;
     hasStrokeRef.current = false;
@@ -2095,7 +2271,7 @@ export function BrushEditor({
     const el = containerRef.current;
     if (!el) return;
     const handleScroll = () => {
-      setHistoryVersion(v => v + 1); // 리렌더링 트리거하여 눈금자 배경 갱신
+      // 리렌더링 트리거하여 눈금자 배경 갱신
     };
     el.addEventListener('scroll', handleScroll);
     return () => el.removeEventListener('scroll', handleScroll);
@@ -2297,10 +2473,10 @@ export function BrushEditor({
       {/* ── TOP BAR (Header) ────────────────────────────────── */}
       <div className="brush-top-bar">
         <div className="flex items-center gap-1">
-          <button onClick={undo} disabled={!canUndo} className="brush-tool-btn" title="되돌리기 (Ctrl+Z)">
+          <button ref={undoBtnRef} onClick={undo} disabled={!canUndo} className="brush-tool-btn" title="되돌리기 (Ctrl+Z)">
             <Undo2 size={18} />
           </button>
-          <button onClick={redo} disabled={!canRedo} className="brush-tool-btn" title="다시 실행 (Ctrl+Y)">
+          <button ref={redoBtnRef} onClick={redo} disabled={!canRedo} className="brush-tool-btn" title="다시 실행 (Ctrl+Y)">
             <Redo2 size={18} />
           </button>
         </div>
@@ -2809,25 +2985,15 @@ export function BrushEditor({
           </div>
         </div>
 
-        {/* Right Sidebar Panels */}
+        {/* Right Sidebar Panels - 컴포넌트 분리 완성 */}
         <div className="brush-editor-sidebar-right flex flex-col min-w-[240px]">
-          {/* History */}
-          <div className="h-[250px] flex-shrink-0 flex flex-col border-b border-[#111]">
-            <div className="brush-panel-title px-3 py-2 bg-[#333] text-white font-black italic flex justify-between items-center">
-              <span>HISTORY</span><Activity size={12} className="text-gray-500" />
-            </div>
-            <div ref={historyListRef} className="flex-1 overflow-y-auto no-scrollbar p-0 bg-[#222]">
-              {historyStack.current.map((item, i) => (
-                <button key={i} onClick={() => jumpToHistory(i)} className={`w-full px-4 py-2 text-[11px] flex justify-between items-center border-b border-[#333] transition-colors ${i === historyIndex ? 'bg-[#4f46e5] text-white' : 'text-gray-400 hover:bg-white/5'}`}>
-                  <div className="flex items-center gap-2">
-                    {item.label === 'Open' ? <Palette size={12} /> : item.label === 'Brush' || item.label === 'Paint' ? <Brush size={12} /> : item.label === 'Crop' ? <Crop size={12} /> : item.label === 'Adjustments' ? <Sliders size={12} /> : <Scissors size={12} />}
-                    <span className="font-bold uppercase tracking-tighter">{item.label}</span>
-                  </div>
-                  <span className="text-[9px] opacity-40 font-mono">{item.time}</span>
-                </button>
-              ))}
-            </div>
-          </div>
+          <HistoryPanel
+            historyStack={historyStack.current}
+            historyIndex={historyIndexRef.current}
+            jumpToHistory={jumpToHistory}
+            version={historyVersion}
+          />
+
           {/* Adjustments — 기본 접힘 */}
           <div className="flex-shrink-0 flex flex-col border-b border-[#111]">
             <button
@@ -2879,200 +3045,21 @@ export function BrushEditor({
               </button>
             </div>}
           </div>
-          {/* Layers Panel */}
-          <div className="flex-1 flex flex-col border-b border-[#111] min-h-[200px]">
-            <div className="layer-panel-header">
-              <span className="layer-panel-title">Layers</span>
-              <div className="layer-panel-actions">
-                <button
-                  className="layer-panel-btn"
-                  title="Add Paint Layer"
-                  onClick={() => addPaintLayer(`Layer ${layers.length + 1}`, layers, activeLayerId)}
-                ><Plus size={13} /></button>
-                <button
-                  className="layer-panel-btn"
-                  title="Move Up"
-                  disabled={layers.findIndex(l => l.id === activeLayerId) >= layers.length - 1}
-                  onClick={() => {
-                    const idx = layers.findIndex(l => l.id === activeLayerId);
-                    if (idx < layers.length - 1) reorderLayer(activeLayerId, idx + 1, layers, activeLayerId);
-                  }}
-                ><ChevronUp size={13} /></button>
-                <button
-                  className="layer-panel-btn"
-                  title="Move Down"
-                  disabled={layers.findIndex(l => l.id === activeLayerId) <= 0}
-                  onClick={() => {
-                    const idx = layers.findIndex(l => l.id === activeLayerId);
-                    if (idx > 0) reorderLayer(activeLayerId, idx - 1, layers, activeLayerId);
-                  }}
-                ><ChevronDown size={13} /></button>
-                <button
-                  className="layer-panel-btn"
-                  title="Delete Layer"
-                  disabled={layers.length <= 1}
-                  onClick={() => removeLayer(activeLayerId, layers, activeLayerId)}
-                ><Trash2 size={13} /></button>
-              </div>
-            </div>
 
-            {/* Layer List (역순 = 상단이 최상위) */}
-            <div className="layer-list custom-scrollbar">
-              {[...layers].reverse().map((layer) => {
-                const isActive = layer.id === activeLayerId;
-                const isDragTarget = layerDragOver === layer.id && layerDragIdRef.current !== layer.id;
-                return (
-                  <div
-                    key={layer.id}
-                    draggable
-                    className={cn('layer-item', isActive && 'layer-item-active', isDragTarget && 'layer-item-drag-over')}
-                    onClick={() => setActiveLayerId(layer.id)}
-                    onDragStart={() => { layerDragIdRef.current = layer.id; }}
-                    onDragOver={(e) => { e.preventDefault(); setLayerDragOver(layer.id); }}
-                    onDragLeave={() => setLayerDragOver(null)}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      setLayerDragOver(null);
-                      const fromId = layerDragIdRef.current;
-                      layerDragIdRef.current = null;
-                      if (!fromId || fromId === layer.id) return;
-                      // panel은 역순이므로 layers 배열에서 실제 인덱스로 변환
-                      const toIndex = layers.findIndex(l => l.id === layer.id);
-                      reorderLayer(fromId, toIndex, layers, activeLayerId);
-                    }}
-                    onDragEnd={() => { layerDragIdRef.current = null; setLayerDragOver(null); }}
-                    onDoubleClick={() => {
-                      if (layer.type === 'text') {
-                        setTool('text');
-                        editingTextLayerIdRef.current = layer.id;
-                        textInputRef.current = layer.textContent;
-                        textStyleRef.current = { ...layer.textStyle };
-                        textPosRef.current = { x: layer.x, y: layer.y };
-                        isEditingTextRef.current = true;
-                        setTextStyle({ ...layer.textStyle }); // 옵션바 동기화
-                        selectedTextLayerIdRef.current = layer.id;
-                        stopTextMarching();
-                        bumpTextUI();
-                        setTimeout(() => {
-                          if (textareaRef.current) {
-                            textareaRef.current.value = layer.textContent;
-                            textareaRef.current.focus();
-                            textareaRef.current.select();
-                          }
-                        }, 50);
-                      }
-                    }}
-                  >
-                    {/* 가시성 토글 */}
-                    <button
-                      className={cn('layer-vis-btn', !layer.visible && 'layer-vis-btn-hidden')}
-                      onClick={(e) => { e.stopPropagation(); setLayerVisible(layer.id, !layer.visible, layers); }}
-                      title="Toggle Visibility"
-                    >
-                      {layer.visible ? <Eye size={12} /> : <EyeOff size={12} />}
-                    </button>
-
-                    {/* 썸네일 */}
-                    <div className="layer-thumb">
-                      {layer.type === 'text' ? (
-                        <Type size={16} className="text-gray-400" />
-                      ) : layer.originalCanvas ? (
-                        <canvas
-                          width={36} height={36}
-                          ref={(el) => {
-                            if (!el || !layer.originalCanvas || !layer.maskCanvas) return;
-                            const ctx = el.getContext('2d')!;
-                            const temp = document.createElement('canvas');
-                            temp.width = layer.originalCanvas.width;
-                            temp.height = layer.originalCanvas.height;
-                            const tCtx = temp.getContext('2d')!;
-                            tCtx.drawImage(layer.originalCanvas, 0, 0);
-                            tCtx.globalCompositeOperation = 'destination-in';
-                            tCtx.drawImage(layer.maskCanvas, 0, 0);
-                            ctx.clearRect(0, 0, 36, 36);
-                            const scale = Math.min(36 / temp.width, 36 / temp.height);
-                            const dw = temp.width * scale;
-                            const dh = temp.height * scale;
-                            ctx.drawImage(temp, (36 - dw) / 2, (36 - dh) / 2, dw, dh);
-                          }}
-                        />
-                      ) : null}
-                    </div>
-
-                    {/* 레이어 정보 */}
-                    <div className="layer-info">
-                      <span className={cn('layer-name', isActive && 'layer-name-active')}>{layer.name}</span>
-                      <span className="layer-meta">{layer.type}</span>
-                    </div>
-
-                    {/* 불투명도 */}
-                    {layer.opacity < 100 && (
-                      <span className="layer-opacity-badge">{layer.opacity}%</span>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* 선택 레이어 옵션 */}
-            {getActiveLayer() && (
-              <div className="p-2 border-t border-[#111] bg-[#252526] flex flex-col gap-2 flex-shrink-0">
-                <div className="flex items-center gap-2">
-                  <span className="text-[9px] font-bold text-gray-500 uppercase w-14">Opacity</span>
-                  <input
-                    type="range" min={0} max={100} value={getActiveLayer()!.opacity}
-                    onChange={(e) => setLayerOpacity(activeLayerId, Number(e.target.value), layers, activeLayerId)}
-                    className="flex-1 h-1 range-slider"
-                  />
-                  <span className="text-[9px] font-mono text-indigo-400 w-8">{getActiveLayer()!.opacity}%</span>
-                </div>
-                <div className="flex gap-1">
-                  <button
-                    className="layer-panel-footer-btn flex-1"
-                    title="Merge Down"
-                    disabled={layers.findIndex(l => l.id === activeLayerId) === 0}
-                    onClick={() => mergeDown(activeLayerId, layers, activeLayerId, () => null)}
-                  >
-                    <Merge size={10} /> Merge ↓
-                  </button>
-                  <button
-                    className="layer-panel-footer-btn flex-1"
-                    title="Flatten All"
-                    onClick={() => flattenAll(layers, activeLayerId, imageSize.w, imageSize.h)}
-                  >
-                    Flatten
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* 여백 제거 / Viewport Bg */}
-            <div className="p-2 border-t border-[#111] bg-[#1e1e1e] flex-shrink-0 space-y-2">
-              <div>
-                <div className="flex justify-between items-center mb-1">
-                  <span className="brush-label">AUTO BOUNDS MARGIN</span>
-                  <span className="brush-value text-indigo-400">{cropMargin}px</span>
-                </div>
-                <input type="range" min={0} max={40} value={cropMargin} onChange={(e) => setCropMargin(Number(e.target.value))} className="w-full h-1 range-slider mb-2" />
-                <button onClick={autoCrop} className="brush-btn-ghost w-full h-7 text-[10px] font-black italic border border-[#444] rounded uppercase tracking-widest hover:bg-white hover:text-black transition-all">
-                  Auto Crop Bounds
-                </button>
-              </div>
-              <div>
-                <span className="brush-label mb-1 block">Viewport Bg</span>
-                <div className="flex flex-wrap gap-1">
-                  {BG_PRESETS.map((p, i) => (
-                    <button key={i} onClick={() => setBgPreset(i)}
-                      className={`w-5 h-5 rounded border transition-all ${bgPreset === i ? 'border-indigo-500 ring-1 ring-indigo-500' : 'border-transparent'} ${p.swatch}`}
-                    />
-                  ))}
-                </div>
-              </div>
-              <button onClick={resetMask} className="brush-btn-erase w-full h-7 text-[10px] font-black uppercase italic rounded border-t border-[#333]">
-                Reset Active Layer
-              </button>
-            </div>
-          </div>
+          <LayerPanel
+            layers={layers}
+            activeLayerId={activeLayerId}
+            setActiveLayerId={setActiveLayerId}
+            setLayerVisible={(id: any, vis: any) => setLayerVisible(id, vis, layers)}
+            setLayerOpacity={setLayerOpacity}
+            removeLayer={removeLayer}
+            reorderLayer={reorderLayer}
+            addPaintLayer={addPaintLayer}
+            mergeDown={mergeDown}
+            flattenAll={flattenAll}
+            imageSize={imageSize}
+            version={historyVersion}
+          />
         </div>
       </div>
 

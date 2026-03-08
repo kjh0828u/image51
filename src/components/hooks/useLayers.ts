@@ -159,14 +159,23 @@ function snapshotToLayer(snap: LayerSnapshot, docW: number, docH: number): Layer
 export function useLayers(docW: number, docH: number) {
   const [layers, setLayers] = useState<Layer[]>([]);
   const [activeLayerId, setActiveLayerId] = useState<string>('');
-  const historyVersion = useRef(0);
+  const [historyVersion, setHistoryVersion] = useState(0);
 
   const historyStack = useRef<LayerHistoryEntry[]>([]);
   const historyIndexRef = useRef(-1);
-  const [historyIndex, setHistoryIndex] = useState(-1);
+
+  // undo/redo 버튼 DOM ref — setState 없이 직접 disabled 토글 (리렌더 0)
+  const undoBtnRef = useRef<HTMLButtonElement | null>(null);
+  const redoBtnRef = useRef<HTMLButtonElement | null>(null);
+
+  const syncUndoRedoBtns = useCallback(() => {
+    const idx = historyIndexRef.current;
+    const len = historyStack.current.length;
+    if (undoBtnRef.current) undoBtnRef.current.disabled = idx <= 0;
+    if (redoBtnRef.current) redoBtnRef.current.disabled = idx >= len - 1;
+  }, []);
 
   // ── Pre-snapshot: mousedown 시점에 미리 찍어두는 Promise ──────────────
-  // mouseup에서는 이미 완료된 Promise를 push → 0ms 블로킹
   const pendingSnapshotRef = useRef<Promise<LayerSnapshot> | null>(null);
   const pendingSnapshotLayerIdRef = useRef<string | null>(null);
 
@@ -188,48 +197,55 @@ export function useLayers(docW: number, docH: number) {
     const time = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
 
     const prevEntry = historyStack.current[historyIndexRef.current];
-
     let snapshots: LayerSnapshot[];
 
     if (changedLayerId && prevEntry) {
-      // pending Promise가 있으면 (mousedown에서 미리 시작한 것) await — 이미 완료됐을 확률 높음
       const usePending = pendingSnapshotRef.current
         && pendingSnapshotLayerIdRef.current === changedLayerId;
-
       const newSnap = usePending
         ? await pendingSnapshotRef.current!
         : await layerToSnapshotAsync(currentLayers.find(l => l.id === changedLayerId)!);
-
       pendingSnapshotRef.current = null;
       pendingSnapshotLayerIdRef.current = null;
 
       snapshots = currentLayers.map(layer => {
         if (layer.id === changedLayerId) return { ...newSnap, x: layer.x, y: layer.y };
         return prevEntry.layers.find(s => s.id === layer.id)
-          ?? { id: layer.id, name: layer.name, type: layer.type, visible: layer.visible,
-               opacity: layer.opacity, blendMode: layer.blendMode, locked: layer.locked,
-               x: layer.x, y: layer.y, w: 0, h: 0,
-               originalBitmap: null, maskBitmap: null,
-               textContent: layer.textContent, textStyle: { ...layer.textStyle } };
+          ?? {
+          id: layer.id, name: layer.name, type: layer.type, visible: layer.visible,
+          opacity: layer.opacity, blendMode: layer.blendMode, locked: layer.locked,
+          x: layer.x, y: layer.y, w: 0, h: 0,
+          originalBitmap: null, maskBitmap: null,
+          textContent: layer.textContent, textStyle: { ...layer.textStyle }
+        };
       });
     } else {
       snapshots = await Promise.all(currentLayers.map(layerToSnapshotAsync));
     }
 
-    const entry: LayerHistoryEntry = {
-      layers: snapshots,
-      activeLayerId: currentActiveId,
-      label,
-      time,
-    };
-
     const newIdx = historyIndexRef.current + 1;
-    historyStack.current = historyStack.current.slice(0, newIdx);
-    historyStack.current.push(entry);
-    historyIndexRef.current = newIdx;
-    historyVersion.current += 1;
-    setHistoryIndex(newIdx);
-  }, []);
+    let oldStack = historyStack.current.slice(newIdx);
+
+    // 덮어씌워지는(Redo 불가능해지는) 히스토리의 이미지 메모리 해제
+    for (const entry of oldStack) {
+      for (const snap of entry.layers) {
+        snap.originalBitmap?.close();
+        snap.maskBitmap?.close();
+      }
+    }
+
+    let newStack = historyStack.current.slice(0, newIdx);
+    newStack.push({ layers: snapshots, activeLayerId: currentActiveId, label, time });
+
+    historyStack.current = newStack;
+    historyIndexRef.current = historyStack.current.length - 1;
+
+    // UI 업데이트를 지연시켜 메인 스레드 블로킹 분산 (렉 방지 핵심)
+    setTimeout(() => {
+      setHistoryVersion(v => v + 1);
+      syncUndoRedoBtns();
+    }, 0);
+  }, [syncUndoRedoBtns]);
 
   // ── 히스토리 복원 ──────────────────────────────────────────────────────
 
@@ -238,11 +254,11 @@ export function useLayers(docW: number, docH: number) {
     const entry = historyStack.current[index]!;
     const restored = entry.layers.map(snap => snapshotToLayer(snap, docW, docH));
     historyIndexRef.current = index;
-    historyVersion.current += 1;
-    setHistoryIndex(index);
+    setHistoryVersion(v => v + 1);
+    syncUndoRedoBtns();
     setActiveLayerId(entry.activeLayerId);
     setLayers(restored);
-  }, [docW, docH]);
+  }, [docW, docH, syncUndoRedoBtns]);
 
   const undo = useCallback(() => {
     const prev = historyIndexRef.current;
@@ -251,11 +267,11 @@ export function useLayers(docW: number, docH: number) {
     const entry = historyStack.current[newIdx]!;
     const restored = entry.layers.map(snap => snapshotToLayer(snap, docW, docH));
     historyIndexRef.current = newIdx;
-    historyVersion.current += 1;
-    setHistoryIndex(newIdx);
+    setHistoryVersion(v => v + 1);
+    syncUndoRedoBtns();
     setActiveLayerId(entry.activeLayerId);
     setLayers(restored);
-  }, [docW, docH]);
+  }, [docW, docH, syncUndoRedoBtns]);
 
   const redo = useCallback(() => {
     const prev = historyIndexRef.current;
@@ -264,14 +280,15 @@ export function useLayers(docW: number, docH: number) {
     const entry = historyStack.current[newIdx]!;
     const restored = entry.layers.map(snap => snapshotToLayer(snap, docW, docH));
     historyIndexRef.current = newIdx;
-    historyVersion.current += 1;
-    setHistoryIndex(newIdx);
+    setHistoryVersion(v => v + 1);
+    syncUndoRedoBtns();
     setActiveLayerId(entry.activeLayerId);
     setLayers(restored);
-  }, [docW, docH]);
+  }, [docW, docH, syncUndoRedoBtns]);
 
-  const canUndo = historyIndex > 0;
-  const canRedo = historyIndex < historyStack.current.length - 1;
+  // canUndo/canRedo는 ref 기반 (렌더타임 계산용, 버튼 초기 disabled 세팅용)
+  const canUndo = historyIndexRef.current > 0;
+  const canRedo = historyIndexRef.current < historyStack.current.length - 1;
 
   // ── 레이어 작업 헬퍼 (히스토리 자동 저장 버전) ──────────────────────
 
@@ -279,12 +296,13 @@ export function useLayers(docW: number, docH: number) {
   const commitLayers = useCallback((
     nextLayers: Layer[],
     nextActiveId: string,
-    label: string
+    label: string,
+    changedLayerId?: string
   ) => {
     setLayers(nextLayers);
     setActiveLayerId(nextActiveId);
-    // saveSnapshot은 async — 즉시 호출해도 블로킹 없음
-    saveSnapshot(nextLayers, nextActiveId, label);
+    // saveSnapshot은 이제 비동기로 처리되며, changedLayerId 전달 시 비약적으로 빠름
+    saveSnapshot(nextLayers, nextActiveId, label, changedLayerId);
   }, [saveSnapshot]);
 
   // ── 레이어 생성 ────────────────────────────────────────────────────────
@@ -477,7 +495,7 @@ export function useLayers(docW: number, docH: number) {
         ? { ...l, textContent, textStyle: { ...textStyle }, x, y, name: `Text: "${textContent.substring(0, 12)}"` }
         : l
     );
-    commitLayers(nextLayers, currentActiveId, 'Edit Text');
+    commitLayers(nextLayers, currentActiveId, 'Edit Text', id);
   }, [commitLayers]);
 
   /** 레이어 이동 (x, y 오프셋) - 드래그 중에는 히스토리 저장 없이 실시간 */
@@ -497,7 +515,8 @@ export function useLayers(docW: number, docH: number) {
     currentLayers: Layer[],
     currentActiveId: string
   ) => {
-    saveSnapshot(currentLayers, currentActiveId, 'Move Layer');
+    // changedLayerId 추가 (성능 최적화: 이동한 레이어 하나만 스냅샷)
+    saveSnapshot(currentLayers, currentActiveId, 'Move Layer', currentActiveId);
   }, [saveSnapshot]);
 
   // ── 병합 ──────────────────────────────────────────────────────────────
@@ -663,9 +682,9 @@ export function useLayers(docW: number, docH: number) {
     setActiveLayerId('');
     historyStack.current = [];
     historyIndexRef.current = -1;
-    historyVersion.current = 0;
-    setHistoryIndex(-1);
-  }, []);
+    setHistoryVersion(0);
+    syncUndoRedoBtns();
+  }, [syncUndoRedoBtns]);
 
   return {
     // 상태
@@ -675,9 +694,11 @@ export function useLayers(docW: number, docH: number) {
     setActiveLayerId,
     historyVersion,
     historyStack,
-    historyIndex,
+    historyIndexRef,
     canUndo,
     canRedo,
+    undoBtnRef,
+    redoBtnRef,
 
     // 히스토리
     saveSnapshot,

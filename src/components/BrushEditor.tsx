@@ -3165,7 +3165,7 @@ export function BrushEditor({
               {/* Swap Colors Button */}
               <button
                 onClick={swapColors}
-                className="absolute top-0 right-0 z-20 p-0.5 bg-[#444] rounded-full hover:bg-[#555] text-gray-400 hover:text-white transition-colors shadow-md"
+                className="absolute top-0 right-0 z-20 p-0.5 bg-[#444] rounded-full hover:bg-[#555] text-white-100 hover:text-white transition-colors shadow-md"
                 title="전경색/배경색 스왑 (X)"
               >
                 <ArrowLeftRight size={10} className="-scale-x-100" />

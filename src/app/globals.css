@@ -1937,6 +1937,7 @@ body::before {
   box-shadow: 0 0 40px rgba(0, 0, 0, 0.8);
   transition: background-color 0.3s ease;
   outline: 1px solid #444;
+  overflow: hidden;
 }
 
 /* ========== BrushEditor 배경 스와치 ========== */

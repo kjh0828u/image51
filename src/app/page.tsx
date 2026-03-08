@@ -2,7 +2,7 @@
 
 import { useAppStore } from '@/store/useAppStore';
 import { useCallback, useRef, useState, useEffect } from 'react';
-import { Plus, Download } from 'lucide-react';
+import { Plus, Download, ImagePlus, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { getHandle } from '@/lib/idb';
 import { DndContext, closestCenter } from '@dnd-kit/core';
@@ -37,7 +37,12 @@ export default function Home() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [resizeError, setResizeError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>('batch');
-  const [individualImage, setIndividualImage] = useState<{ url: string, name: string } | null>(null);
+
+  // 멀티 탭 워크스페이스 상태
+  interface TabItem { id: string; url: string; name: string; }
+  const [individualTabs, setIndividualTabs] = useState<TabItem[]>([]);
+  const [activeTabId, setActiveTabId] = useState<string | null>(null);
+
   const individualFileInputRef = useRef<HTMLInputElement>(null);
 
   const store = useAppStore();
@@ -80,17 +85,36 @@ export default function Home() {
 
   const handleIndividualFile = useCallback((file: File) => {
     if (!file.type.startsWith('image/')) return;
-    if (individualImage) URL.revokeObjectURL(individualImage.url);
-    setIndividualImage({
+    const newTab: TabItem = {
+      id: Math.random().toString(36).substring(7),
       url: URL.createObjectURL(file),
       name: file.name
+    };
+    setIndividualTabs(prev => [...prev, newTab]);
+    setActiveTabId(newTab.id);
+  }, []);
+
+  const handleCloseTab = useCallback((id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIndividualTabs(prev => {
+      const filtered = prev.filter(t => t.id !== id);
+      const target = prev.find(t => t.id === id);
+      if (target) URL.revokeObjectURL(target.url);
+
+      if (activeTabId === id) {
+        setActiveTabId(filtered.length > 0 ? filtered[filtered.length - 1].id : null);
+      }
+      return filtered;
     });
-  }, [individualImage]);
+  }, [activeTabId]);
 
   const handleIndividualDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
-    const file = e.dataTransfer.files[0];
-    if (file) handleIndividualFile(file);
+    if (e.dataTransfer.files?.length) {
+      Array.from(e.dataTransfer.files).forEach(file => {
+        if (file.type.startsWith('image/')) handleIndividualFile(file);
+      });
+    }
   }, [handleIndividualFile]);
 
   if (!isHydrated) return null;
@@ -218,50 +242,97 @@ export default function Home() {
 
       {/* 개별 처리 탭 */}
       {activeTab === 'individual' && (
-        <div className="individual-tab-content">
-          {individualImage ? (
-            <BrushEditor
-              imageUrl={individualImage.url}
-              originalName={individualImage.name}
-              onImageChange={handleIndividualFile}
-              onReset={() => {
-                URL.revokeObjectURL(individualImage.url);
-                setIndividualImage(null);
-              }}
-            />
+        <div className="individual-tab-content h-full flex flex-col pt-1">
+          {individualTabs.length > 0 ? (
+            <>
+              {/* Tab Bar */}
+              <div className="flex items-center gap-1 px-4 py-2 border-b border-white/5 bg-black/20 backdrop-blur-md overflow-x-auto no-scrollbar">
+                {individualTabs.map((tab) => (
+                  <div
+                    key={tab.id}
+                    onClick={() => setActiveTabId(tab.id)}
+                    className={cn(
+                      "flex items-center gap-2 px-3 h-8 rounded-lg cursor-pointer transition-all group shrink-0",
+                      activeTabId === tab.id
+                        ? "bg-indigo-500/20 border border-indigo-500/30 text-indigo-400 shadow-lg shadow-indigo-500/10 font-bold"
+                        : "text-gray-500 hover:bg-white/5 hover:text-gray-300"
+                    )}
+                  >
+                    <span className="text-xs truncate max-w-[120px]">{tab.name}</span>
+                    <button
+                      onClick={(e) => handleCloseTab(tab.id, e)}
+                      className="p-0.5 rounded-full hover:bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <X size={12} />
+                    </button>
+                  </div>
+                ))}
+                <button
+                  onClick={() => individualFileInputRef.current?.click()}
+                  className="p-1.5 rounded-lg text-gray-500 hover:bg-white/5 hover:text-indigo-400 transition-all ml-1"
+                  title="새 이미지 열기"
+                >
+                  <Plus size={18} />
+                </button>
+              </div>
+
+              {/* Editor Viewports */}
+              <div className="flex-1 relative bg-[#0a0a0b]">
+                {individualTabs.map((tab) => (
+                  <div
+                    key={tab.id}
+                    className={cn(
+                      "absolute inset-0 transition-opacity duration-300",
+                      activeTabId === tab.id ? "opacity-100 z-10 block" : "opacity-0 z-0 hidden"
+                    )}
+                  >
+                    <BrushEditor
+                      imageUrl={tab.url}
+                      originalName={tab.name}
+                      onImageChange={handleIndividualFile}
+                      onReset={() => handleCloseTab(tab.id, { stopPropagation: () => { } } as any)}
+                    />
+                  </div>
+                ))}
+              </div>
+            </>
           ) : (
             <div
-              className="individual-upload-area"
+              className="individual-upload-area relative flex-1 flex flex-col items-center justify-center m-8"
               onDragOver={(e) => e.preventDefault()}
               onDrop={handleIndividualDrop}
               onClick={() => individualFileInputRef.current?.click()}
             >
               <Glass
                 variant="bright"
-                className="glass-interactive individual-upload-glass"
-                contentClassName="glass-content individual-upload-content"
+                className="glass-interactive individual-upload-glass max-w-lg w-full aspect-video"
+                contentClassName="glass-content individual-upload-content flex flex-col items-center justify-center"
               >
                 <div className="liquidGlass-effect"></div>
-                <div className="upload-icon-container"><Plus className="w-10 h-10" /></div>
-                <p className="upload-text">
-                  이미지를 업로드하세요<br />
-                  <span className="upload-text-accent">마법봉으로 배경을 정밀 제거</span>
+                <div className="upload-icon-container mb-6 bg-indigo-500/10 p-5 rounded-full ring-1 ring-indigo-500/20">
+                  <ImagePlus className="w-12 h-12 text-indigo-400" />
+                </div>
+                <p className="upload-text text-2xl font-black text-white text-center">
+                  이미지를 드래그하거나 클릭하여 열기<br />
+                  <span className="text-sm font-bold text-indigo-400 uppercase tracking-widest mt-2 block">Multi-Tab Workspace Mode</span>
                 </p>
-                <p className="individual-upload-hint">PNG · JPG · WEBP</p>
+                <p className="individual-upload-hint text-gray-500 text-sm mt-6">여러 이미지를 동시에 열어 탭으로 자유롭게 전환하며 편집하세요</p>
               </Glass>
-              <input
-                ref={individualFileInputRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) handleIndividualFile(file);
-                  e.target.value = '';
-                }}
-              />
             </div>
           )}
+          <input
+            ref={individualFileInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            multiple
+            onChange={(e) => {
+              if (e.target.files) {
+                Array.from(e.target.files).forEach(file => handleIndividualFile(file));
+              }
+              e.target.value = '';
+            }}
+          />
         </div>
       )}
 

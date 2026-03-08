@@ -114,8 +114,6 @@ export function BrushEditor({ imageUrl, originalName, onImageChange, onReset }: 
   const [showAdjustPanel, setShowAdjustPanel] = useState(false);
 
   const [showExitConfirm, setShowExitConfirm] = useState(false);
-  const [showReplaceConfirm, setShowReplaceConfirm] = useState(false);
-  const [pendingFile, setPendingFile] = useState<File | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDraggingFile, setIsDraggingFile] = useState(false);
@@ -1432,8 +1430,7 @@ export function BrushEditor({ imageUrl, originalName, onImageChange, onReset }: 
         setIsDraggingFile(false);
         const file = e.dataTransfer.files[0];
         if (file && file.type.startsWith('image/')) {
-          setPendingFile(file);
-          setShowReplaceConfirm(true);
+          onImageChange(file);
         }
       }}
     >
@@ -1442,8 +1439,8 @@ export function BrushEditor({ imageUrl, originalName, onImageChange, onReset }: 
           <div className="w-16 h-16 bg-indigo-500 rounded-full flex items-center justify-center mb-4 shadow-xl">
             <ImagePlus size={32} className="text-white animate-bounce" />
           </div>
-          <p className="text-white font-black text-xl drop-shadow-lg">이곳에 이미지를 놓아 즉시 교체</p>
-          <p className="text-indigo-200 text-sm mt-2">편집하던 내용은 사라집니다</p>
+          <p className="text-white font-black text-xl drop-shadow-lg">이곳에 이미지를 놓아 새 탭으로 열기</p>
+          <p className="text-indigo-200 text-sm mt-2">현재 작업은 그대로 유지됩니다</p>
         </div>
       )}
       {/* ── TOP BAR (Header) ────────────────────────────────── */}
@@ -1472,10 +1469,7 @@ export function BrushEditor({ imageUrl, originalName, onImageChange, onReset }: 
             accept="image/*"
             onChange={(e) => {
               const file = e.target.files?.[0];
-              if (file) {
-                setPendingFile(file);
-                setShowReplaceConfirm(true);
-              }
+              if (file) onImageChange(file);
               // Reset input so the same file can be selected again
               e.target.value = '';
             }}
@@ -1483,10 +1477,10 @@ export function BrushEditor({ imageUrl, originalName, onImageChange, onReset }: 
           <button
             onClick={() => fileInputRef.current?.click()}
             className="brush-tool-btn text-indigo-400 hover:text-indigo-300"
-            title="이미지 다른 파일로 교체"
+            title="새 이미지를 탭으로 열기"
           >
             <ImagePlus size={18} />
-            <span className="text-[10px] ml-1 font-bold hidden sm:inline">교체</span>
+            <span className="text-[10px] ml-1 font-bold hidden sm:inline">탭 추가</span>
           </button>
         </div>
 
@@ -1980,42 +1974,6 @@ export function BrushEditor({ imageUrl, originalName, onImageChange, onReset }: 
         <canvas ref={maskRef} />
         <canvas ref={aiResultRef} />
       </div>
-      {/* ── 이미지 교체 컨펌 모달 ──────────────────────────── */}
-      {showReplaceConfirm && (
-        <div className="modal-overlay z-[3000]" onClick={() => { setShowReplaceConfirm(false); setPendingFile(null); }}>
-          <div className="modal-container max-w-sm" onClick={e => e.stopPropagation()}>
-            <div className="modal-content p-6 bg-[#1a1a1b] border border-white/10 rounded-2xl shadow-2xl">
-              <div className="flex flex-col items-center text-center">
-                <div className="w-12 h-12 bg-amber-500/20 text-amber-500 rounded-full flex items-center justify-center mb-4">
-                  <AlertCircle size={24} />
-                </div>
-                <h3 className="text-white text-lg font-bold mb-2">이미지를 교체하시겠습니까?</h3>
-                <p className="text-gray-400 text-sm mb-6 leading-relaxed">
-                  새 이미지를 불러오면 <span className="text-white font-bold">현재 편집 중인 모든 내용과 히스토리</span>가 사라집니다.<br />계속하시겠습니까?
-                </p>
-                <div className="flex gap-2 w-full">
-                  <button
-                    onClick={() => { setShowReplaceConfirm(false); setPendingFile(null); }}
-                    className="flex-1 h-10 rounded-xl bg-white/5 text-gray-400 font-bold hover:bg-white/10 transition-colors"
-                  >
-                    취소
-                  </button>
-                  <button
-                    onClick={() => {
-                      if (pendingFile) onImageChange(pendingFile);
-                      setShowReplaceConfirm(false);
-                      setPendingFile(null);
-                    }}
-                    className="flex-1 h-10 rounded-xl bg-indigo-500 text-white font-bold hover:bg-indigo-400 shadow-lg shadow-indigo-500/20 transition-all"
-                  >
-                    교체하기
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ── 나가기 컨펌 모달 ────────────────────────────── */}
       {showExitConfirm && (

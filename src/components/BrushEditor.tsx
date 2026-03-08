@@ -1611,24 +1611,27 @@ export function BrushEditor({
           textLivePosRef.current = null;
           isPainting.current = true;
         } else {
-          // 빈 공간 클릭 → 선택 해제 + 새 텍스트 입력 시작
+          // 빈 공간 클릭
           if (curSelId) {
+            // 이미 선택된 게 있었다면 선택 해제만 함 (새로 만들지 않음)
             selectedTextLayerIdRef.current = null;
             stopTextMarching();
             bumpTextUI();
+          } else {
+            // 아무것도 선택되지 않았을 때만 새 텍스트 입력 시작
+            textPosRef.current = pos;
+            textInputRef.current = '';
+            editingTextLayerIdRef.current = null;
+            isEditingTextRef.current = true;
+            bumpTextUI();
+            setTimeout(() => {
+              if (textareaRef.current) {
+                textareaRef.current.value = '';
+                textareaRef.current.style.height = 'auto';
+                textareaRef.current.focus();
+              }
+            }, 50);
           }
-          textPosRef.current = pos;
-          textInputRef.current = '';
-          editingTextLayerIdRef.current = null;
-          isEditingTextRef.current = true;
-          bumpTextUI();
-          setTimeout(() => {
-            if (textareaRef.current) {
-              textareaRef.current.value = '';
-              textareaRef.current.style.height = 'auto';
-              textareaRef.current.focus();
-            }
-          }, 50);
         }
         return;
       } else {

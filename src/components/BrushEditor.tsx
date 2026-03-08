@@ -36,7 +36,15 @@ import {
   Droplets,
   ImagePlus,
   Plus,
-  X
+  X,
+  Eye,
+  EyeOff,
+  ChevronUp,
+  ChevronDown,
+  Merge,
+  AlignLeft,
+  AlignCenter,
+  AlignRight,
 } from 'lucide-react';
 import {
   blurAndThresholdBinary,
@@ -51,6 +59,7 @@ import { useHistory } from './hooks/useHistory';
 import { useSelectionTools } from './hooks/useSelectionTools';
 import { useImageProcessing } from '@/hooks/useImageProcessing';
 import { getDownloadFilename } from '@/lib/fileUtils';
+import { useLayers, type Layer, type TextStyle } from './hooks/useLayers';
 
 interface BrushEditorProps {
   imageUrl: string;
@@ -63,6 +72,12 @@ interface BrushEditorProps {
   setActiveTabId?: (id: string) => void;
   onCloseTab?: (id: string, e: React.MouseEvent) => void;
   onAddNewTab?: () => void;
+}
+
+// 드롭 다이얼로그 상태
+interface DropDialogState {
+  file: File;
+  visible: boolean;
 }
 
 const EYEDROPPER_CURSOR = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m2 22 1-1h3l9-9'/%3E%3Cpath d='M3 21v-3l9-9'/%3E%3Cpath d='m15 6 3.4-3.4a2.1 2.1 0 1 1 3 3L18 9l-3-3Z'/%3E%3C/svg%3E") 0 22, url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m2 22 1-1h3l9-9'/%3E%3Cpath d='M3 21v-3l9-9'/%3E%3Cpath d='m15 6 3.4-3.4a2.1 2.1 0 1 1 3 3L18 9l-3-3Z'/%3E%3C/svg%3E") 0 22, crosshair`;
@@ -130,6 +145,7 @@ export function BrushEditor({
   const [exposure, setExposure] = useState(0);
   const [blur, setBlur] = useState(0);
   const [showAdjustPanel, setShowAdjustPanel] = useState(false);
+  const [adjOpen, setAdjOpen] = useState(false); // Adjustments 패널 접힘 (기본 닫힘)
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDraggingFile, setIsDraggingFile] = useState(false);
@@ -151,29 +167,182 @@ export function BrushEditor({
     wandSmooth, setWandSmooth
   } = useBrushConfig();
 
+  // 이미지 로드 콜백을 ref로 저장 (순환 참조 방지)
+  const onImageLoadedCallbackRef = useRef<(() => void) | null>(null);
+
   // 2. 캔버스 상태 가져오기
   const core = useCanvasCore(imageUrl, () => {
-    resetHistory();
-    saveMaskSnapshot('Open');
+    onImageLoadedCallbackRef.current?.();
   });
 
   const {
     canvasRef, overlayRef, originalRef, maskRef, aiResultRef,
     maskSnapshotRef, tempCanvasRef, originalSnapshotRef, blurCacheRef,
     containerRef, containerRectRef, imageSize, zoom, setZoom, zoomRef,
-    updateCanvasSize, compositeAndRender
+    updateCanvasSize, compositeAndRender, compositeLayersAndRender
   } = core;
-
 
   const { performDownload } = useImageProcessing();
 
-  // 3. Selection Tools
+  // 3. 레이어 훅
+  const layersHook = useLayers(imageSize.w, imageSize.h);
+  const {
+    layers, setLayers, activeLayerId, setActiveLayerId,
+    historyVersion, historyStack, historyIndex,
+    canUndo, canRedo,
+    saveSnapshot, jumpToHistory, undo: layerUndo, redo: layerRedo,
+    addImageLayer, addPaintLayer, addTextLayer,
+    removeLayer, reorderLayer,
+    setLayerVisible, setLayerOpacity, renameLayer,
+    updateTextLayer,
+    moveLayerPosition, commitLayerMove,
+    mergeDown, flattenAll,
+    getActiveLayer, getActiveLayerCanvases,
+    savePixelSnapshot, resetLayers, commitLayers,
+  } = layersHook;
+
+  // imageUrl 변경 시 레이어 초기화 (새 이미지 로드 준비)
+  useEffect(() => {
+    resetLayers();
+  }, [imageUrl, resetLayers]);
+
+  // 이미지 로드 완료 콜백 등록 (addImageLayer가 선언된 이후)
+  useEffect(() => {
+    onImageLoadedCallbackRef.current = () => {
+      if (originalRef.current) {
+        addImageLayer(originalRef.current, originalName, [], '');
+      }
+    };
+  }, [addImageLayer, originalName]);
+
+  // 레이어 변경 시 화면 재합성
+  useEffect(() => {
+    if (layers.length > 0) {
+      compositeLayersAndRender(layers);
+    }
+  }, [layers, historyVersion, compositeLayersAndRender]);
+
+  // activeLayerRef: 기존 originalRef/maskRef 대신 활성 레이어 캔버스를 가리키는 동적 ref
+  // 기존 도구(paint, erase, wand 등)가 originalRef/maskRef를 직접 참조하는 코드들을
+  // 아래 getter를 통해 활성 레이어로 리다이렉트
+  const getActiveOriginal = useCallback((): HTMLCanvasElement | null => {
+    const active = layers.find(l => l.id === activeLayerId);
+    return active?.originalCanvas ?? originalRef.current;
+  }, [layers, activeLayerId]);
+
+  const getActiveMask = useCallback((): HTMLCanvasElement | null => {
+    const active = layers.find(l => l.id === activeLayerId);
+    return active?.maskCanvas ?? maskRef.current;
+  }, [layers, activeLayerId]);
+
+  // 레이어 시스템의 undo/redo + 기존 히스토리 겸용
+  const undo = useCallback(() => {
+    layerUndo();
+    stopMarching?.();
+    setHasSelection?.(false);
+  }, [layerUndo]);
+
+  const redo = useCallback(() => {
+    layerRedo();
+    stopMarching?.();
+    setHasSelection?.(false);
+  }, [layerRedo]);
+
+  // 픽셀 작업 완료 후 레이어 스냅샷 저장 (기존 saveMaskSnapshot 역할)
+  const saveMaskSnapshot = useCallback((label: string) => {
+    savePixelSnapshot(label);
+  }, [savePixelSnapshot]);
+
+  // setHistoryVersion 호환 (렌더 트리거)
+  const setHistoryVersion = useCallback((updater: number | ((v: number) => number)) => {
+    // historyVersion은 useLayers 내부에서 관리됨. 외부 트리거는 layers state 변경으로 대체
+  }, []);
+
+  // 드롭 다이얼로그 상태
+  const [dropDialog, setDropDialog] = useState<DropDialogState | null>(null);
+
+  // ── 텍스트 툴 — 모든 상태를 ref로 관리 (렉/stale closure 방지) ──────────
+  // textarea는 uncontrolled. 리렌더 없이 값 읽기.
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const textInputRef = useRef('');                           // textarea 현재 내용
+  const textPosRef = useRef<{ x: number; y: number } | null>(null);  // 텍스트 위치
+  const textStyleRef = useRef<TextStyle>({                   // 텍스트 스타일
+    fontFamily: 'sans-serif',
+    fontSize: 48,
+    fontWeight: 'bold',
+    fontStyle: 'normal',
+    letterSpacing: 0,
+    lineHeight: 1.3,
+    color: brushColor,
+    align: 'left',
+  });
+  const isEditingTextRef = useRef(false);                    // 편집 중 여부
+  const editingTextLayerIdRef = useRef<string | null>(null); // 편집 중인 레이어 ID
+  // UI 리렌더링 트리거 (ref 변경 후 수동으로 호출)
+  const [textUIVersion, setTextUIVersion] = useState(0);
+  const bumpTextUI = useCallback(() => setTextUIVersion(v => v + 1), []);
+
+  // 텍스트 스타일 옵션바 동기화용 (옵션바만 controlled)
+  const [textStyle, setTextStyle] = useState<TextStyle>(textStyleRef.current);
+
+  // Text 툴 interaction state machine refs
+  const hoveredTextLayerIdRef = useRef<string | null>(null);
+  const selectedTextLayerIdRef = useRef<string | null>(null);
+
+  // commitTextLayer forward-ref (선언 전 호출 가능하도록)
+  const commitTextLayerRef = useRef<(() => void) | null>(null);
+
+  // Text drag / scale
+  const textDragRef = useRef<{ mx: number; my: number; lx: number; ly: number; layerId: string } | null>(null);
+  const textLivePosRef = useRef<{ x: number; y: number } | null>(null);
+  const textScaleDragRef = useRef<{ mx: number; my: number; baseFontSize: number; baseX: number; baseY: number; corner: string; layerId: string } | null>(null);
+  const textScaleLiveSizeRef = useRef<number | null>(null);
+
+  // Marching animation — layerId/mode도 ref로 관리 (interval에서 최신값 사용)
+  const textMarchOffsetRef = useRef(0);
+  const textMarchTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const textMarchLayerIdRef = useRef<string | null>(null);
+  const textMarchModeRef = useRef<'hover' | 'selected'>('hover');
+
+  // 측정 전용 캔버스 (재사용 — 매 호출마다 생성 방지)
+  const measureCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const getMeasureCtx = () => {
+    if (!measureCanvasRef.current) measureCanvasRef.current = document.createElement('canvas');
+    return measureCanvasRef.current.getContext('2d')!;
+  };
+
+  // 드래그/스케일 중 live 오버라이드 (interval이 항상 최신 위치/크기로 아웃라인 그림)
+  const textLiveOverrideRef = useRef<{ x?: number; y?: number; fontSize?: number } | null>(null);
+
+  // layers ref (interval 콜백에서 최신 레이어 접근)
+  const layersRef = useRef<Layer[]>(layers);
+  useEffect(() => { layersRef.current = layers; }, [layers]);
+
+  // Move 툴 드래그 상태
+  const moveDragStart = useRef<{ mx: number; my: number; lx: number; ly: number } | null>(null);
+  // Move live position ref (avoids history accumulation during drag)
+  const moveLivePosRef = useRef<{ x: number; y: number } | null>(null);
+
+  // 4. Selection Tools — originalRef/maskRef 대신 getter로 래핑
+  // 기존 selectionTools는 ref를 직접 받으므로 호환 유지
+  const activeOriginalProxy = useRef<HTMLCanvasElement | null>(null);
+  const activeMaskProxy = useRef<HTMLCanvasElement | null>(null);
+
+  // proxy ref를 항상 활성 레이어로 동기화
+  useEffect(() => {
+    activeOriginalProxy.current = getActiveOriginal();
+    activeMaskProxy.current = getActiveMask();
+  }, [layers, activeLayerId, getActiveOriginal, getActiveMask]);
+
   const selectionTools = useSelectionTools({
-    originalRef, maskRef, overlayRef,
+    originalRef: activeOriginalProxy as React.RefObject<HTMLCanvasElement | null>,
+    maskRef: activeMaskProxy as React.RefObject<HTMLCanvasElement | null>,
+    overlayRef,
     overlayCache, selectionRef, baseSelectionRef,
     cachedSelKey, marchingSegs, marchingOffset, isSliding,
     tolerance, wandSmooth, wandExpand,
-    compositeAndRender, toolRef, cropRectRef,
+    compositeAndRender: () => compositeLayersAndRender(layers),
+    toolRef, cropRectRef,
     saveMaskSnapshot: (label) => saveMaskSnapshot(label),
     drawCropOverlay: (rect) => drawCropOverlay(rect)
   });
@@ -183,15 +352,6 @@ export function BrushEditor({
     drawMarching, startMarching, stopMarching,
     handleWand, applySelectionToMask
   } = selectionTools;
-
-  // 4. 히스토리 상태 가져오기
-  const {
-    historyStack, historyIndex, historyVersion, setHistoryVersion,
-    saveMaskSnapshot, jumpToHistory, undo, redo, canUndo, canRedo, resetHistory
-  } = useHistory({
-    canvasRef, originalRef, maskRef, updateCanvasSize,
-    compositeAndRender, stopMarching, setHasSelection
-  });
 
   // 투명도 감지하여 포맷 자동 설정
   useEffect(() => {
@@ -304,14 +464,224 @@ export function BrushEditor({
     }
   }, []);
 
+  // ── 텍스트 레이어 바운드 계산 (측정 캔버스 재사용) ─────────
+  const getTextLayerBounds = useCallback((layer: Layer, override?: { x?: number; y?: number; fontSize?: number }) => {
+    const { textContent, textStyle: ts } = layer;
+    if (!textContent) return null;
+    const x = override?.x ?? layer.x;
+    const y = override?.y ?? layer.y;
+    const fontSize = override?.fontSize ?? ts.fontSize;
+    const letterSpacing = ts.letterSpacing ?? 0;
+    const lineHeight = ts.lineHeight ?? 1.3;
+    const lines = textContent.split('\n');
+    const lineH = fontSize * lineHeight;
+    if (!measureCanvasRef.current) measureCanvasRef.current = document.createElement('canvas');
+    const ctx = measureCanvasRef.current.getContext('2d')!;
+    ctx.font = `${ts.fontStyle} ${ts.fontWeight} ${fontSize}px ${ts.fontFamily}`;
+    let maxW = 0;
+    for (const line of lines) {
+      let w = 0;
+      if (letterSpacing === 0) {
+        w = ctx.measureText(line).width;
+      } else {
+        for (const ch of line) w += ctx.measureText(ch).width + letterSpacing;
+        if (line.length > 0) w -= letterSpacing;
+      }
+      if (w > maxW) maxW = w;
+    }
+    const h = lines.length * lineH;
+    return { x, y, w: maxW, h };
+  }, []);
+
+  // ── 텍스트 아웃라인 오버레이 그리기 (마칭 앤츠 스타일) ──
+  const drawTextOutline = useCallback((layerId: string | null, mode: 'hover' | 'selected') => {
+    const overlay = overlayRef.current;
+    if (!overlay) return;
+    const ctx = overlay.getContext('2d')!;
+    if (!layerId) {
+      ctx.clearRect(0, 0, overlay.width, overlay.height);
+      return;
+    }
+    // layersRef로 최신 레이어 접근, live override 적용 (드래그/스케일 중 즉시 반영)
+    const layer = layersRef.current.find(l => l.id === layerId);
+    if (!layer) return;
+    const override = textLiveOverrideRef.current ?? undefined;
+    const bounds = getTextLayerBounds(layer, override);
+    if (!bounds) return;
+
+    ctx.clearRect(0, 0, overlay.width, overlay.height);
+
+    const pad = 6; // padding around text bounds
+    const rx = bounds.x - pad;
+    const ry = bounds.y - pad;
+    const rw = bounds.w + pad * 2;
+    const rh = bounds.h + pad * 2;
+
+    const t = textMarchOffsetRef.current * 20;
+    ctx.setLineDash([6, 4]);
+    ctx.lineDashOffset = -t;
+
+    // shadow for contrast
+    ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(rx + 0.5, ry + 0.5, rw - 1, rh - 1);
+
+    // animated gradient color
+    const colors = mode === 'selected'
+      ? [[168, 85, 247], [255, 255, 255], [56, 189, 248], [236, 72, 153], [255, 255, 255]] as number[][]
+      : [[120, 120, 255], [200, 200, 255], [120, 120, 255]] as number[][];
+    const steps = colors.length - 1;
+    const colorPos = textMarchOffsetRef.current * steps;
+    const idx = Math.floor(colorPos) % steps;
+    const frac = colorPos - Math.floor(colorPos);
+    const [r1, g1, b1] = colors[idx]!;
+    const [r2, g2, b2] = colors[(idx + 1) % colors.length]!;
+    const r = Math.round(r1 + (r2 - r1) * frac);
+    const g = Math.round(g1 + (g2 - g1) * frac);
+    const b = Math.round(b1 + (b2 - b1) * frac);
+
+    ctx.strokeStyle = `rgb(${r},${g},${b})`;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(rx + 0.5, ry + 0.5, rw - 1, rh - 1);
+    ctx.setLineDash([]);
+    ctx.lineDashOffset = 0;
+
+    // corner handles (only when selected)
+    if (mode === 'selected') {
+      const hs = 8;
+      const corners = [
+        { x: rx - hs / 2, y: ry - hs / 2 },
+        { x: rx + rw - hs / 2, y: ry - hs / 2 },
+        { x: rx - hs / 2, y: ry + rh - hs / 2 },
+        { x: rx + rw - hs / 2, y: ry + rh - hs / 2 },
+      ];
+      ctx.fillStyle = 'white';
+      ctx.strokeStyle = '#7c3aed';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([]);
+      for (const c of corners) {
+        ctx.fillRect(c.x, c.y, hs, hs);
+        ctx.strokeRect(c.x, c.y, hs, hs);
+      }
+    }
+  }, [getTextLayerBounds]);
+
+  // ── 텍스트 마칭 타이머 ────────────────────────────────────
+  // layerId/mode를 ref로 관리 → interval 콜백이 항상 최신 값으로 그림
+  const startTextMarching = useCallback((layerId: string, mode: 'hover' | 'selected') => {
+    textMarchLayerIdRef.current = layerId;
+    textMarchModeRef.current = mode;
+    if (textMarchTimerRef.current) return; // 이미 실행 중이면 ref만 갱신
+    textMarchTimerRef.current = setInterval(() => {
+      textMarchOffsetRef.current = (textMarchOffsetRef.current + 0.02) % 1;
+      // ref에서 최신 layerId/mode 읽기 (stale closure 없음)
+      if (textMarchLayerIdRef.current) {
+        drawTextOutline(textMarchLayerIdRef.current, textMarchModeRef.current);
+      }
+    }, 50);
+  }, [drawTextOutline]);
+
+  const stopTextMarching = useCallback(() => {
+    if (textMarchTimerRef.current) {
+      clearInterval(textMarchTimerRef.current);
+      textMarchTimerRef.current = null;
+    }
+    textMarchLayerIdRef.current = null;
+    const overlay = overlayRef.current;
+    if (overlay) {
+      overlay.getContext('2d')!.clearRect(0, 0, overlay.width, overlay.height);
+    }
+  }, []);
+
+  // ── 텍스트 레이어 코너 핸들 히트 테스트 (4방향) ──────────
+  const hitTestTextCorner = useCallback((layerId: string, canvasPos: { x: number; y: number }) => {
+    const layer = layersRef.current.find(l => l.id === layerId);
+    if (!layer) return null;
+    const override = textLiveOverrideRef.current ?? undefined;
+    const bounds = getTextLayerBounds(layer, override);
+    if (!bounds) return null;
+    const pad = 6;
+    const rx = bounds.x - pad;
+    const ry = bounds.y - pad;
+    const rw = bounds.w + pad * 2;
+    const rh = bounds.h + pad * 2;
+    const hitZone = 12;
+    const corners = [
+      { id: 'tl', x: rx,      y: ry },
+      { id: 'tr', x: rx + rw, y: ry },
+      { id: 'bl', x: rx,      y: ry + rh },
+      { id: 'br', x: rx + rw, y: ry + rh },
+    ];
+    for (const c of corners) {
+      if (Math.abs(canvasPos.x - c.x) < hitZone && Math.abs(canvasPos.y - c.y) < hitZone) {
+        return c.id;
+      }
+    }
+    return null;
+  }, [getTextLayerBounds]);
+
+  // ── 텍스트 레이어 바운드 히트 테스트 ─────────────────────
+  const hitTestTextLayer = useCallback((canvasPos: { x: number; y: number }): string | null => {
+    // Search in reverse (top layer first), always use latest layers via ref
+    const currentLayers = layersRef.current;
+    for (let i = currentLayers.length - 1; i >= 0; i--) {
+      const layer = currentLayers[i]!;
+      if (layer.type !== 'text' || !layer.visible) continue;
+      const bounds = getTextLayerBounds(layer);
+      if (!bounds) continue;
+      const pad = 6;
+      if (
+        canvasPos.x >= bounds.x - pad &&
+        canvasPos.x <= bounds.x + bounds.w + pad &&
+        canvasPos.y >= bounds.y - pad &&
+        canvasPos.y <= bounds.y + bounds.h + pad
+      ) {
+        return layer.id;
+      }
+    }
+    return null;
+  }, [getTextLayerBounds]);
+
+  // ── 텍스트 아웃라인 cleanup ───────────────────────────────
+  useEffect(() => {
+    if (tool !== 'text') {
+      stopTextMarching();
+      hoveredTextLayerIdRef.current = null;
+      selectedTextLayerIdRef.current = null;
+      // 편집 중이면 취소
+      if (isEditingTextRef.current) {
+        isEditingTextRef.current = false;
+        textPosRef.current = null;
+        textInputRef.current = '';
+        editingTextLayerIdRef.current = null;
+        bumpTextUI();
+      }
+    }
+  }, [tool, stopTextMarching, bumpTextUI]);
+
+  // ── 편집 중 레이어 숨김 렌더링 ───────────────────────────
+  // textUIVersion 변화 시: 편집 중이면 해당 레이어 숨기고 렌더, 아니면 전체 렌더
+  useEffect(() => {
+    const editId = editingTextLayerIdRef.current;
+    if (editId) {
+      // 편집 중 레이어를 캔버스에서 숨김 (textarea와 겹침 방지)
+      const hiddenLayers = layersRef.current.map(l => l.id === editId ? { ...l, visible: false } : l);
+      compositeLayersAndRender(hiddenLayers);
+    } else {
+      compositeLayersAndRender(layersRef.current);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [textUIVersion]);
+
   // ── 크롭 오버레이 그리기 ──────────────────────────────────
 
   const applyAiThreshold = useCallback((offset: number) => {
-    if (!aiResultRef.current || !maskRef.current || !aiResultRef.current) return;
+    const activeMask = getActiveMask();
+    if (!aiResultRef.current || !activeMask) return;
     const aiCtx = aiResultRef.current.getContext('2d')!;
     const aiData = aiCtx.getImageData(0, 0, aiResultRef.current.width, aiResultRef.current.height);
-    const maskCtx = maskRef.current.getContext('2d')!;
-    const maskData = maskCtx.getImageData(0, 0, maskRef.current.width, maskRef.current.height);
+    const maskCtx = activeMask.getContext('2d')!;
+    const maskData = maskCtx.getImageData(0, 0, activeMask.width, activeMask.height);
 
     const w = aiData.width;
     const h = aiData.height;
@@ -337,8 +707,8 @@ export function BrushEditor({
       maskData.data[i + 3] = finalA;
     }
     maskCtx.putImageData(maskData, 0, 0);
-    compositeAndRender();
-  }, [compositeAndRender]);
+    compositeLayersAndRender(layers);
+  }, [compositeLayersAndRender, layers, getActiveMask]);
 
   // 외부 배경 연결성 계산 (Flood Fill)
   const computeOuterBackground = (alphaData: Uint8ClampedArray, width: number, height: number) => {
@@ -375,14 +745,16 @@ export function BrushEditor({
   };
 
   const runAI = useCallback(async () => {
-    if (!originalRef.current || !maskRef.current || !aiResultRef.current) return;
+    const activeOriginal = getActiveOriginal();
+    if (!activeOriginal || !aiResultRef.current) return;
+    // originalRef.current 호환을 위해 activeOriginal 사용
     setIsProcessing(true);
     setProgress(0);
 
     try {
       const { removeBackground } = await import('@imgly/background-removal');
       const blob = await new Promise<Blob>((resolve) =>
-        originalRef.current!.toBlob((b) => resolve(b!), 'image/png')
+        activeOriginal.toBlob((b) => resolve(b!), 'image/png')
       );
       const resultBlob = await removeBackground(blob, {
         progress: (_key: string, current: number, total: number) => {
@@ -416,7 +788,7 @@ export function BrushEditor({
       console.error('배경제거 실패:', err);
       setIsProcessing(false);
     }
-  }, [compositeAndRender, saveMaskSnapshot, aiAdjust, applyAiThreshold]);
+  }, [compositeLayersAndRender, layers, saveMaskSnapshot, aiAdjust, applyAiThreshold, getActiveOriginal]);
 
   // 임계값 변경 시 즉시 반영
   useEffect(() => {
@@ -465,13 +837,15 @@ export function BrushEditor({
 
   const fillSelectionWithColor = useCallback(() => {
     const sel = selectionRef.current;
-    if (!sel || !originalRef.current || !maskRef.current) return;
+    const activeOriginal = getActiveOriginal();
+    const activeMask = getActiveMask();
+    if (!sel || !activeOriginal || !activeMask) return;
 
-    const w = originalRef.current.width;
-    const h = originalRef.current.height;
+    const w = activeOriginal.width;
+    const h = activeOriginal.height;
 
-    const oCtx = originalRef.current.getContext('2d')!;
-    const mCtx = maskRef.current.getContext('2d')!;
+    const oCtx = activeOriginal.getContext('2d')!;
+    const mCtx = activeMask.getContext('2d')!;
 
     const oData = oCtx.getImageData(0, 0, w, h);
     const mData = mCtx.getImageData(0, 0, w, h);
@@ -499,21 +873,23 @@ export function BrushEditor({
 
     oCtx.putImageData(oData, 0, 0);
     mCtx.putImageData(mData, 0, 0);
-    compositeAndRender();
+    compositeLayersAndRender(layers);
     stopMarching();
     saveMaskSnapshot('Selection Fill');
-  }, [brushColor, compositeAndRender, saveMaskSnapshot, stopMarching]);
+  }, [brushColor, compositeLayersAndRender, layers, saveMaskSnapshot, stopMarching, getActiveOriginal, getActiveMask]);
 
   const handleBucket = useCallback(
     (pos: { x: number; y: number }) => {
-      if (!originalRef.current || !maskRef.current || !canvasRef.current) return;
-      const w = originalRef.current.width;
-      const h = originalRef.current.height;
+      const activeOriginal = getActiveOriginal();
+      const activeMask = getActiveMask();
+      if (!activeOriginal || !activeMask || !canvasRef.current) return;
+      const w = activeOriginal.width;
+      const h = activeOriginal.height;
 
       if (pos.x < 0 || pos.x >= w || pos.y < 0 || pos.y >= h) return;
 
-      const oCtx = originalRef.current.getContext('2d')!;
-      const mCtx = maskRef.current.getContext('2d')!;
+      const oCtx = activeOriginal.getContext('2d')!;
+      const mCtx = activeMask.getContext('2d')!;
       const compositeCtx = canvasRef.current.getContext('2d', { willReadFrequently: true })!;
 
       // 현재 보이는 상태(composite)를 기준으로 영역 계산 (투명 영역도 색칠 가능하게 함)
@@ -546,10 +922,10 @@ export function BrushEditor({
 
       oCtx.putImageData(oData, 0, 0);
       mCtx.putImageData(mData, 0, 0);
-      compositeAndRender();
+      compositeLayersAndRender(layers);
       saveMaskSnapshot('Bucket Fill');
     },
-    [brushColor, tolerance, compositeAndRender, saveMaskSnapshot]
+    [brushColor, tolerance, compositeLayersAndRender, layers, saveMaskSnapshot, getActiveOriginal, getActiveMask]
   );
 
   const handleEyedropper = useCallback((pos: { x: number; y: number }) => {
@@ -687,13 +1063,17 @@ export function BrushEditor({
 
   const paint = useCallback(
     (pos: { x: number; y: number }) => {
-      if (!maskRef.current || !originalRef.current || !brushTipRef.current) return;
+      const activeOriginal = getActiveOriginal();
+      const activeMask = getActiveMask();
+      if (!activeMask || !activeOriginal || !brushTipRef.current) return;
+      // proxy refs 업데이트 (clone/heal 내부 참조용)
+      // originalRef.current 대신 activeOriginal 사용
 
-      const imgW = originalRef.current.width;
-      const imgH = originalRef.current.height;
+      const imgW = activeOriginal.width;
+      const imgH = activeOriginal.height;
 
-      const maskCtx = maskRef.current.getContext('2d')!;
-      const origCtx = originalRef.current.getContext('2d')!;
+      const maskCtx = activeMask.getContext('2d')!;
+      const origCtx = activeOriginal.getContext('2d')!;
       const from = lastPos.current || pos;
 
       const alpha = brushOpacity / 100;
@@ -784,13 +1164,17 @@ export function BrushEditor({
       origCtx.restore();
       lastPos.current = pos;
       hasStrokeRef.current = true;
-      compositeAndRender();
+      compositeLayersAndRender(layers);
     },
-    [tool, brushSize, brushOpacity, brushHardness, brushColor, compositeAndRender, originalSnapshotRef, blurCacheRef]
+    [tool, brushSize, brushOpacity, brushHardness, brushColor, compositeLayersAndRender, layers, originalSnapshotRef, blurCacheRef, getActiveOriginal, getActiveMask]
   );
 
 
   const initialMousePos = useRef({ x: 0, y: 0 });
+
+  // 더블클릭 감지용 (mousedown 내에서 처리)
+  const lastClickTimeRef = useRef(0);
+  const lastClickLayerIdRef = useRef<string | null>(null);
 
   const handleMouseDown = useCallback(
     (e: React.MouseEvent | React.TouchEvent) => {
@@ -798,6 +1182,8 @@ export function BrushEditor({
       if (canvasRef.current) containerRectRef.current = canvasRef.current.getBoundingClientRect();
       const pos = getCanvasPos(e);
       const isAlt = (e as any).altKey;
+      const clientX = 'touches' in e ? (e as React.TouchEvent).touches[0]!.clientX : (e as React.MouseEvent).clientX;
+      const clientY = 'touches' in e ? (e as React.TouchEvent).touches[0]!.clientY : (e as React.MouseEvent).clientY;
 
       if ((tool === 'clone' || tool === 'heal') && isAlt) {
         cloneSourceRef.current = pos;
@@ -850,17 +1236,138 @@ export function BrushEditor({
         cropRectRef.current = { x: pos.x, y: pos.y, w: 0, h: 0 };
         setCropRect({ x: pos.x, y: pos.y, w: 0, h: 0 });
         isPainting.current = true;
+      } else if (tool === 'move') {
+        // Move 툴: 활성 레이어 이동 시작
+        const activeLayer = getActiveLayer();
+        if (activeLayer) {
+          moveDragStart.current = {
+            mx: clientX,
+            my: clientY,
+            lx: activeLayer.x,
+            ly: activeLayer.y,
+          };
+          moveLivePosRef.current = null;
+          isPainting.current = true;
+        }
+      } else if (tool === 'text') {
+        // ── Text 툴 상태 머신 (모두 ref 기반 — stale closure 없음) ──
+
+        // 0. 더블클릭 감지: 300ms 이내 같은 레이어 재클릭 → 즉시 편집 모드
+        const now = Date.now();
+        const hitIdForDbl = hitTestTextLayer(pos);
+        if (hitIdForDbl && now - lastClickTimeRef.current < 300 && lastClickLayerIdRef.current === hitIdForDbl) {
+          lastClickTimeRef.current = 0;
+          lastClickLayerIdRef.current = null;
+          const dblLayer = layersRef.current.find(l => l.id === hitIdForDbl)!;
+          editingTextLayerIdRef.current = hitIdForDbl;
+          textInputRef.current = dblLayer.textContent;
+          textStyleRef.current = { ...dblLayer.textStyle };
+          textPosRef.current = { x: dblLayer.x, y: dblLayer.y };
+          isEditingTextRef.current = true;
+          selectedTextLayerIdRef.current = hitIdForDbl;
+          setTextStyle({ ...dblLayer.textStyle });
+          stopTextMarching();
+          bumpTextUI();
+          setTimeout(() => {
+            if (textareaRef.current) {
+              textareaRef.current.value = dblLayer.textContent;
+              textareaRef.current.style.height = 'auto';
+              textareaRef.current.style.height = textareaRef.current.scrollHeight + 'px';
+              textareaRef.current.focus();
+              textareaRef.current.select();
+            }
+          }, 0);
+          return;
+        }
+        lastClickTimeRef.current = now;
+        lastClickLayerIdRef.current = hitIdForDbl;
+
+        // 1. 편집 중이면 확정 후 종료
+        if (isEditingTextRef.current) {
+          commitTextLayerRef.current?.();
+          return;
+        }
+
+        // 2. 코너 핸들 히트: 크기 조정
+        const curSelId = selectedTextLayerIdRef.current;
+        if (curSelId) {
+          const corner = hitTestTextCorner(curSelId, pos);
+          if (corner) {
+            const selLayer = layersRef.current.find(l => l.id === curSelId);
+            if (selLayer) {
+              textScaleDragRef.current = {
+                mx: clientX,
+                my: clientY,
+                baseFontSize: selLayer.textStyle.fontSize,
+                baseX: selLayer.x,
+                baseY: selLayer.y,
+                corner,
+                layerId: curSelId,
+              };
+              isPainting.current = true;
+              return;
+            }
+          }
+        }
+
+        // 3. 텍스트 레이어 히트 테스트
+        const hitId = hitTestTextLayer(pos);
+
+        if (hitId) {
+          // 선택 여부 관계없이 드래그 준비 (mouseup에서 드래그 거리로 이동 vs 편집 구분)
+          const targetLayer = layersRef.current.find(l => l.id === hitId)!;
+          if (curSelId !== hitId) {
+            // 미선택 → 선택
+            selectedTextLayerIdRef.current = hitId;
+            hoveredTextLayerIdRef.current = null;
+            textMarchLayerIdRef.current = hitId;
+            textMarchModeRef.current = 'selected';
+            startTextMarching(hitId, 'selected');
+            bumpTextUI();
+          }
+          // 드래그 준비 (이미 선택이든 새 선택이든 항상)
+          textDragRef.current = {
+            mx: clientX,
+            my: clientY,
+            lx: targetLayer.x,
+            ly: targetLayer.y,
+            layerId: hitId,
+          };
+          textLivePosRef.current = null;
+          isPainting.current = true;
+        } else {
+          // 빈 공간 클릭 → 선택 해제 + 새 텍스트 입력 시작
+          if (curSelId) {
+            selectedTextLayerIdRef.current = null;
+            stopTextMarching();
+            bumpTextUI();
+          }
+          textPosRef.current = pos;
+          textInputRef.current = '';
+          editingTextLayerIdRef.current = null;
+          isEditingTextRef.current = true;
+          bumpTextUI();
+          setTimeout(() => {
+            if (textareaRef.current) {
+              textareaRef.current.value = '';
+              textareaRef.current.style.height = 'auto';
+              textareaRef.current.focus();
+            }
+          }, 50);
+        }
+        return;
       } else {
         // 도구별 작업 시작 시 스냅샷/캐시 생성 (성능 및 품질 핵심)
-        if (originalRef.current) {
-          const w = originalRef.current.width;
-          const h = originalRef.current.height;
+        const activeOriginal = getActiveOriginal();
+        if (activeOriginal) {
+          const w = activeOriginal.width;
+          const h = activeOriginal.height;
 
           // 1. 원본 스냅샷 (Clone/Heal용)
           if (!originalSnapshotRef.current) originalSnapshotRef.current = document.createElement('canvas');
           originalSnapshotRef.current.width = w;
           originalSnapshotRef.current.height = h;
-          originalSnapshotRef.current.getContext('2d')!.drawImage(originalRef.current, 0, 0);
+          originalSnapshotRef.current.getContext('2d')!.drawImage(activeOriginal, 0, 0);
 
           // 2. 전체 블러 캐시 (Blur Tool용 - 미리 한 번만 연산)
           if (tool === 'blur-brush') {
@@ -869,7 +1376,7 @@ export function BrushEditor({
             blurCacheRef.current.height = h;
             const bCtx = blurCacheRef.current.getContext('2d')!;
             bCtx.filter = `blur(${Math.max(1, brushSize / 5)}px)`;
-            bCtx.drawImage(originalRef.current, 0, 0);
+            bCtx.drawImage(activeOriginal, 0, 0);
           }
         }
 
@@ -880,17 +1387,18 @@ export function BrushEditor({
         paint(pos);
       }
     },
-    [tool, getCanvasPos, handleWand, handleBucket, handleEyedropper, paint, saveMaskSnapshot, drawCropOverlay, cropRect, zoom, brushSize, originalSnapshotRef, blurCacheRef]
+    [tool, getCanvasPos, handleWand, handleBucket, handleEyedropper, paint, saveMaskSnapshot, drawCropOverlay, cropRect, zoom, brushSize, originalSnapshotRef, blurCacheRef, getActiveOriginal, getActiveLayer, hitTestTextCorner, hitTestTextLayer, stopTextMarching, startTextMarching, bumpTextUI]
   );
 
 
   const applyMarqueeSelection = useCallback(() => {
     const rect = cropRectRef.current;
     if (!rect || rect.w < 2 || rect.h < 2) return;
-    if (!originalRef.current) return;
+    const activeOriginal = getActiveOriginal();
+    if (!activeOriginal) return;
 
-    const w = originalRef.current.width;
-    const h = originalRef.current.height;
+    const w = activeOriginal.width;
+    const h = activeOriginal.height;
     const sel = new Uint8Array(w * h);
 
     const x1 = Math.round(rect.x);
@@ -930,6 +1438,94 @@ export function BrushEditor({
     if (toolRef.current === 'marquee-rect' || toolRef.current === 'marquee-circle') {
       applyMarqueeSelection();
     }
+    if (toolRef.current === 'move' && moveDragStart.current) {
+      // Move 드래그 완료 → live 위치를 state에 커밋 (히스토리 1회)
+      const livePos = moveLivePosRef.current;
+      if (livePos) {
+        setLayers(prev => {
+          const dragId = moveDragStart.current ? activeLayerId : null;
+          const next = dragId ? prev.map(l => l.id === dragId ? { ...l, x: livePos.x, y: livePos.y } : l) : prev;
+          commitLayerMove(next, activeLayerId);
+          return next;
+        });
+      }
+      moveDragStart.current = null;
+      moveLivePosRef.current = null;
+    }
+    if (toolRef.current === 'text' && textDragRef.current) {
+      const livePos = textLivePosRef.current;
+      const drag = textDragRef.current;
+      const dragLayerId = drag.layerId;
+      // livePos가 설정됐으면 실제로 mousemove가 발생한 것 (드래그)
+      const didDrag = livePos !== null;
+      textDragRef.current = null;
+      textLivePosRef.current = null;
+      textLiveOverrideRef.current = null; // override 해제
+
+      if (didDrag && livePos) {
+        // 실제 이동 → 커밋 (히스토리 1회)
+        setLayers(prev => {
+          const next = prev.map(l => l.id === dragLayerId ? { ...l, x: livePos.x, y: livePos.y } : l);
+          layersRef.current = next;
+          commitLayerMove(next, dragLayerId);
+          return next;
+        });
+        selectedTextLayerIdRef.current = dragLayerId;
+        textMarchLayerIdRef.current = dragLayerId;
+        textMarchModeRef.current = 'selected';
+      } else if (!didDrag && selectedTextLayerIdRef.current === dragLayerId && !isEditingTextRef.current) {
+        // 짧은 클릭 + 이미 선택된 레이어 + 편집 중 아님 → 편집 모드 진입
+        const layer = layersRef.current.find(l => l.id === dragLayerId);
+        if (layer) {
+          editingTextLayerIdRef.current = dragLayerId;
+          textInputRef.current = layer.textContent;
+          textStyleRef.current = { ...layer.textStyle };
+          textPosRef.current = { x: layer.x, y: layer.y };
+          isEditingTextRef.current = true;
+          setTextStyle({ ...layer.textStyle });
+          stopTextMarching();
+          bumpTextUI();
+          setTimeout(() => {
+            if (textareaRef.current) {
+              textareaRef.current.value = layer.textContent;
+              textareaRef.current.style.height = 'auto';
+              textareaRef.current.style.height = textareaRef.current.scrollHeight + 'px';
+              textareaRef.current.focus();
+              textareaRef.current.select();
+            }
+          }, 50);
+        }
+      }
+      // else: 처음 선택된 레이어(드래그 없음) → 선택 상태 유지, 아무것도 안 함
+    }
+    if (toolRef.current === 'text' && textScaleDragRef.current) {
+      // Text scale 완료 → state에 커밋 (히스토리 1회)
+      const drag = textScaleDragRef.current;
+      const liveSize = textScaleLiveSizeRef.current;
+      const liveOverride = textLiveOverrideRef.current;
+      const scaleLayerId = drag.layerId;
+      textScaleDragRef.current = null;
+      textScaleLiveSizeRef.current = null;
+      textLiveOverrideRef.current = null;
+      if (liveSize !== null) {
+        const finalX = liveOverride?.x ?? drag.baseX;
+        const finalY = liveOverride?.y ?? drag.baseY;
+        setLayers(prev => {
+          const next = prev.map(l => l.id === scaleLayerId
+            ? { ...l, x: finalX, y: finalY, textStyle: { ...l.textStyle, fontSize: liveSize } }
+            : l);
+          layersRef.current = next;
+          commitLayerMove(next, scaleLayerId);
+          return next;
+        });
+        textStyleRef.current = { ...textStyleRef.current, fontSize: liveSize };
+        setTextStyle(s => ({ ...s, fontSize: liveSize }));
+      }
+      // selected 상태 유지
+      selectedTextLayerIdRef.current = scaleLayerId;
+      textMarchLayerIdRef.current = scaleLayerId;
+      textMarchModeRef.current = 'selected';
+    }
     if (isPainting.current && hasStrokeRef.current) {
       let label = 'Edit';
       const t = toolRef.current;
@@ -946,45 +1542,42 @@ export function BrushEditor({
     hasStrokeRef.current = false;
     lastPos.current = null;
     setIsDraggingHandle(null);
-  }, [applyMarqueeSelection, saveMaskSnapshot]);
+  }, [applyMarqueeSelection, saveMaskSnapshot, commitLayerMove, setLayers, activeLayerId, startTextMarching, stopTextMarching, bumpTextUI]);
 
   // ── 크롭 실행 ────────────────────────────────────────────
   const applyCrop = useCallback(() => {
     const rect = cropRectRef.current;
     if (!rect || rect.w < 2 || rect.h < 2) return;
-    if (!canvasRef.current || !originalRef.current || !maskRef.current) return;
+    if (!canvasRef.current) return;
 
     const sx = Math.round(rect.x);
     const sy = Math.round(rect.y);
     const sw = Math.round(rect.w);
     const sh = Math.round(rect.h);
 
-    // 원본 크롭
-    const origCropped = document.createElement('canvas');
-    origCropped.width = sw;
-    origCropped.height = sh;
-    origCropped.getContext('2d')!.drawImage(originalRef.current, sx, sy, sw, sh, 0, 0, sw, sh);
+    // 모든 레이어를 크롭
+    setLayers(prev => {
+      const next = prev.map(layer => {
+        if (!layer.originalCanvas || !layer.maskCanvas) return layer;
+        const origCropped = document.createElement('canvas');
+        origCropped.width = sw; origCropped.height = sh;
+        origCropped.getContext('2d')!.drawImage(layer.originalCanvas, sx - layer.x, sy - layer.y, sw, sh, 0, 0, sw, sh);
+        const maskCropped = document.createElement('canvas');
+        maskCropped.width = sw; maskCropped.height = sh;
+        maskCropped.getContext('2d')!.drawImage(layer.maskCanvas, sx - layer.x, sy - layer.y, sw, sh, 0, 0, sw, sh);
+        return { ...layer, originalCanvas: origCropped, maskCanvas: maskCropped, x: 0, y: 0 };
+      });
+      compositeLayersAndRender(next);
+      return next;
+    });
 
-    // 마스크 크롭
-    const maskCropped = document.createElement('canvas');
-    maskCropped.width = sw;
-    maskCropped.height = sh;
-    maskCropped.getContext('2d')!.drawImage(maskRef.current, sx, sy, sw, sh, 0, 0, sw, sh);
-
-    // 모든 캔버스 리사이즈
     updateCanvasSize(sw, sh);
-
-    originalRef.current.getContext('2d')!.drawImage(origCropped, 0, 0);
-    maskRef.current.getContext('2d')!.drawImage(maskCropped, 0, 0);
-    aiResultRef.current!.getContext('2d')!.drawImage(origCropped, 0, 0);
-
     cropRectRef.current = null;
     setCropRect(null);
     overlayRef.current?.getContext('2d')?.clearRect(0, 0, sw, sh);
     setTool('wand');
-    compositeAndRender();
     saveMaskSnapshot('Crop');
-  }, [compositeAndRender, saveMaskSnapshot, updateCanvasSize]);
+  }, [compositeLayersAndRender, saveMaskSnapshot, updateCanvasSize, setLayers]);
 
   const cancelCrop = useCallback(() => {
     cropRectRef.current = null;
@@ -997,140 +1590,121 @@ export function BrushEditor({
 
   // ── 여백 컷 ──────────────────────────────────────────────
   const autoCrop = useCallback(() => {
-    if (!canvasRef.current || !originalRef.current || !maskRef.current) return;
+    if (!canvasRef.current) return;
     const bounds = getAutoCropBounds(canvasRef.current, cropMargin);
     if (!bounds) return;
 
     const { x, y, w, h } = bounds;
 
-    const origCropped = document.createElement('canvas');
-    origCropped.width = w;
-    origCropped.height = h;
-    origCropped.getContext('2d')!.drawImage(originalRef.current, x, y, w, h, 0, 0, w, h);
-
-    const maskCropped = document.createElement('canvas');
-    maskCropped.width = w;
-    maskCropped.height = h;
-    maskCropped.getContext('2d')!.drawImage(maskRef.current, x, y, w, h, 0, 0, w, h);
+    setLayers(prev => {
+      const next = prev.map(layer => {
+        if (!layer.originalCanvas || !layer.maskCanvas) return layer;
+        const origCropped = document.createElement('canvas');
+        origCropped.width = w; origCropped.height = h;
+        origCropped.getContext('2d')!.drawImage(layer.originalCanvas, x - layer.x, y - layer.y, w, h, 0, 0, w, h);
+        const maskCropped = document.createElement('canvas');
+        maskCropped.width = w; maskCropped.height = h;
+        maskCropped.getContext('2d')!.drawImage(layer.maskCanvas, x - layer.x, y - layer.y, w, h, 0, 0, w, h);
+        return { ...layer, originalCanvas: origCropped, maskCanvas: maskCropped, x: 0, y: 0 };
+      });
+      compositeLayersAndRender(next);
+      return next;
+    });
 
     updateCanvasSize(w, h);
-
-    originalRef.current.getContext('2d')!.drawImage(origCropped, 0, 0);
-    maskRef.current.getContext('2d')!.drawImage(maskCropped, 0, 0);
-    aiResultRef.current!.getContext('2d')!.drawImage(origCropped, 0, 0);
-
     stopMarching();
-    compositeAndRender();
     saveMaskSnapshot('Auto Crop');
-  }, [compositeAndRender, stopMarching, cropMargin, saveMaskSnapshot, updateCanvasSize]);
+  }, [compositeLayersAndRender, stopMarching, cropMargin, saveMaskSnapshot, updateCanvasSize, setLayers]);
 
   // ── 배경색 채우기 ─────────────────────────────────────────
   const applyFillColor = useCallback(() => {
-    if (!canvasRef.current || !originalRef.current || !maskRef.current) return;
+    if (!canvasRef.current) return;
     const w = canvasRef.current.width;
     const h = canvasRef.current.height;
+    const activeOriginal = getActiveOriginal();
+    const activeMask = getActiveMask();
+    if (!activeOriginal || !activeMask) return;
 
-
-    // 결과 이미지(투명 + 피사체) 위에 배경색을 깔아 새 캔버스 생성
     const flat = document.createElement('canvas');
-    flat.width = w;
-    flat.height = h;
+    flat.width = w; flat.height = h;
     const fctx = flat.getContext('2d')!;
-
-    // 배경 채우기
     fctx.fillStyle = fillColor;
     fctx.fillRect(0, 0, w, h);
-
-    // 피사체 합성 (현재 canvasRef는 알파 포함)
     fctx.drawImage(canvasRef.current, 0, 0);
 
-    // 원본은 flat으로 교체 (배경이 채워진 상태)
-    originalRef.current.getContext('2d')!.clearRect(0, 0, w, h);
-    originalRef.current.getContext('2d')!.drawImage(flat, 0, 0);
-
-    // 마스크는 전체 불투명으로 전면 교체
-    const maskCtx = maskRef.current.getContext('2d')!;
+    activeOriginal.getContext('2d')!.clearRect(0, 0, w, h);
+    activeOriginal.getContext('2d')!.drawImage(flat, 0, 0);
+    const maskCtx = activeMask.getContext('2d')!;
     maskCtx.fillStyle = 'black';
     maskCtx.fillRect(0, 0, w, h);
 
     setShowFillPanel(false);
-    compositeAndRender();
+    compositeLayersAndRender(layers);
     saveMaskSnapshot('Fill Bg');
-  }, [fillColor, compositeAndRender, saveMaskSnapshot]);
+  }, [fillColor, compositeLayersAndRender, layers, saveMaskSnapshot, getActiveOriginal, getActiveMask]);
 
-  // 투명한 영역 전체만 현재 선택한 배경색으로 채우는 기능
   const applyBackgroundToTransparency = useCallback(() => {
-    if (!canvasRef.current || !originalRef.current || !maskRef.current) return;
+    if (!canvasRef.current) return;
     const w = canvasRef.current.width;
     const h = canvasRef.current.height;
-
+    const activeOriginal = getActiveOriginal();
+    const activeMask = getActiveMask();
+    if (!activeOriginal || !activeMask) return;
 
     const flat = document.createElement('canvas');
-    flat.width = w;
-    flat.height = h;
+    flat.width = w; flat.height = h;
     const fctx = flat.getContext('2d')!;
-
-    // 현재 설정된 fillColor로 배경 생성
     fctx.fillStyle = fillColor;
     fctx.fillRect(0, 0, w, h);
-
-    // 현재의 결과물(피사체 + 투명도)을 위에 덮음
     fctx.drawImage(canvasRef.current, 0, 0);
 
-    // 원본 데이터를 배경이 채워진 최종본으로 교체
-    const oCtx = originalRef.current.getContext('2d')!;
-    oCtx.clearRect(0, 0, w, h);
-    oCtx.drawImage(flat, 0, 0);
-
-    // 배경이 채워졌으므로 마스크는 전체 불투명(검정)으로 설정
-    const mCtx = maskRef.current.getContext('2d')!;
-    mCtx.fillStyle = 'black';
-    mCtx.fillRect(0, 0, w, h);
+    activeOriginal.getContext('2d')!.clearRect(0, 0, w, h);
+    activeOriginal.getContext('2d')!.drawImage(flat, 0, 0);
+    activeMask.getContext('2d')!.fillStyle = 'black';
+    activeMask.getContext('2d')!.fillRect(0, 0, w, h);
 
     setShowFillPanel(false);
-    compositeAndRender();
+    compositeLayersAndRender(layers);
     saveMaskSnapshot('Fill Transp.');
-  }, [fillColor, compositeAndRender, saveMaskSnapshot]);
+  }, [fillColor, compositeLayersAndRender, layers, saveMaskSnapshot, getActiveOriginal, getActiveMask]);
 
-  // 투명 영역 전체를 현재 브러시 색상으로 채우는 기능
   const fillAllTransparency = useCallback(() => {
-    if (!originalRef.current || !maskRef.current || !canvasRef.current) return;
-    const w = originalRef.current.width;
-    const h = originalRef.current.height;
+    if (!canvasRef.current) return;
+    const w = canvasRef.current.width;
+    const h = canvasRef.current.height;
+    const activeOriginal = getActiveOriginal();
+    const activeMask = getActiveMask();
+    if (!activeOriginal || !activeMask) return;
 
     const flat = document.createElement('canvas');
-    flat.width = w;
-    flat.height = h;
+    flat.width = w; flat.height = h;
     const fctx = flat.getContext('2d')!;
-
     fctx.fillStyle = brushColor;
     fctx.fillRect(0, 0, w, h);
     fctx.drawImage(canvasRef.current, 0, 0);
 
-    const oCtx = originalRef.current.getContext('2d')!;
-    oCtx.clearRect(0, 0, w, h);
-    oCtx.drawImage(flat, 0, 0);
+    activeOriginal.getContext('2d')!.clearRect(0, 0, w, h);
+    activeOriginal.getContext('2d')!.drawImage(flat, 0, 0);
+    activeMask.getContext('2d')!.fillStyle = 'black';
+    activeMask.getContext('2d')!.fillRect(0, 0, w, h);
 
-    const maskCtx = maskRef.current.getContext('2d')!;
-    maskCtx.fillStyle = 'black';
-    maskCtx.fillRect(0, 0, w, h);
-
-    compositeAndRender();
+    compositeLayersAndRender(layers);
     saveMaskSnapshot('Brush Fill');
-  }, [brushColor, compositeAndRender, saveMaskSnapshot]);
+  }, [brushColor, compositeLayersAndRender, layers, saveMaskSnapshot, getActiveOriginal, getActiveMask]);
 
 
 
   const resetMask = useCallback(() => {
-    if (!maskRef.current) return;
-    const ctx = maskRef.current.getContext('2d')!;
+    const activeMask = getActiveMask();
+    if (!activeMask) return;
+    const ctx = activeMask.getContext('2d')!;
     ctx.fillStyle = 'black';
-    ctx.fillRect(0, 0, maskRef.current.width, maskRef.current.height);
-    compositeAndRender();
+    ctx.fillRect(0, 0, activeMask.width, activeMask.height);
+    compositeLayersAndRender(layers);
     stopMarching();
     setAiDone(false);
     saveMaskSnapshot('Reset');
-  }, [compositeAndRender, stopMarching, saveMaskSnapshot]);
+  }, [compositeLayersAndRender, layers, stopMarching, saveMaskSnapshot, getActiveMask]);
 
   // ── 다운로드 ──────────────────────────────────────────────
   const download = useCallback(() => {
@@ -1177,7 +1751,9 @@ export function BrushEditor({
 
       // Photoshop shortcuts
       const key = e.key.toLowerCase();
-      if (key === 'v' || key === 'w') { setTool('wand'); cancelCrop(); }
+      if (key === 'v') { setTool('move'); stopMarching(); cancelCrop(); }
+      if (key === 'w') { setTool('wand'); cancelCrop(); }
+      if (key === 't') { setTool('text'); stopMarching(); cancelCrop(); }
       if (key === 'b') { setTool('paint'); stopMarching(); cancelCrop(); }
       if (key === 'e') { setTool('erase'); stopMarching(); cancelCrop(); }
       if (key === 'g') { setTool('bucket'); stopMarching(); cancelCrop(); }
@@ -1188,6 +1764,23 @@ export function BrushEditor({
       if (e.key === 'Escape') {
         if (tool === 'crop') cancelCrop();
         if (hasSelection) stopMarching();
+        if (isEditingTextRef.current) {
+          // 편집 취소 — 기존 레이어 편집이었으면 selected 상태로 복귀
+          const wasEditingId = editingTextLayerIdRef.current;
+          isEditingTextRef.current = false;
+          textPosRef.current = null;
+          textInputRef.current = '';
+          editingTextLayerIdRef.current = null;
+          bumpTextUI();
+          if (wasEditingId) {
+            selectedTextLayerIdRef.current = wasEditingId;
+            startTextMarching(wasEditingId, 'selected');
+          }
+        } else if (selectedTextLayerIdRef.current) {
+          selectedTextLayerIdRef.current = null;
+          stopTextMarching();
+          bumpTextUI();
+        }
       }
       if (e.key === 'Enter') {
         if (tool === 'crop' && cropRect && cropRect.w > 2) applyCrop();
@@ -1196,7 +1789,7 @@ export function BrushEditor({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [hasSelection, applySelectionToMask, undo, redo, tool, cancelCrop, applyCrop, cropRect, startMarching, stopMarching, setTool]);
+  }, [hasSelection, applySelectionToMask, undo, redo, tool, cancelCrop, applyCrop, cropRect, startMarching, stopMarching, setTool, stopTextMarching, startTextMarching, bumpTextUI]);
 
   // ── 전역 마우스/터치 이동 리스너 (캔버스 밖에서도 작업 유지) ─────────────────
   const handleMouseMove = useCallback((e: MouseEvent | TouchEvent) => {
@@ -1244,8 +1837,37 @@ export function BrushEditor({
         }
       }
       overlay.style.cursor = found || 'crosshair';
+    } else if (toolRef.current === 'move') {
+      overlay.style.cursor = 'move';
     } else if (toolRef.current === 'text') {
-      overlay.style.cursor = 'text';
+      // Hover detection: find text layer under cursor (ref 기반으로 stale closure 방지)
+      if (!isPainting.current && !textDragRef.current && !textScaleDragRef.current) {
+        const hitId = hitTestTextLayer(canvasPos);
+        const prevHovered = hoveredTextLayerIdRef.current;
+        const selId = selectedTextLayerIdRef.current;
+
+        if (hitId !== prevHovered) {
+          hoveredTextLayerIdRef.current = hitId;
+          if (hitId && hitId !== selId) {
+            // hover된 레이어가 선택 중이 아닐 때만 hover 아웃라인
+            startTextMarching(hitId, 'hover');
+          } else if (!hitId && !selId) {
+            stopTextMarching();
+          } else if (!hitId && selId) {
+            // 마우스가 빠져나갔지만 선택된 레이어가 있으면 selected 아웃라인 유지
+            startTextMarching(selId, 'selected');
+          }
+        }
+        // cursor
+        const cornerHit = selId ? hitTestTextCorner(selId, canvasPos) : null;
+        if (cornerHit) {
+          overlay.style.cursor = (cornerHit === 'tl' || cornerHit === 'br') ? 'nwse-resize' : 'nesw-resize';
+        } else if (hitId) {
+          overlay.style.cursor = 'move';
+        } else {
+          overlay.style.cursor = 'text';
+        }
+      }
     } else if (!isPainting.current) {
       const isAltHeld = (e as any).altKey;
       const isEyedropperTool = toolRef.current === 'eyedropper';
@@ -1316,6 +1938,70 @@ export function BrushEditor({
             cropRectRef.current = newRect;
             drawCropOverlay(newRect);
           }
+        } else if (currentTool === 'move' && moveDragStart.current) {
+          // Move 툴: 활성 레이어 위치 업데이트 (ref에만 저장, setLayers 없음 → 히스토리 미생성)
+          const clientX = 'touches' in e ? (e as TouchEvent).touches[0]!.clientX : (e as MouseEvent).clientX;
+          const clientY = 'touches' in e ? (e as TouchEvent).touches[0]!.clientY : (e as MouseEvent).clientY;
+          const dx = (clientX - moveDragStart.current.mx) / zoomRef.current;
+          const dy = (clientY - moveDragStart.current.my) / zoomRef.current;
+          const newX = Math.round(moveDragStart.current.lx + dx);
+          const newY = Math.round(moveDragStart.current.ly + dy);
+          moveLivePosRef.current = { x: newX, y: newY };
+          // layersRef로 최신 layers 접근 (stale closure 방지, no setLayers → 히스토리 미생성)
+          const liveLayers = layersRef.current.map(l => l.id === activeLayerId ? { ...l, x: newX, y: newY } : l);
+          compositeLayersAndRender(liveLayers);
+        } else if (currentTool === 'text' && textDragRef.current) {
+          // Text drag (move selected text layer) - ref only, no history
+          const clientX = 'touches' in e ? (e as TouchEvent).touches[0]!.clientX : (e as MouseEvent).clientX;
+          const clientY = 'touches' in e ? (e as TouchEvent).touches[0]!.clientY : (e as MouseEvent).clientY;
+          const dx = (clientX - textDragRef.current.mx) / zoomRef.current;
+          const dy = (clientY - textDragRef.current.my) / zoomRef.current;
+          const newX = Math.round(textDragRef.current.lx + dx);
+          const newY = Math.round(textDragRef.current.ly + dy);
+          // 3px 이상 이동 시에만 드래그로 인식 (click-to-edit 오발 방지)
+          const screenDx = clientX - textDragRef.current.mx;
+          const screenDy = clientY - textDragRef.current.my;
+          if (Math.abs(screenDx) > 3 || Math.abs(screenDy) > 3) {
+            textLivePosRef.current = { x: newX, y: newY };
+          }
+          // live override → interval이 다음 tick에 정확한 위치로 아웃라인 그림
+          textLiveOverrideRef.current = { x: newX, y: newY };
+          // Render live using layersRef (no state update → no re-render → no lag)
+          const liveLayers = layersRef.current.map(l => l.id === textDragRef.current!.layerId ? { ...l, x: newX, y: newY } : l);
+          compositeLayersAndRender(liveLayers);
+          // 즉시 아웃라인 업데이트 (interval 50ms 기다리지 않음)
+          drawTextOutline(textDragRef.current.layerId, 'selected');
+        } else if (currentTool === 'text' && textScaleDragRef.current) {
+          // Text scale drag: 4개 코너 모두 지원
+          const clientX = 'touches' in e ? (e as TouchEvent).touches[0]!.clientX : (e as MouseEvent).clientX;
+          const clientY = 'touches' in e ? (e as TouchEvent).touches[0]!.clientY : (e as MouseEvent).clientY;
+          const scaleDrag = textScaleDragRef.current;
+          const rawDx = (clientX - scaleDrag.mx) / zoomRef.current;
+          const rawDy = (clientY - scaleDrag.my) / zoomRef.current;
+          // 코너별 크기 증감 방향: tl=-dx-dy, tr=+dx-dy, bl=-dx+dy, br=+dx+dy
+          const corner = scaleDrag.corner;
+          const signX = (corner === 'tr' || corner === 'br') ? 1 : -1;
+          const signY = (corner === 'bl' || corner === 'br') ? 1 : -1;
+          const delta = (signX * rawDx + signY * rawDy) * 0.5;
+          const newSize = Math.max(8, Math.round(scaleDrag.baseFontSize + delta));
+          // tl/tr: 텍스트가 아래로 고정되어야 하므로 y 위치 조정 불필요
+          // tl/bl: x 위치도 고정 (텍스트가 오른쪽 앵커)
+          // 실제로 텍스트 x,y는 좌상단 기준이므로 우하단 앵커 코너 외엔 위치도 보정
+          const sizeDelta = newSize - scaleDrag.baseFontSize;
+          let newX = scaleDrag.baseX;
+          let newY = scaleDrag.baseY;
+          // tl, bl: x 앵커가 우측 → x를 좌로 이동
+          if (corner === 'tl' || corner === 'bl') newX = Math.round(scaleDrag.baseX - sizeDelta * 0.6);
+          // tl, tr: y 앵커가 하단 → y를 위로 이동
+          if (corner === 'tl' || corner === 'tr') newY = Math.round(scaleDrag.baseY - sizeDelta * 1.3);
+          textScaleLiveSizeRef.current = newSize;
+          const scaleLayerId = scaleDrag.layerId;
+          textLiveOverrideRef.current = { fontSize: newSize, x: newX, y: newY };
+          const liveLayers = layersRef.current.map(l => l.id === scaleLayerId
+            ? { ...l, x: newX, y: newY, textStyle: { ...l.textStyle, fontSize: newSize } }
+            : l);
+          compositeLayersAndRender(liveLayers);
+          drawTextOutline(scaleLayerId, 'selected');
         } else if (currentTool === 'erase' || currentTool === 'restore' || currentTool === 'paint' || currentTool === 'clone' || currentTool === 'heal' || currentTool === 'blur-brush') {
           paint(pos);
         } else if (currentTool === 'eyedropper') {
@@ -1323,7 +2009,7 @@ export function BrushEditor({
         }
       });
     }
-  }, [getCanvasPos, paint, drawCropOverlay, handleEyedropper]);
+  }, [getCanvasPos, paint, drawCropOverlay, handleEyedropper, activeLayerId, setLayers, compositeLayersAndRender, hitTestTextLayer, hitTestTextCorner, startTextMarching, stopTextMarching, drawTextOutline]);
 
   useEffect(() => {
     window.addEventListener('mousemove', handleMouseMove, { passive: false });
@@ -1395,32 +2081,132 @@ export function BrushEditor({
   const displayHeight = imageSize.h * zoom;
   // ── 보정 실행 ──────────────────────────────────────────
   const applyAdjustments = useCallback(() => {
-    if (!originalRef.current || !maskRef.current) return;
-    const w = originalRef.current.width;
-    const h = originalRef.current.height;
+    const activeOriginal = getActiveOriginal();
+    if (!activeOriginal) return;
+    const w = activeOriginal.width;
+    const h = activeOriginal.height;
 
     const canvas = document.createElement('canvas');
-    canvas.width = w;
-    canvas.height = h;
+    canvas.width = w; canvas.height = h;
     const ctx = canvas.getContext('2d')!;
-
-    // 필터 문자열 생성
     ctx.filter = `brightness(${brightness}%) contrast(${contrast}%) saturate(${saturation}%) blur(${blur}px)`;
-    ctx.drawImage(originalRef.current, 0, 0);
+    ctx.drawImage(activeOriginal, 0, 0);
 
-    const oCtx = originalRef.current.getContext('2d')!;
+    const oCtx = activeOriginal.getContext('2d')!;
     oCtx.clearRect(0, 0, w, h);
     oCtx.drawImage(canvas, 0, 0);
 
-    compositeAndRender();
+    compositeLayersAndRender(layers);
     saveMaskSnapshot('Adjustments');
     setShowAdjustPanel(false);
-
-    // 필터 리셋
     setBrightness(100); setContrast(100); setSaturation(100); setBlur(0);
-  }, [brightness, contrast, saturation, blur, compositeAndRender, saveMaskSnapshot]);
+  }, [brightness, contrast, saturation, blur, compositeLayersAndRender, layers, saveMaskSnapshot, getActiveOriginal]);
 
   const isBrushTool = tool === 'erase' || tool === 'restore' || tool === 'paint';
+
+  // ── 드롭 다이얼로그 처리 ──────────────────────────────────
+  const handleDropFile = useCallback((file: File) => {
+    if (!file.type.startsWith('image/')) return;
+    if (layers.length === 0) {
+      // 레이어가 없으면 새 탭으로 바로
+      onImageChange(file);
+      return;
+    }
+    setDropDialog({ file, visible: true });
+  }, [layers, onImageChange]);
+
+  const handleDropAddAsLayer = useCallback(() => {
+    if (!dropDialog) return;
+    const file = dropDialog.file;
+    setDropDialog(null);
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      addImageLayer(img, file.name, layers, activeLayerId);
+      URL.revokeObjectURL(url);
+    };
+    img.src = url;
+  }, [dropDialog, addImageLayer, layers, activeLayerId]);
+
+  const handleDropNewTab = useCallback(() => {
+    if (!dropDialog) return;
+    const file = dropDialog.file;
+    setDropDialog(null);
+    onImageChange(file);
+  }, [dropDialog, onImageChange]);
+
+  // ── 텍스트 스타일 실시간 반영 (setTextStyle 없이 — 렉 없음) ─────────────
+  // 슬라이더 드래그 중 매 onChange마다 호출. React 상태 변경 없음.
+  const applyTextStyleLive = useCallback((style: TextStyle) => {
+    const editId = editingTextLayerIdRef.current;
+    const selId = selectedTextLayerIdRef.current;
+
+    if (editId) {
+      // 편집 중: textarea CSS만 업데이트 (캔버스는 편집 레이어 숨김 상태)
+      if (textareaRef.current) {
+        textareaRef.current.style.letterSpacing = `${(style.letterSpacing ?? 0) * zoomRef.current}px`;
+        textareaRef.current.style.lineHeight = String(style.lineHeight ?? 1.3);
+      }
+    } else if (selId) {
+      // 선택 상태: layersRef 즉시 패치 + 캔버스 재렌더 (setLayers 없음 → 렉 없음)
+      // layersRef를 직접 변경하되, onPointerUp에서 setLayers로 동기화
+      const updated = layersRef.current.map(l =>
+        l.id === selId ? { ...l, textStyle: { ...l.textStyle, ...style } } : l
+      );
+      layersRef.current = updated;
+      compositeLayersAndRender(updated);
+    }
+  }, [compositeLayersAndRender]);
+
+  // 슬라이더 드래그 완료: state에 커밋 (히스토리 1회)
+  const commitTextStyleChange = useCallback((style: TextStyle) => {
+    const selId = selectedTextLayerIdRef.current;
+    const editId = editingTextLayerIdRef.current;
+    if (selId && !editId) {
+      setLayers(prev => {
+        const next = prev.map(l =>
+          l.id === selId ? { ...l, textStyle: { ...l.textStyle, ...style } } : l
+        );
+        layersRef.current = next;
+        return next;
+      });
+    }
+  }, [setLayers]);
+
+  // ── 텍스트 레이어 확정 (모두 ref에서 읽어 dep 없음 → 렉 없음) ──────────
+  const commitTextLayer = useCallback(() => {
+    const content = textInputRef.current.trim();
+    const pos = textPosRef.current;
+    const style = textStyleRef.current;
+    const editId = editingTextLayerIdRef.current;
+
+    isEditingTextRef.current = false;
+    textPosRef.current = null;
+    textInputRef.current = '';
+    editingTextLayerIdRef.current = null;
+    bumpTextUI();
+
+    if (!content || !pos) return;
+
+    // 확정 후 해당 레이어를 selected 상태로 복귀 (아웃라인 유지)
+    if (editId) {
+      updateTextLayer(editId, content, style, pos.x, pos.y, layersRef.current, activeLayerId);
+      selectedTextLayerIdRef.current = editId;
+      startTextMarching(editId, 'selected');
+    } else {
+      const newLayer = addTextLayer(content, style, pos.x, pos.y, layersRef.current, activeLayerId);
+      if (newLayer) {
+        selectedTextLayerIdRef.current = newLayer.id;
+        startTextMarching(newLayer.id, 'selected');
+      }
+    }
+  }, [updateTextLayer, addTextLayer, activeLayerId, bumpTextUI, startTextMarching]);
+
+  // commitTextLayerRef 동기화 (handleMouseDown에서 선언 전 호출 가능하도록)
+  useEffect(() => {
+    commitTextLayerRef.current = commitTextLayer;
+  }, [commitTextLayer]);
+
   const BG_PRESETS = [
     { label: '어두운 체크', swatch: 'bg-swatch-dark-check', style: { backgroundImage: 'linear-gradient(45deg,#1a1a1b 25%,transparent 25%),linear-gradient(-45deg,#1a1a1b 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#1a1a1b 75%),linear-gradient(-45deg,transparent 75%,#1a1a1b 75%)', backgroundSize: '16px 16px', backgroundPosition: '0 0,0 8px,8px -8px,-8px 0', backgroundColor: '#111' } },
     { label: '밝은 체크', swatch: 'bg-swatch-light-check', style: { backgroundImage: 'linear-gradient(45deg,#ccc 25%,transparent 25%),linear-gradient(-45deg,#ccc 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#ccc 75%),linear-gradient(-45deg,transparent 75%,#ccc 75%)', backgroundSize: '16px 16px', backgroundPosition: '0 0,0 8px,8px -8px,-8px 0', backgroundColor: '#fff' } },
@@ -1446,17 +2232,41 @@ export function BrushEditor({
         setIsDraggingFile(false);
         const file = e.dataTransfer.files[0];
         if (file && file.type.startsWith('image/')) {
-          onImageChange(file);
+          handleDropFile(file);
         }
       }}
     >
+      {/* 드롭 다이얼로그 */}
+      {dropDialog?.visible && (
+        <div className="layer-drop-dialog">
+          <div className="layer-drop-dialog-box">
+            <div className="layer-drop-dialog-title">이미지를 어떻게 열까요?</div>
+            <div className="layer-drop-dialog-sub">현재 작업 탭에 레이어로 추가하거나 새 탭으로 열 수 있습니다.</div>
+            <div className="layer-drop-dialog-filename">{dropDialog.file.name}</div>
+            <div className="layer-drop-dialog-btns">
+              <button className="layer-drop-btn-primary" onClick={handleDropAddAsLayer}>
+                <Layers size={14} />
+                현재 탭에 레이어 추가
+              </button>
+              <button className="layer-drop-btn-secondary" onClick={handleDropNewTab}>
+                <Plus size={14} />
+                새 탭으로 열기
+              </button>
+              <button className="layer-drop-btn-secondary" onClick={() => setDropDialog(null)}>
+                취소
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {isDraggingFile && (
         <div className="absolute inset-0 z-[2000] flex flex-col items-center justify-center bg-indigo-600/20 backdrop-blur-sm border-2 border-indigo-400 border-dashed rounded-lg">
           <div className="w-16 h-16 bg-indigo-500 rounded-full flex items-center justify-center mb-4 shadow-xl">
             <ImagePlus size={32} className="text-white animate-bounce" />
           </div>
-          <p className="text-white font-black text-xl drop-shadow-lg">이곳에 이미지를 놓아 새 탭으로 열기</p>
-          <p className="text-indigo-200 text-sm mt-3">현재 작업 내용은 분리된 탭에 보존됩니다</p>
+          <p className="text-white font-black text-xl drop-shadow-lg">레이어 추가 또는 새 탭으로 열기</p>
+          <p className="text-indigo-200 text-sm mt-3">드롭 후 선택하세요</p>
         </div>
       )}
 
@@ -1776,6 +2586,115 @@ export function BrushEditor({
                   </div>
                 </div>
               )}
+
+              {tool === 'move' && (
+                <div className="flex items-center gap-3">
+                  <span className="text-[10px] font-bold text-gray-400">MOVE</span>
+                  {getActiveLayer() && (
+                    <span className="text-[11px] font-mono text-indigo-400">
+                      x: {getActiveLayer()!.x} y: {getActiveLayer()!.y}
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {tool === 'text' && (
+                <div className="flex items-center gap-3">
+                  <span className="text-[10px] font-bold text-gray-400">FONT</span>
+                  <select
+                    value={textStyle.fontFamily}
+                    onChange={(e) => { const v = { ...textStyleRef.current, fontFamily: e.target.value }; textStyleRef.current = v; setTextStyle(v); applyTextStyleLive(v); commitTextStyleChange(v); }}
+                    className="h-6 bg-[#333] text-gray-300 text-[10px] border-0 rounded px-1"
+                  >
+                    {['sans-serif', 'serif', 'monospace', 'cursive', 'Arial', 'Georgia', 'Courier New'].map(f => (
+                      <option key={f} value={f}>{f}</option>
+                    ))}
+                  </select>
+                  <input
+                    type="number" min={8} max={300} value={textStyle.fontSize}
+                    onChange={(e) => { const v = { ...textStyleRef.current, fontSize: Number(e.target.value) }; textStyleRef.current = v; setTextStyle(v); applyTextStyleLive(v); commitTextStyleChange(v); }}
+                    className="w-14 h-6 bg-[#333] text-gray-300 text-[10px] border-0 rounded px-1"
+                  />
+                  <button onClick={() => { const v = { ...textStyleRef.current, fontWeight: (textStyleRef.current.fontWeight === 'bold' ? 'normal' : 'bold') as 'normal' | 'bold' }; textStyleRef.current = v; setTextStyle(v); applyTextStyleLive(v); commitTextStyleChange(v); }}
+                    className={`w-6 h-6 rounded text-[11px] font-bold ${textStyle.fontWeight === 'bold' ? 'bg-indigo-500 text-white' : 'bg-[#333] text-gray-400'}`}>B</button>
+                  <button onClick={() => { const v = { ...textStyleRef.current, fontStyle: (textStyleRef.current.fontStyle === 'italic' ? 'normal' : 'italic') as 'normal' | 'italic' }; textStyleRef.current = v; setTextStyle(v); applyTextStyleLive(v); commitTextStyleChange(v); }}
+                    className={`w-6 h-6 rounded text-[11px] italic ${textStyle.fontStyle === 'italic' ? 'bg-indigo-500 text-white' : 'bg-[#333] text-gray-400'}`}>I</button>
+                  <div className="flex gap-1">
+                    {(['left', 'center', 'right'] as const).map(a => (
+                      <button key={a} onClick={() => { const v = { ...textStyleRef.current, align: a }; textStyleRef.current = v; setTextStyle(v); applyTextStyleLive(v); commitTextStyleChange(v); }}
+                        className={`w-6 h-6 rounded flex items-center justify-center ${textStyle.align === a ? 'bg-indigo-500 text-white' : 'bg-[#333] text-gray-400'}`}>
+                        {a === 'left' ? <AlignLeft size={10} /> : a === 'center' ? <AlignCenter size={10} /> : <AlignRight size={10} />}
+                      </button>
+                    ))}
+                  </div>
+                  <input type="color" value={textStyle.color} onChange={(e) => { const v = { ...textStyleRef.current, color: e.target.value }; textStyleRef.current = v; setTextStyle(v); applyTextStyleLive(v); commitTextStyleChange(v); }}
+                    className="w-6 h-6 rounded border-0 cursor-pointer" />
+                  <div className="w-px h-4 bg-[#444]" />
+                  <span className="text-[10px] text-gray-400">자간</span>
+                  <input
+                    type="number" min={-200} max={500} step={1}
+                    value={textStyle.letterSpacing ?? 0}
+                    onChange={(e) => {
+                      const v = { ...textStyleRef.current, letterSpacing: Number(e.target.value) };
+                      textStyleRef.current = v;
+                      setTextStyle(v);
+                      applyTextStyleLive(v);
+                      commitTextStyleChange(v);
+                    }}
+                    className="w-14 h-6 bg-[#333] text-gray-300 text-[10px] border-0 rounded px-1"
+                  />
+                  <input
+                    type="range" min={-200} max={500} step={1}
+                    defaultValue={textStyle.letterSpacing ?? 0}
+                    key={`ls-${editingTextLayerIdRef.current ?? selectedTextLayerIdRef.current}`}
+                    onChange={(e) => {
+                      const v = { ...textStyleRef.current, letterSpacing: Number(e.target.value) };
+                      textStyleRef.current = v;
+                      applyTextStyleLive(v);
+                    }}
+                    onPointerUp={(e) => {
+                      const v = { ...textStyleRef.current, letterSpacing: Number((e.target as HTMLInputElement).value) };
+                      textStyleRef.current = v;
+                      setTextStyle(v);
+                      commitTextStyleChange(v);
+                    }}
+                    className="w-20 h-1 accent-indigo-500"
+                  />
+                  <span className="text-[10px] text-gray-400 ml-2">행간</span>
+                  <input
+                    type="number" min={0.5} max={5.0} step={0.05}
+                    value={textStyle.lineHeight ?? 1.3}
+                    onChange={(e) => {
+                      const v = { ...textStyleRef.current, lineHeight: Number(e.target.value) };
+                      textStyleRef.current = v;
+                      setTextStyle(v);
+                      applyTextStyleLive(v);
+                      commitTextStyleChange(v);
+                    }}
+                    className="w-14 h-6 bg-[#333] text-gray-300 text-[10px] border-0 rounded px-1"
+                  />
+                  <input
+                    type="range" min={0.5} max={5.0} step={0.05}
+                    defaultValue={textStyle.lineHeight ?? 1.3}
+                    key={`lh-${editingTextLayerIdRef.current ?? selectedTextLayerIdRef.current}`}
+                    onChange={(e) => {
+                      const v = { ...textStyleRef.current, lineHeight: Number(e.target.value) };
+                      textStyleRef.current = v;
+                      applyTextStyleLive(v);
+                    }}
+                    onPointerUp={(e) => {
+                      const v = { ...textStyleRef.current, lineHeight: Number((e.target as HTMLInputElement).value) };
+                      textStyleRef.current = v;
+                      setTextStyle(v);
+                      commitTextStyleChange(v);
+                    }}
+                    className="w-20 h-1 accent-indigo-500"
+                  />
+                  {isEditingTextRef.current && (
+                    <button onClick={commitTextLayer} className="px-2 h-6 rounded bg-indigo-500 text-white text-[10px] font-bold">Commit</button>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
@@ -1817,6 +2736,50 @@ export function BrushEditor({
                     backgroundColor: tool === 'erase' ? 'rgba(239,68,68,0.15)' : tool === 'paint' ? `${brushColor}33` : 'rgba(56,189,248,0.15)',
                   }}
                 />
+
+                {/* 텍스트 툴 입력 오버레이 — uncontrolled textarea (렉 없음) */}
+                {isEditingTextRef.current && textPosRef.current && (
+                  <div
+                    className="text-tool-overlay"
+                    style={{
+                      left: textPosRef.current.x * zoom,
+                      top: textPosRef.current.y * zoom,
+                    }}
+                  >
+                    <textarea
+                      ref={textareaRef}
+                      className="text-tool-input"
+                      defaultValue={textInputRef.current}
+                      onChange={(e) => {
+                        textInputRef.current = e.target.value;
+                        // 내용에 맞게 높이 자동 조절
+                        e.target.style.height = 'auto';
+                        e.target.style.height = e.target.scrollHeight + 'px';
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); commitTextLayer(); }
+                        if (e.key === 'Escape') {
+                          isEditingTextRef.current = false;
+                          textPosRef.current = null;
+                          textInputRef.current = '';
+                          editingTextLayerIdRef.current = null;
+                          bumpTextUI();
+                        }
+                      }}
+                      style={{
+                        fontSize: `${textStyle.fontSize * zoom}px`,
+                        fontFamily: textStyle.fontFamily,
+                        fontWeight: textStyle.fontWeight,
+                        fontStyle: textStyle.fontStyle,
+                        color: textStyle.color,
+                        letterSpacing: `${(textStyle.letterSpacing ?? 0) * zoom}px`,
+                        lineHeight: textStyle.lineHeight ?? 1.3,
+                      }}
+                      placeholder="텍스트 입력 후 Enter…"
+                      rows={1}
+                    />
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -1841,12 +2804,19 @@ export function BrushEditor({
               ))}
             </div>
           </div>
-          {/* Adjustments */}
-          <div className="flex-1 flex flex-col border-b border-[#111]">
-            <div className="brush-panel-title px-3 py-2 bg-[#333] text-white font-black italic flex justify-between items-center">
-              <span>ADJUSTMENTS</span><Sliders size={12} className="text-gray-500" />
-            </div>
-            <div className="flex-1 overflow-y-auto no-scrollbar p-3 space-y-3 bg-[#282828]">
+          {/* Adjustments — 기본 접힘 */}
+          <div className="flex-shrink-0 flex flex-col border-b border-[#111]">
+            <button
+              className="brush-panel-title px-3 py-2 bg-[#333] text-white font-black italic flex justify-between items-center w-full"
+              onClick={() => setAdjOpen(v => !v)}
+            >
+              <span>ADJUSTMENTS</span>
+              <div className="flex items-center gap-1">
+                <Sliders size={12} className="text-gray-500" />
+                <span className="text-[10px] text-gray-500">{adjOpen ? '▲' : '▼'}</span>
+              </div>
+            </button>
+            {adjOpen && <div className="overflow-y-auto no-scrollbar p-3 space-y-3 bg-[#282828]">
               <div className="space-y-3">
                 <div className="flex flex-col gap-1">
                   <div className="flex justify-between items-center text-[10px] font-bold text-gray-400">
@@ -1883,67 +2853,183 @@ export function BrushEditor({
               >
                 Apply Changes
               </button>
-            </div>
+            </div>}
           </div>
-          {/* Layers */}
-          <div className="flex-1 flex flex-col border-b border-[#111]">
-            <div className="brush-panel-title px-3 py-2 bg-[#333] text-white font-black italic flex justify-between items-center">
-              <span>LAYERS</span><Layers size={12} className="text-gray-500" />
+          {/* Layers Panel */}
+          <div className="flex-1 flex flex-col border-b border-[#111] min-h-[200px]">
+            <div className="layer-panel-header">
+              <span className="layer-panel-title">Layers</span>
+              <div className="layer-panel-actions">
+                <button
+                  className="layer-panel-btn"
+                  title="Add Paint Layer"
+                  onClick={() => addPaintLayer(`Layer ${layers.length + 1}`, layers, activeLayerId)}
+                ><Plus size={13} /></button>
+                <button
+                  className="layer-panel-btn"
+                  title="Move Up"
+                  disabled={layers.findIndex(l => l.id === activeLayerId) >= layers.length - 1}
+                  onClick={() => {
+                    const idx = layers.findIndex(l => l.id === activeLayerId);
+                    if (idx < layers.length - 1) reorderLayer(activeLayerId, idx + 1, layers, activeLayerId);
+                  }}
+                ><ChevronUp size={13} /></button>
+                <button
+                  className="layer-panel-btn"
+                  title="Move Down"
+                  disabled={layers.findIndex(l => l.id === activeLayerId) <= 0}
+                  onClick={() => {
+                    const idx = layers.findIndex(l => l.id === activeLayerId);
+                    if (idx > 0) reorderLayer(activeLayerId, idx - 1, layers, activeLayerId);
+                  }}
+                ><ChevronDown size={13} /></button>
+                <button
+                  className="layer-panel-btn"
+                  title="Delete Layer"
+                  disabled={layers.length <= 1}
+                  onClick={() => removeLayer(activeLayerId, layers, activeLayerId)}
+                ><Trash2 size={13} /></button>
+              </div>
             </div>
-            <div className="flex-1 overflow-y-auto no-scrollbar p-3 space-y-6 bg-[#222]">
-              {/* 레이어 영역 */}
-              <div>
-                <span className="text-[10px] font-bold text-gray-500 uppercase mb-2 block">Composite Layers</span>
-                <div className="space-y-1">
-                  <div className="bg-[#3d3d3d] p-1 rounded flex items-center gap-3 border border-indigo-500/50">
-                    <div className="w-10 h-10 bg-black rounded overflow-hidden flex items-center justify-center border border-[#111]">
-                      <canvas className="max-w-full max-h-full opacity-70" ref={(el) => {
-                        if (el && canvasRef.current) {
-                          const ctx = el.getContext('2d');
-                          if (ctx) {
-                            el.width = canvasRef.current.width;
-                            el.height = canvasRef.current.height;
-                            ctx.drawImage(canvasRef.current, 0, 0);
+
+            {/* Layer List (역순 = 상단이 최상위) */}
+            <div className="layer-list custom-scrollbar">
+              {[...layers].reverse().map((layer) => {
+                const isActive = layer.id === activeLayerId;
+                return (
+                  <div
+                    key={layer.id}
+                    className={cn('layer-item', isActive && 'layer-item-active')}
+                    onClick={() => setActiveLayerId(layer.id)}
+                    onDoubleClick={() => {
+                      if (layer.type === 'text') {
+                        setTool('text');
+                        editingTextLayerIdRef.current = layer.id;
+                        textInputRef.current = layer.textContent;
+                        textStyleRef.current = { ...layer.textStyle };
+                        textPosRef.current = { x: layer.x, y: layer.y };
+                        isEditingTextRef.current = true;
+                        setTextStyle({ ...layer.textStyle }); // 옵션바 동기화
+                        selectedTextLayerIdRef.current = layer.id;
+                        stopTextMarching();
+                        bumpTextUI();
+                        setTimeout(() => {
+                          if (textareaRef.current) {
+                            textareaRef.current.value = layer.textContent;
+                            textareaRef.current.focus();
+                            textareaRef.current.select();
                           }
-                        }
-                      }} />
+                        }, 50);
+                      }
+                    }}
+                  >
+                    {/* 가시성 토글 */}
+                    <button
+                      className={cn('layer-vis-btn', !layer.visible && 'layer-vis-btn-hidden')}
+                      onClick={(e) => { e.stopPropagation(); setLayerVisible(layer.id, !layer.visible, layers); }}
+                      title="Toggle Visibility"
+                    >
+                      {layer.visible ? <Eye size={12} /> : <EyeOff size={12} />}
+                    </button>
+
+                    {/* 썸네일 */}
+                    <div className="layer-thumb">
+                      {layer.type === 'text' ? (
+                        <Type size={16} className="text-gray-400" />
+                      ) : layer.originalCanvas ? (
+                        <canvas
+                          width={36} height={36}
+                          ref={(el) => {
+                            if (!el || !layer.originalCanvas || !layer.maskCanvas) return;
+                            const ctx = el.getContext('2d')!;
+                            const temp = document.createElement('canvas');
+                            temp.width = layer.originalCanvas.width;
+                            temp.height = layer.originalCanvas.height;
+                            const tCtx = temp.getContext('2d')!;
+                            tCtx.drawImage(layer.originalCanvas, 0, 0);
+                            tCtx.globalCompositeOperation = 'destination-in';
+                            tCtx.drawImage(layer.maskCanvas, 0, 0);
+                            ctx.clearRect(0, 0, 36, 36);
+                            const scale = Math.min(36 / temp.width, 36 / temp.height);
+                            const dw = temp.width * scale;
+                            const dh = temp.height * scale;
+                            ctx.drawImage(temp, (36 - dw) / 2, (36 - dh) / 2, dw, dh);
+                          }}
+                        />
+                      ) : null}
                     </div>
-                    <span className="text-[11px] font-bold text-white uppercase tracking-tighter">Composite view</span>
+
+                    {/* 레이어 정보 */}
+                    <div className="layer-info">
+                      <span className={cn('layer-name', isActive && 'layer-name-active')}>{layer.name}</span>
+                      <span className="layer-meta">{layer.type}</span>
+                    </div>
+
+                    {/* 불투명도 */}
+                    {layer.opacity < 100 && (
+                      <span className="layer-opacity-badge">{layer.opacity}%</span>
+                    )}
                   </div>
+                );
+              })}
+            </div>
+
+            {/* 선택 레이어 옵션 */}
+            {getActiveLayer() && (
+              <div className="p-2 border-t border-[#111] bg-[#252526] flex flex-col gap-2 flex-shrink-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-[9px] font-bold text-gray-500 uppercase w-14">Opacity</span>
+                  <input
+                    type="range" min={0} max={100} value={getActiveLayer()!.opacity}
+                    onChange={(e) => setLayerOpacity(activeLayerId, Number(e.target.value), layers, activeLayerId)}
+                    className="flex-1 h-1 range-slider"
+                  />
+                  <span className="text-[9px] font-mono text-indigo-400 w-8">{getActiveLayer()!.opacity}%</span>
+                </div>
+                <div className="flex gap-1">
+                  <button
+                    className="layer-panel-footer-btn flex-1"
+                    title="Merge Down"
+                    disabled={layers.findIndex(l => l.id === activeLayerId) === 0}
+                    onClick={() => mergeDown(activeLayerId, layers, activeLayerId, () => null)}
+                  >
+                    <Merge size={10} /> Merge ↓
+                  </button>
+                  <button
+                    className="layer-panel-footer-btn flex-1"
+                    title="Flatten All"
+                    onClick={() => flattenAll(layers, activeLayerId, imageSize.w, imageSize.h)}
+                  >
+                    Flatten
+                  </button>
                 </div>
               </div>
+            )}
 
-              {/* 여백 제거 */}
-              <div className="pt-4 border-t border-[#333]">
+            {/* 여백 제거 / Viewport Bg */}
+            <div className="p-2 border-t border-[#111] bg-[#1e1e1e] flex-shrink-0 space-y-2">
+              <div>
                 <div className="flex justify-between items-center mb-1">
                   <span className="brush-label">AUTO BOUNDS MARGIN</span>
                   <span className="brush-value text-indigo-400">{cropMargin}px</span>
                 </div>
-                <input type="range" min={0} max={40} value={cropMargin} onChange={(e) => setCropMargin(Number(e.target.value))} className="w-full h-1 range-slider mb-3" />
-                <button onClick={autoCrop} className="brush-btn-ghost w-full h-8 text-[10px] font-black italic border border-[#444] rounded uppercase tracking-widest hover:bg-white hover:text-black transition-all">
+                <input type="range" min={0} max={40} value={cropMargin} onChange={(e) => setCropMargin(Number(e.target.value))} className="w-full h-1 range-slider mb-2" />
+                <button onClick={autoCrop} className="brush-btn-ghost w-full h-7 text-[10px] font-black italic border border-[#444] rounded uppercase tracking-widest hover:bg-white hover:text-black transition-all">
                   Auto Crop Bounds
                 </button>
               </div>
-
-              {/* 배경 프리셋 */}
-              <div className="pt-4 border-t border-[#333]">
-                <span className="brush-label mb-2 block">Viewport Bg</span>
-                <div className="flex flex-wrap gap-2">
+              <div>
+                <span className="brush-label mb-1 block">Viewport Bg</span>
+                <div className="flex flex-wrap gap-1">
                   {BG_PRESETS.map((p, i) => (
-                    <button
-                      key={i}
-                      onClick={() => setBgPreset(i)}
-                      className={`w-6 h-6 rounded border transition-all ${bgPreset === i ? 'border-indigo-500 ring-1 ring-indigo-500' : 'border-transparent'} ${p.swatch}`}
+                    <button key={i} onClick={() => setBgPreset(i)}
+                      className={`w-5 h-5 rounded border transition-all ${bgPreset === i ? 'border-indigo-500 ring-1 ring-indigo-500' : 'border-transparent'} ${p.swatch}`}
                     />
                   ))}
                 </div>
               </div>
-
-              <button
-                onClick={resetMask}
-                className="brush-btn-erase w-full h-8 mt-auto text-[10px] font-black uppercase italic rounded-none border-t border-[#333]"
-              >
-                Reset All Changes
+              <button onClick={resetMask} className="brush-btn-erase w-full h-7 text-[10px] font-black uppercase italic rounded border-t border-[#333]">
+                Reset Active Layer
               </button>
             </div>
           </div>

@@ -2377,3 +2377,323 @@ body::before {
   height: 12px;
   background: rgba(255, 255, 255, 0.2);
 }
+
+/* ========== Layer Panel ========== */
+.layer-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: #1e1e1e;
+}
+
+.layer-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 8px;
+  height: 32px;
+  background: #2d2d2d;
+  border-bottom: 1px solid #111;
+  flex-shrink: 0;
+}
+
+.layer-panel-title {
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #ccc;
+  font-style: italic;
+}
+
+.layer-panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.layer-panel-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  color: #888;
+  transition: background 0.15s, color 0.15s;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+}
+
+.layer-panel-btn:hover {
+  background: rgba(255,255,255,0.08);
+  color: #ddd;
+}
+
+.layer-panel-btn:disabled {
+  opacity: 0.3;
+  pointer-events: none;
+}
+
+.layer-list {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.layer-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  cursor: pointer;
+  border-bottom: 1px solid #111;
+  transition: background 0.1s;
+  user-select: none;
+}
+
+.layer-item:hover {
+  background: rgba(255,255,255,0.04);
+}
+
+.layer-item-active {
+  background: rgba(79,163,156,0.15);
+  border-left: 2px solid #4fa39c;
+}
+
+.layer-item-active:hover {
+  background: rgba(79,163,156,0.2);
+}
+
+.layer-vis-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  color: #888;
+  cursor: pointer;
+  border-radius: 3px;
+  transition: color 0.15s;
+}
+
+.layer-vis-btn:hover {
+  color: #ddd;
+}
+
+.layer-vis-btn-hidden {
+  color: #444;
+}
+
+.layer-thumb {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  background: repeating-conic-gradient(#333 0% 25%, #222 0% 50%) 0 0 / 8px 8px;
+  border-radius: 3px;
+  overflow: hidden;
+  border: 1px solid #333;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.layer-thumb canvas {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.layer-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.layer-name {
+  font-size: 11px;
+  font-weight: 700;
+  color: #ccc;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.layer-name-active {
+  color: #fff;
+}
+
+.layer-meta {
+  font-size: 9px;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.layer-opacity-badge {
+  font-size: 9px;
+  color: #4fa39c;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.layer-panel-footer {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px;
+  border-top: 1px solid #111;
+  background: #252526;
+  flex-shrink: 0;
+}
+
+.layer-panel-footer-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px;
+  height: 26px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #888;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid #333;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.layer-panel-footer-btn:hover {
+  background: rgba(255,255,255,0.1);
+  color: #ddd;
+}
+
+.layer-panel-footer-btn:disabled {
+  opacity: 0.3;
+  pointer-events: none;
+}
+
+/* 이미지 드롭 다이얼로그 */
+.layer-drop-dialog {
+  position: absolute;
+  inset: 0;
+  z-index: 3000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,0.75);
+  backdrop-filter: blur(4px);
+}
+
+.layer-drop-dialog-box {
+  background: #252526;
+  border: 1px solid #3a3a3a;
+  border-radius: 12px;
+  padding: 28px 32px;
+  width: 340px;
+  box-shadow: 0 24px 48px rgba(0,0,0,0.7);
+}
+
+.layer-drop-dialog-title {
+  font-size: 14px;
+  font-weight: 900;
+  color: #fff;
+  margin-bottom: 6px;
+}
+
+.layer-drop-dialog-sub {
+  font-size: 11px;
+  color: #888;
+  margin-bottom: 20px;
+}
+
+.layer-drop-dialog-filename {
+  font-size: 11px;
+  color: #4fa39c;
+  font-weight: 700;
+  margin-bottom: 20px;
+  padding: 6px 10px;
+  background: rgba(79,163,156,0.1);
+  border-radius: 6px;
+  border: 1px solid rgba(79,163,156,0.2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.layer-drop-dialog-btns {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.layer-drop-btn-primary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-radius: 8px;
+  background: #4fa39c;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  border: none;
+  cursor: pointer;
+  transition: background 0.15s;
+  width: 100%;
+}
+
+.layer-drop-btn-primary:hover {
+  background: #5bb4ad;
+}
+
+.layer-drop-btn-secondary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-radius: 8px;
+  background: rgba(255,255,255,0.06);
+  color: #ccc;
+  font-size: 12px;
+  font-weight: 700;
+  border: 1px solid #3a3a3a;
+  cursor: pointer;
+  transition: background 0.15s;
+  width: 100%;
+}
+
+.layer-drop-btn-secondary:hover {
+  background: rgba(255,255,255,0.1);
+}
+
+/* Text Tool 오버레이 */
+.text-tool-overlay {
+  position: absolute;
+  z-index: 500;
+  pointer-events: auto;
+}
+
+.text-tool-input {
+  background: transparent;
+  border: none;
+  outline: 2px solid #4fa39c;
+  outline-offset: 2px;
+  color: transparent;
+  caret-color: #4fa39c;
+  resize: none;
+  min-width: 2ch;
+  width: auto;
+  font-size: inherit;
+  padding: 0;
+  border-radius: 2px;
+  white-space: pre;
+  overflow: hidden;
+  display: block;
+}

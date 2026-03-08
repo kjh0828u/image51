@@ -22,16 +22,16 @@ export function Header({ onOpenSettings, activeTab, onTabChange }: HeaderProps) 
                 <div className="header-center">
                     <div className="header-tab-pill">
                         <button
-                            onClick={() => onTabChange('batch')}
-                            className={`header-tab-item ${activeTab === 'batch' ? 'header-tab-active' : ''}`}
-                        >
-                            일괄 처리
-                        </button>
-                        <button
                             onClick={() => onTabChange('individual')}
                             className={`header-tab-item ${activeTab === 'individual' ? 'header-tab-active' : ''}`}
                         >
                             개별 편집
+                        </button>
+                        <button
+                            onClick={() => onTabChange('batch')}
+                            className={`header-tab-item ${activeTab === 'batch' ? 'header-tab-active' : ''}`}
+                        >
+                            일괄 처리
                         </button>
                     </div>
                 </div>

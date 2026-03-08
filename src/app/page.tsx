@@ -36,7 +36,7 @@ export default function Home() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [resizeError, setResizeError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<Tab>('batch');
+  const [activeTab, setActiveTab] = useState<Tab>('individual');
 
   // 멀티 탭 워크스페이스 상태
   interface TabItem { id: string; url: string; name: string; }

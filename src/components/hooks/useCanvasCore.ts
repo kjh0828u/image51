@@ -30,7 +30,7 @@ export function useCanvasCore(imageUrl: string, onImageLoaded: () => void) {
 
     // ── 캔버스 크기 동기화 ────────────────────────────────────────────────
     const updateCanvasSize = useCallback((w: number, h: number) => {
-        [canvasRef, overlayRef, originalRef, maskRef, aiResultRef].forEach((ref) => {
+        [canvasRef, originalRef, maskRef, aiResultRef].forEach((ref) => {
             if (ref.current) {
                 ref.current.width = w;
                 ref.current.height = h;
@@ -117,7 +117,7 @@ export function useCanvasCore(imageUrl: string, onImageLoaded: () => void) {
         if (!textContent) return;
 
         const { fontFamily, fontSize, fontWeight, fontStyle, color, align,
-                letterSpacing = 0, lineHeight = 1.3 } = textStyle;
+            letterSpacing = 0, lineHeight = 1.3 } = textStyle;
         ctx.font = `${fontStyle} ${fontWeight} ${fontSize}px ${fontFamily}`;
         ctx.fillStyle = color;
         ctx.textBaseline = 'top';

@@ -24,6 +24,7 @@ interface UseSelectionToolsParams {
     drawCropOverlay: (rect: any) => void;
     cropRectRef: React.MutableRefObject<any>;
     toolRef: React.MutableRefObject<string>;
+    zoom: number;
 }
 
 export function useSelectionTools({
@@ -44,7 +45,8 @@ export function useSelectionTools({
     saveMaskSnapshot,
     drawCropOverlay,
     cropRectRef,
-    toolRef
+    toolRef,
+    zoom
 }: UseSelectionToolsParams) {
     const [hasSelection, setHasSelection] = useState(false);
     const marchingRafId = useRef<number | null>(null);
@@ -55,8 +57,13 @@ export function useSelectionTools({
         const sel = selectionRef.current;
         if (!overlay || !sel) return;
 
-        const w = overlay.width;
-        const h = overlay.height;
+        // 버퍼 크기는 줌이 적용된 상태지만, sel(이미지 데이터)은 원본 크기임
+        // 따라서 원본 크기 w, h를 sel 길이와 비례하여 구하거나 명시적으로 받아야 함
+        // 여기서는 overlay 버퍼가 이미 zoom된 상태라고 가정하고, 그리기 시 scale 적용
+        const imgW = Math.floor(sel.length / (sel.length / Math.sqrt(sel.length))); // 임시
+        // 실제로는 원본 이미지 크기 정보가 필요함. 일단 overlay.width/zoom 사용
+        const w = Math.round(overlay.width / zoom);
+        const h = Math.round(overlay.height / zoom);
         const ctx = overlay.getContext('2d')!;
 
         if (cachedSelKey.current !== sel) {
@@ -121,8 +128,17 @@ export function useSelectionTools({
             marchingSegs.current = segs;
         }
 
-        ctx.clearRect(0, 0, w, h);
-        if (overlayCache.current) ctx.putImageData(overlayCache.current, 0, 0);
+        ctx.clearRect(0, 0, overlay.width, overlay.height);
+        ctx.save();
+        ctx.scale(zoom, zoom);
+
+        if (overlayCache.current) {
+            // putImageData는 transform을 무시하므로 임시 캔버스를 통해 drawImage 사용
+            const temp = document.createElement('canvas');
+            temp.width = w; temp.height = h;
+            temp.getContext('2d')!.putImageData(overlayCache.current, 0, 0);
+            ctx.drawImage(temp, 0, 0);
+        }
 
         if (isSliding.current) return;
 
@@ -159,14 +175,15 @@ export function useSelectionTools({
 
         ctx.save();
         ctx.setLineDash([]);
-        ctx.lineWidth = 3;
+        ctx.lineWidth = 3 / zoom; // 줌에 상관없이 일정한 두께 유지
         ctx.strokeStyle = 'rgba(0,0,0,0.5)';
         drawPath();
-        ctx.lineWidth = 2;
+        ctx.lineWidth = 1.5 / zoom;
         ctx.strokeStyle = `rgb(${r},${g},${b})`;
         drawPath();
         ctx.restore();
-    }, [overlayRef, selectionRef, cachedSelKey, overlayCache, marchingSegs, isSliding, marchingOffset]);
+        ctx.restore(); // for scale
+    }, [overlayRef, selectionRef, cachedSelKey, overlayCache, marchingSegs, isSliding, marchingOffset, zoom]);
 
     const startMarching = useCallback(() => {
         const loop = (time: number) => {

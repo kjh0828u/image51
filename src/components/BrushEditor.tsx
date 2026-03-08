@@ -537,7 +537,8 @@ export function BrushEditor({
     compositeAndRender: () => compositeLayersAndRender(layers),
     toolRef, cropRectRef,
     saveMaskSnapshot: (label) => saveMaskSnapshot(label),
-    drawCropOverlay: (rect) => drawCropOverlay(rect)
+    drawCropOverlay: (rect) => drawCropOverlay(rect),
+    zoom
   });
 
   const {
@@ -582,32 +583,36 @@ export function BrushEditor({
 
 
 
-  // ── 크롭 오버레이 그리기 ──────────────────────────────────
+
+
+  // ── 크롭 오버레이 그리기 (Zoom-Aware) ──────────────────
   const drawCropOverlay = useCallback((rect: { x: number; y: number; w: number; h: number } | null) => {
     const overlay = overlayRef.current;
     if (!overlay) return;
     const ctx = overlay.getContext('2d')!;
-    const W = overlay.width;
-    const H = overlay.height;
-    ctx.clearRect(0, 0, W, H);
+    const bufferW = overlay.width;
+    const bufferH = overlay.height;
+    ctx.clearRect(0, 0, bufferW, bufferH);
     if (!rect || rect.w <= 0 || rect.h <= 0) return;
 
-    // 어두운 오버레이 (선택 영역 밖)
+    // 실제 스케일은 상태값 zoom보다 캔버스 버퍼/이미지 너비 비율이 더 정확함
+    const s = bufferW / imageSize.w;
+
+    ctx.save();
+    ctx.scale(s, s);
+
     ctx.fillStyle = 'rgba(0,0,0,0.55)';
-    ctx.fillRect(0, 0, W, H);
+    ctx.fillRect(0, 0, imageSize.w, imageSize.h);
     ctx.clearRect(rect.x, rect.y, rect.w, rect.h);
 
-    // 힙한 애니메이션 테두리 (Marching Ants)
     const t = (marchingOffset.current * 20);
-    ctx.setLineDash([6, 4]);
-    ctx.lineDashOffset = -t;
+    ctx.setLineDash([6 / s, 4 / s]);
+    ctx.lineDashOffset = -t / s;
 
-    // 외곽 그림자 (대비용)
     ctx.strokeStyle = 'rgba(0,0,0,0.4)';
-    ctx.lineWidth = 3;
-    ctx.strokeRect(rect.x + 0.5, rect.y + 0.5, rect.w - 1, rect.h - 1);
+    ctx.lineWidth = 3 / s;
+    ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
 
-    // 요술봉과 동일한 컬러 팔레트
     const colors = [[168, 85, 247], [255, 255, 255], [56, 189, 248], [236, 72, 153], [255, 255, 255]];
     const steps = colors.length - 1;
     const colorPos = marchingOffset.current * steps;
@@ -620,14 +625,13 @@ export function BrushEditor({
     const b = Math.round(b1 + (b2 - b1) * frac);
 
     ctx.strokeStyle = `rgb(${r},${g},${b})`;
-    ctx.lineWidth = 2;
-    ctx.strokeRect(rect.x + 0.5, rect.y + 0.5, rect.w - 1, rect.h - 1);
+    ctx.lineWidth = 1.5 / s;
+    ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
     ctx.setLineDash([]);
     ctx.lineDashOffset = 0;
 
-    // 3x3 그리드 가이드라인
     ctx.strokeStyle = 'rgba(255,255,255,0.2)';
-    ctx.lineWidth = 1;
+    ctx.lineWidth = 1 / s;
     for (let i = 1; i < 3; i++) {
       const gx = rect.x + (rect.w / 3) * i;
       const gy = rect.y + (rect.h / 3) * i;
@@ -635,14 +639,12 @@ export function BrushEditor({
       ctx.beginPath(); ctx.moveTo(rect.x, gy); ctx.lineTo(rect.x + rect.w, gy); ctx.stroke();
     }
 
-    // 모서리 핸들
-    const hs = 10;
+    const hs = 10 / s;
     const corners = [
       { id: 'tl', x: rect.x - hs / 2, y: rect.y - hs / 2 },
       { id: 'tr', x: rect.x + rect.w - hs / 2, y: rect.y - hs / 2 },
       { id: 'bl', x: rect.x - hs / 2, y: rect.y + rect.h - hs / 2 },
       { id: 'br', x: rect.x + rect.w - hs / 2, y: rect.y + rect.h - hs / 2 },
-      // 변 핸들
       { id: 't', x: rect.x + rect.w / 2 - hs / 2, y: rect.y - hs / 2 },
       { id: 'b', x: rect.x + rect.w / 2 - hs / 2, y: rect.y + rect.h - hs / 2 },
       { id: 'l', x: rect.x - hs / 2, y: rect.y + rect.h / 2 - hs / 2 },
@@ -650,13 +652,13 @@ export function BrushEditor({
     ];
     ctx.fillStyle = 'white';
     ctx.strokeStyle = '#4f46e5';
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 1.5 / s;
     for (const c of corners) {
       ctx.fillRect(c.x, c.y, hs, hs);
       ctx.strokeRect(c.x, c.y, hs, hs);
     }
-  }, []);
-
+    ctx.restore();
+  }, [imageSize, zoom]);
   // ── 텍스트 레이어 바운드 계산 (측정 캔버스 재사용) ─────────
   const getTextLayerBounds = useCallback((layer: Layer, override?: { x?: number; y?: number; fontSize?: number }) => {
     const { textContent, textStyle: ts } = layer;
@@ -703,6 +705,8 @@ export function BrushEditor({
     if (!bounds) return;
 
     ctx.clearRect(0, 0, overlay.width, overlay.height);
+    ctx.save();
+    ctx.scale(zoom, zoom);
 
     const pad = 6; // padding around text bounds
     const rx = bounds.x - pad;
@@ -711,13 +715,13 @@ export function BrushEditor({
     const rh = bounds.h + pad * 2;
 
     const t = textMarchOffsetRef.current * 20;
-    ctx.setLineDash([6, 4]);
-    ctx.lineDashOffset = -t;
+    ctx.setLineDash([6 / zoom, 4 / zoom]);
+    ctx.lineDashOffset = -t / zoom;
 
     // shadow for contrast
     ctx.strokeStyle = 'rgba(0,0,0,0.4)';
-    ctx.lineWidth = 3;
-    ctx.strokeRect(rx + 0.5, ry + 0.5, rw - 1, rh - 1);
+    ctx.lineWidth = 3 / zoom;
+    ctx.strokeRect(rx, ry, rw, rh);
 
     // animated gradient color
     const colors = mode === 'selected'
@@ -734,14 +738,14 @@ export function BrushEditor({
     const b = Math.round(b1 + (b2 - b1) * frac);
 
     ctx.strokeStyle = `rgb(${r},${g},${b})`;
-    ctx.lineWidth = 2;
-    ctx.strokeRect(rx + 0.5, ry + 0.5, rw - 1, rh - 1);
+    ctx.lineWidth = 1.5 / zoom;
+    ctx.strokeRect(rx, ry, rw, rh);
     ctx.setLineDash([]);
     ctx.lineDashOffset = 0;
 
     // corner handles (only when selected)
     if (mode === 'selected') {
-      const hs = 8;
+      const hs = 8 / zoom;
       const corners = [
         { x: rx - hs / 2, y: ry - hs / 2 },
         { x: rx + rw - hs / 2, y: ry - hs / 2 },
@@ -750,14 +754,34 @@ export function BrushEditor({
       ];
       ctx.fillStyle = 'white';
       ctx.strokeStyle = '#7c3aed';
-      ctx.lineWidth = 1.5;
+      ctx.lineWidth = 1.5 / zoom;
       ctx.setLineDash([]);
       for (const c of corners) {
         ctx.fillRect(c.x, c.y, hs, hs);
         ctx.strokeRect(c.x, c.y, hs, hs);
       }
     }
-  }, [getTextLayerBounds]);
+    ctx.restore();
+  }, [getTextLayerBounds, zoom]);
+
+  // ── 오버레이 캔버스 해상도 최적화 및 자동 리드로우 ──
+  // 줌 시에도 UI(크롭 가이드 등)가 흐릿해지지 않도록 내부 버퍼 크기를 디스플레이 크기에 맞춤
+  useEffect(() => {
+    const ov = overlayRef.current;
+    if (ov && imageSize.w > 0) {
+      ov.width = Math.round(imageSize.w * zoom);
+      ov.height = Math.round(imageSize.h * zoom);
+
+      // 줌/사이즈 변경 시 캔버스가 초기화되므로 즉시 다시 그림
+      const currentCrop = cropRectRef.current;
+      if (tool === 'crop' && currentCrop) {
+        drawCropOverlay(currentCrop);
+      }
+      if (selectedTextLayerIdRef.current) {
+        drawTextOutline(selectedTextLayerIdRef.current, 'selected');
+      }
+    }
+  }, [zoom, imageSize, tool, drawCropOverlay, drawTextOutline]);
 
   // ── 텍스트 마칭 타이머 ────────────────────────────────────
   // layerId/mode를 ref로 관리 → interval 콜백이 항상 최신 값으로 그림
@@ -865,8 +889,6 @@ export function BrushEditor({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [textUIVersion]);
-
-  // ── 크롭 오버레이 그리기 ──────────────────────────────────
 
   const applyAiThreshold = useCallback((offset: number) => {
     const activeMask = getActiveMask();

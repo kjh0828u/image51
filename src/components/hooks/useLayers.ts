@@ -60,6 +60,7 @@ export interface LayerSnapshot {
   // 픽셀 데이터 — ImageBitmap (비동기 GPU 복사)
   originalBitmap: ImageBitmap | null;
   maskBitmap: ImageBitmap | null;
+  thumbBitmap: ImageBitmap | null; // 추가
   // 텍스트
   textContent: string;
   textStyle: TextStyle;
@@ -94,13 +95,17 @@ async function layerToSnapshotAsync(layer: Layer): Promise<LayerSnapshot> {
   const w = layer.originalCanvas?.width ?? 0;
   const h = layer.originalCanvas?.height ?? 0;
 
-  const [originalBitmap, maskBitmap] = await Promise.all([
+  const [originalBitmap, maskBitmap, thumbBitmap] = await Promise.all([
     layer.originalCanvas && w > 0
       ? createImageBitmap(layer.originalCanvas)
       : Promise.resolve(null),
     layer.maskCanvas && w > 0
       ? createImageBitmap(layer.maskCanvas)
       : Promise.resolve(null),
+    // 썸네일을 스냅샷 시점에 GPU에서 미리 생성 (나중에 다시 그릴 때 렉 방지)
+    layer.originalCanvas && w > 0
+      ? createImageBitmap(layer.originalCanvas, { resizeWidth: 100, resizeHeight: 100, resizeQuality: 'low' })
+      : Promise.resolve(null)
   ]);
 
   return {
@@ -117,6 +122,7 @@ async function layerToSnapshotAsync(layer: Layer): Promise<LayerSnapshot> {
     h,
     originalBitmap,
     maskBitmap,
+    thumbBitmap,
     textContent: layer.textContent,
     textStyle: { ...layer.textStyle },
   };
@@ -215,7 +221,7 @@ export function useLayers(docW: number, docH: number) {
           id: layer.id, name: layer.name, type: layer.type, visible: layer.visible,
           opacity: layer.opacity, blendMode: layer.blendMode, locked: layer.locked,
           x: layer.x, y: layer.y, w: 0, h: 0,
-          originalBitmap: null, maskBitmap: null,
+          originalBitmap: null, maskBitmap: null, thumbBitmap: null,
           textContent: layer.textContent, textStyle: { ...layer.textStyle }
         };
       });
@@ -231,6 +237,7 @@ export function useLayers(docW: number, docH: number) {
       for (const snap of entry.layers) {
         snap.originalBitmap?.close();
         snap.maskBitmap?.close();
+        snap.thumbBitmap?.close();
       }
     }
 
@@ -670,9 +677,16 @@ export function useLayers(docW: number, docH: number) {
   useEffect(() => { layersRef.current = layers; }, [layers]);
   useEffect(() => { activeLayerIdRef.current = activeLayerId; }, [activeLayerId]);
 
+  const lastSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const savePixelSnapshot = useCallback((label: string) => {
-    // changedLayerId 전달 → 활성 레이어 하나만 스냅샷, 나머지 재사용 → 매우 빠름
-    saveSnapshot(layersRef.current, activeLayerIdRef.current, label, activeLayerIdRef.current);
+    if (lastSaveTimerRef.current) clearTimeout(lastSaveTimerRef.current);
+
+    // 300ms 데번스: 빠른 연속 작업 중에는 히스토리를 쌓지 않고 멈췄을 때만 저장
+    // 이를 통해 "브러쉬 여러 획 쓰기" 시 발생하는 연속 0.2초 렉을 1회로 응집
+    lastSaveTimerRef.current = setTimeout(async () => {
+      await saveSnapshot(layersRef.current, activeLayerIdRef.current, label, activeLayerIdRef.current);
+      lastSaveTimerRef.current = null;
+    }, 300);
   }, [saveSnapshot]);
 
   // ── 초기화 ────────────────────────────────────────────────────────────

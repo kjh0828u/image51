@@ -71,13 +71,9 @@ export function getDownloadFilename(originalName: string, blobType: string): str
 }
 
 /**
- * 브라우저의 기본 기능을 사용하여 단일 이미지를 다운로드합니다.
+ * 브라우저의 기본 기능을 사용하여 Blob을 다운로드합니다.
  */
-export async function downloadSingleImage(img: { file: File, processedUrl?: string | null }) {
-    if (!img.processedUrl) return;
-    const response = await fetch(img.processedUrl);
-    const blob = await response.blob();
-    const filename = getDownloadFilename(img.file.name, blob.type);
+export function triggerBrowserDownload(blob: Blob, filename: string) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -86,6 +82,27 @@ export async function downloadSingleImage(img: { file: File, processedUrl?: stri
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+}
+
+/**
+ * 브라우저의 기본 기능을 사용하여 단일 이미지를 다운로드합니다.
+ */
+export async function downloadSingleImage(img: { file: File, processedUrl?: string | null }) {
+    if (!img.processedUrl) return;
+    const response = await fetch(img.processedUrl);
+    const blob = await response.blob();
+    const filename = getDownloadFilename(img.file.name, blob.type);
+    triggerBrowserDownload(blob, filename);
+}
+
+/**
+ * Blob을 지정된 디렉토리 핸들에 저장합니다.
+ */
+export async function saveBlobToDirectory(dirHandle: FileSystemDirectoryHandle, blob: Blob, filename: string) {
+    const fileHandle = await getUniqueFileHandle(dirHandle, filename);
+    const writable = await (fileHandle as any).createWritable();
+    await writable.write(blob);
+    await writable.close();
 }
 
 /**

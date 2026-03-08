@@ -37,7 +37,7 @@ export default function Home() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [resizeError, setResizeError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>('batch');
-  const [individualImage, setIndividualImage] = useState<string | null>(null);
+  const [individualImage, setIndividualImage] = useState<{ url: string, name: string } | null>(null);
   const individualFileInputRef = useRef<HTMLInputElement>(null);
 
   const store = useAppStore();
@@ -80,8 +80,11 @@ export default function Home() {
 
   const handleIndividualFile = useCallback((file: File) => {
     if (!file.type.startsWith('image/')) return;
-    if (individualImage) URL.revokeObjectURL(individualImage);
-    setIndividualImage(URL.createObjectURL(file));
+    if (individualImage) URL.revokeObjectURL(individualImage.url);
+    setIndividualImage({
+      url: URL.createObjectURL(file),
+      name: file.name
+    });
   }, [individualImage]);
 
   const handleIndividualDrop = useCallback((e: React.DragEvent) => {
@@ -202,9 +205,10 @@ export default function Home() {
         <div className="individual-tab-content">
           {individualImage ? (
             <BrushEditor
-              imageUrl={individualImage}
+              imageUrl={individualImage.url}
+              originalName={individualImage.name}
               onReset={() => {
-                URL.revokeObjectURL(individualImage);
+                URL.revokeObjectURL(individualImage.url);
                 setIndividualImage(null);
               }}
             />

@@ -15,7 +15,8 @@ export function Header({ onOpenSettings, activeTab, onTabChange }: HeaderProps) 
             <div className="header-inner">
                 <div className="header-brand">
                     <img src="/logo.png" alt="Image51" className="header-logo" />
-                    <h1 className="header-title">Image51</h1>
+                    <img src="/logo_typo.png" alt="Image51" className="header-typo" />
+                    <h1 className="sr-only">Image51</h1>
                 </div>
 
                 <div className="header-center">

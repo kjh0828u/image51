@@ -1,15 +1,13 @@
 import { useAppStore, type ImageItem } from '@/store/useAppStore';
 import { processImage } from '@/lib/imageProcessor';
-import { verifyPermission, getUniqueFileHandle, getDownloadFilename, downloadSingleImage, downloadAsZip } from '@/lib/fileUtils';
+import { verifyPermission, getUniqueFileHandle, getDownloadFilename, downloadSingleImage, downloadAsZip, triggerBrowserDownload, saveBlobToDirectory } from '@/lib/fileUtils';
 
 export function useImageProcessing() {
   const store = useAppStore();
 
-  const handleDownloadAll = async ({ skipPermissionRequest = false }: { skipPermissionRequest?: boolean } = {}) => {
-    const targetImages = store.images.filter(img => img.status === 'done' && img.processedUrl && !img.isDownloaded);
-    if (targetImages.length === 0) return;
-
+  const performDownload = async (blob: Blob, filename: string, skipPermissionRequest = false) => {
     let dirHandle = null;
+
     if (store.downloadMode === 'custom' && store.customDirectoryHandle) {
       const hasPerm = await verifyPermission(store.customDirectoryHandle, true, !skipPermissionRequest);
       if (hasPerm) {
@@ -20,30 +18,61 @@ export function useImageProcessing() {
     }
 
     if (dirHandle) {
-      for (const img of targetImages) {
-        try {
-          const res = await fetch(img.processedUrl!);
-          const blob = await res.blob();
-          const fileHandle = await getUniqueFileHandle(dirHandle, getDownloadFilename(img.file.name, blob.type));
-          const writable = await fileHandle.createWritable();
-          await writable.write(blob);
-          await writable.close();
-          store.updateImageStatus(img.id, { isDownloaded: true });
-        } catch (e) { console.error(e); }
-      }
+      await saveBlobToDirectory(dirHandle, blob, filename);
+      return true;
     } else {
-      if (targetImages.length === 1) {
-        await handleSingleDownload(targetImages[0]);
-      } else {
-        await downloadAsZip(targetImages);
-        targetImages.forEach(img => store.updateImageStatus(img.id, { isDownloaded: true }));
-      }
+      triggerBrowserDownload(blob, filename);
+      return false;
     }
   };
 
-  const handleSingleDownload = async (img: ImageItem) => {
-    await downloadSingleImage(img);
-    store.updateImageStatus(img.id, { isDownloaded: true });
+  const handleDownloadAll = async ({ skipPermissionRequest = false }: { skipPermissionRequest?: boolean } = {}) => {
+    const targetImages = store.images.filter(img => img.status === 'done' && img.processedUrl && !img.isDownloaded);
+    if (targetImages.length === 0) return;
+
+    if (store.downloadMode === 'custom' && store.customDirectoryHandle) {
+      const hasPerm = await verifyPermission(store.customDirectoryHandle, true, !skipPermissionRequest);
+      if (hasPerm) {
+        const d = new Date();
+        const folderName = `${String(d.getFullYear()).slice(2)}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        const dirHandle = await (store.customDirectoryHandle as any).getDirectoryHandle(folderName, { create: true });
+
+        for (const img of targetImages) {
+          try {
+            const res = await fetch(img.processedUrl!);
+            const blob = await res.blob();
+            const filename = getDownloadFilename(img.file.name, blob.type);
+            await saveBlobToDirectory(dirHandle, blob, filename);
+            store.updateImageStatus(img.id, { isDownloaded: true });
+          } catch (e) { console.error(e); }
+        }
+        return;
+      }
+    }
+
+    // fallback or default mode
+    if (targetImages.length === 1) {
+      await handleSingleDownload(targetImages[0], skipPermissionRequest);
+    } else {
+      await downloadAsZip(targetImages);
+      targetImages.forEach(img => store.updateImageStatus(img.id, { isDownloaded: true }));
+    }
+  };
+
+  const handleSingleDownload = async (img: ImageItem, skipPermissionRequest = false) => {
+    if (!img.processedUrl) return;
+    try {
+      const res = await fetch(img.processedUrl);
+      const blob = await res.blob();
+      const filename = getDownloadFilename(img.file.name, blob.type);
+      await performDownload(blob, filename, skipPermissionRequest);
+      store.updateImageStatus(img.id, { isDownloaded: true });
+    } catch (e) {
+      console.error(e);
+      // fallback to old method if fetch fails
+      await downloadSingleImage(img);
+      store.updateImageStatus(img.id, { isDownloaded: true });
+    }
   };
 
   const handleStartProcessing = async (onResizeError: (msg: string | null) => void) => {
@@ -74,5 +103,5 @@ export function useImageProcessing() {
     }
   };
 
-  return { handleStartProcessing, handleDownloadAll, handleSingleDownload };
+  return { handleStartProcessing, handleDownloadAll, handleSingleDownload, performDownload };
 }

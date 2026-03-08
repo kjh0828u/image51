@@ -45,9 +45,12 @@ import { useBrushConfig, Tool, BrushShape } from './hooks/useBrushConfig';
 import { useCanvasCore } from './hooks/useCanvasCore';
 import { useHistory } from './hooks/useHistory';
 import { useSelectionTools } from './hooks/useSelectionTools';
+import { useImageProcessing } from '@/hooks/useImageProcessing';
+import { getDownloadFilename } from '@/lib/fileUtils';
 
 interface BrushEditorProps {
   imageUrl: string;
+  originalName: string;
   onReset: () => void;
 }
 
@@ -55,7 +58,7 @@ const EYEDROPPER_CURSOR = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.o
 
 
 
-export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
+export function BrushEditor({ imageUrl, originalName, onReset }: BrushEditorProps) {
   const isPainting = useRef(false);
   const lastPos = useRef<{ x: number; y: number } | null>(null);
 
@@ -138,6 +141,8 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
     containerRef, containerRectRef, imageSize, zoom, setZoom, zoomRef,
     updateCanvasSize, compositeAndRender
   } = core;
+
+  const { performDownload } = useImageProcessing();
 
   // 3. Selection Tools
   const selectionTools = useSelectionTools({
@@ -1090,19 +1095,16 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
   // ── 다운로드 ──────────────────────────────────────────────
   const download = useCallback(() => {
     if (!canvasRef.current) return;
-    if (downloadFormat === 'png') {
-      const link = document.createElement('a');
-      link.download = 'result.png';
-      link.href = canvasRef.current.toDataURL('image/png');
-      link.click();
-    } else {
-      const link = document.createElement('a');
-      link.download = `result.${downloadFormat}`;
-      link.href = canvasRef.current.toDataURL(`image/${downloadFormat}`, downloadQuality / 100);
-      link.click();
-    }
-    setShowDownloadPanel(false);
-  }, [downloadFormat, downloadQuality]);
+    const format = downloadFormat;
+    const quality = downloadQuality / 100;
+
+    canvasRef.current.toBlob(async (blob) => {
+      if (!blob) return;
+      const filename = getDownloadFilename(originalName, blob.type);
+      await performDownload(blob, filename);
+      setShowDownloadPanel(false);
+    }, `image/${format}`, quality);
+  }, [downloadFormat, downloadQuality, originalName, performDownload]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {

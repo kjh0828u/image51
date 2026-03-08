@@ -85,23 +85,29 @@ body::before {
 .header-brand {
   display: flex;
   align-items: center;
+  justify-content: center;
+  /* 가로 중앙 (브랜드 영역 내) */
   gap: 0.75rem;
+  line-height: 0;
+  /* 베이스라인 공백 제거 */
+}
+
+.header-logo,
+.header-typo {
+  /* 이미지 하단 기본 여백 제거 */
+  object-fit: contain;
 }
 
 .header-logo {
-  width: 2.5rem;
-  height: 2.5rem;
-  object-fit: contain;
+  width: 2.7rem;
+  height: 2.7rem;
   filter: drop-shadow(0 3px 5px rgba(177, 255, 249, 0.897));
 }
 
-.header-title {
-  font-size: 1.5rem;
-  font-weight: 900;
-  font-style: italic;
-  letter-spacing: -0.025em;
-  color: white;
-  text-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+.header-typo {
+  height: 2.3rem;
+  margin-top: 5px;
+  filter: drop-shadow(3px 3px 3px rgba(17, 58, 54, 0.897));
 }
 
 /* ========== Buttons ========== */

@@ -349,6 +349,7 @@ export function BrushEditor({
     brushColor, setBrushColor,
     brushShape, setBrushShape,
     brushHardness, setBrushHardness,
+    brushBlur, setBrushBlur,
     tolerance, setTolerance,
     wandExpand, setWandExpand,
     wandSmooth, setWandSmooth
@@ -511,6 +512,7 @@ export function BrushEditor({
   const brushOpacityRef = useRef(brushOpacity);
   const brushHardnessRef = useRef(brushHardness);
   const brushShapeRef = useRef(brushShape);
+  const brushBlurRef = useRef(brushBlur);
   const updateBrushTipRef = useRef<() => void>(() => { });
   useEffect(() => {
     brushColorRef.current = brushColor;
@@ -528,6 +530,9 @@ export function BrushEditor({
   useEffect(() => {
     brushShapeRef.current = brushShape;
   }, [brushShape]);
+  useEffect(() => {
+    brushBlurRef.current = brushBlur;
+  }, [brushBlur]);
 
   // ── 브러시 크기 상태 업데이트 스로틀링 (연속 키 입력 대응) ──
   const updateSizeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1645,7 +1650,7 @@ export function BrushEditor({
             blurCacheRef.current.width = w;
             blurCacheRef.current.height = h;
             const bCtx = blurCacheRef.current.getContext('2d')!;
-            bCtx.filter = `blur(${Math.max(1, brushSize / 5)}px)`;
+            bCtx.filter = `blur(${Math.max(1, brushBlurRef.current)}px)`;
             bCtx.drawImage(activeOriginal, 0, 0);
           }
         }
@@ -2883,6 +2888,13 @@ export function BrushEditor({
                     <input type="range" min={10} max={100} value={brushOpacity} onChange={(e) => setBrushOpacity(Number(e.target.value))} className="w-20 h-1 range-slider" />
                     <span className="text-[11px] font-mono text-indigo-400 w-10">{brushOpacity}%</span>
                   </div>
+                  {tool === 'blur-brush' && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-bold text-gray-400">BLUR</span>
+                      <input type="range" min={1} max={100} value={brushBlur} onChange={(e) => setBrushBlur(Number(e.target.value))} className="w-20 h-1 range-slider" />
+                      <span className="text-[11px] font-mono text-indigo-400 w-8">{brushBlur}</span>
+                    </div>
+                  )}
                   {(tool === 'clone' || tool === 'heal') && (
                     <div className="flex items-center gap-2 border-l border-[#444] pl-4">
                       <span className={`text-[9px] font-bold ${hasCloneSource ? 'text-green-400' : 'text-amber-500 animate-pulse'}`}>

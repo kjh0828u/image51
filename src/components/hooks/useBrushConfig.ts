@@ -10,6 +10,7 @@ export function useBrushConfig() {
     const [brushColor, setBrushColor] = useState('#4f46e5');
     const [brushShape, setBrushShape] = useState<BrushShape>('circle');
     const [brushHardness, setBrushHardness] = useState(50);
+    const [brushBlur, setBrushBlur] = useState(1);
     const [tolerance, setTolerance] = useState(30);
 
     // wand settings
@@ -37,6 +38,8 @@ export function useBrushConfig() {
         setBrushShape,
         brushHardness,
         setBrushHardness,
+        brushBlur,
+        setBrushBlur,
         tolerance,
         setTolerance,
         wandExpand,

@@ -173,13 +173,35 @@ export function useLayers(docW: number, docH: number) {
   const saveSnapshot = useCallback(async (
     currentLayers: Layer[],
     currentActiveId: string,
-    label: string
+    label: string,
+    changedLayerId?: string   // 지정하면 해당 레이어만 새로 스냅샷, 나머지는 이전 엔트리에서 재사용
   ) => {
     const now = new Date();
     const time = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
 
-    // 비동기 GPU 복사 — 메인 스레드 블로킹 없음
-    const snapshots = await Promise.all(currentLayers.map(layerToSnapshotAsync));
+    const prevEntry = historyStack.current[historyIndexRef.current];
+
+    let snapshots: LayerSnapshot[];
+
+    if (changedLayerId && prevEntry) {
+      // 변경된 레이어 하나만 새로 찍고, 나머지는 이전 스냅샷 재사용 (복사 없음)
+      const changedLayer = currentLayers.find(l => l.id === changedLayerId);
+      const newSnap = changedLayer ? await layerToSnapshotAsync(changedLayer) : null;
+
+      snapshots = currentLayers.map(layer => {
+        if (layer.id === changedLayerId && newSnap) return newSnap;
+        // 이전 엔트리에서 같은 id의 스냅샷 재사용
+        return prevEntry.layers.find(s => s.id === layer.id)
+          ?? { id: layer.id, name: layer.name, type: layer.type, visible: layer.visible,
+               opacity: layer.opacity, blendMode: layer.blendMode, locked: layer.locked,
+               x: layer.x, y: layer.y, w: 0, h: 0,
+               originalBitmap: null, maskBitmap: null,
+               textContent: layer.textContent, textStyle: { ...layer.textStyle } };
+      });
+    } else {
+      // 전체 스냅샷 (레이어 추가/삭제/병합 등 구조 변경 시)
+      snapshots = await Promise.all(currentLayers.map(layerToSnapshotAsync));
+    }
 
     const entry: LayerHistoryEntry = {
       layers: snapshots,
@@ -193,7 +215,6 @@ export function useLayers(docW: number, docH: number) {
     historyStack.current.push(entry);
     historyIndexRef.current = newIdx;
     historyVersion.current += 1;
-    // canUndo/canRedo 버튼만 업데이트 (setLayers 없음 → 합성 effect 재실행 없음)
     setHistoryIndex(newIdx);
   }, []);
 
@@ -618,8 +639,8 @@ export function useLayers(docW: number, docH: number) {
   useEffect(() => { activeLayerIdRef.current = activeLayerId; }, [activeLayerId]);
 
   const savePixelSnapshot = useCallback((label: string) => {
-    // saveSnapshot은 async (createImageBitmap) → 즉시 호출, 메인 스레드 블로킹 없음
-    saveSnapshot(layersRef.current, activeLayerIdRef.current, label);
+    // changedLayerId 전달 → 활성 레이어 하나만 스냅샷, 나머지 재사용 → 매우 빠름
+    saveSnapshot(layersRef.current, activeLayerIdRef.current, label, activeLayerIdRef.current);
   }, [saveSnapshot]);
 
   // ── 초기화 ────────────────────────────────────────────────────────────

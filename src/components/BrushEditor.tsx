@@ -1082,19 +1082,25 @@ export function BrushEditor({
       const activeOriginal = getActiveOriginal();
       const activeMask = getActiveMask();
       if (!activeMask || !activeOriginal || !brushTipRef.current) return;
-      // proxy refs 업데이트 (clone/heal 내부 참조용)
-      // originalRef.current 대신 activeOriginal 사용
+
+      // 레이어 오프셋 보정: 레이어가 이동된 경우 캔버스 좌표 → 레이어 로컬 좌표
+      const activeLayer = layersRef.current.find(l => l.id === activeLayerIdRef.current);
+      const layerOffsetX = activeLayer?.x ?? 0;
+      const layerOffsetY = activeLayer?.y ?? 0;
+      const localPos = { x: pos.x - layerOffsetX, y: pos.y - layerOffsetY };
 
       const imgW = activeOriginal.width;
       const imgH = activeOriginal.height;
 
       const maskCtx = activeMask.getContext('2d')!;
       const origCtx = activeOriginal.getContext('2d')!;
-      const from = lastPos.current || pos;
+      const rawFrom = lastPos.current || pos;
+      const from = { x: rawFrom.x - layerOffsetX, y: rawFrom.y - layerOffsetY };
+      const pos2 = localPos;
 
       const alpha = brushOpacity / 100;
-      const dx = pos.x - from.x;
-      const dy = pos.y - from.y;
+      const dx = pos2.x - from.x;
+      const dy = pos2.y - from.y;
       const distance = Math.sqrt(dx * dx + dy * dy);
 
       // 간격을 브러시 크기의 1/10 정도로 설정 (더 부드럽게)

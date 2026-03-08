@@ -3029,7 +3029,24 @@ export function BrushEditor({
                     className="h-6 bg-[#333] text-gray-300 text-[10px] border-0 rounded px-1 max-w-[120px]"
                   >
                     <optgroup label="국문 (Korean)">
-                      {['Noto Sans KR', 'Noto Serif KR', 'Nanum Gothic', 'Nanum Myeongjo', 'Nanum Pen Script', 'Black Han Sans', 'Do Hyeon', 'Jua', 'Kirang Haerang', 'Yeon Sung', 'Bagel Fat One', 'Gowun Batang', 'Gowun Dodum', 'Song Myung', 'Poor Story', 'IBM Plex Sans KR', 'Gamja Flower', 'Sunflower', 'Gugi', 'Cute Font'].sort().map(f => (
+                      {[
+                        // 인기 무료 상업용 폰트 (SIL OFL 또는 무료 상업용 라이선스)
+                        'Gmarket Sans', 'Gmarket Sans Light', 'Gmarket Sans Medium', 'Gmarket Sans Bold',
+                        'MaruBuri', 'MaruBuri SemiBold', 'MaruBuri Bold',
+                        'Binggrae', 'Binggrae Bold', 'Binggrae Melona', 'Binggrae Samanco', 'Binggrae Taom',
+                        'BM DoHyeon', 'BM Jua', 'BM Hanna 11yrs Old', 'BM Hanna Air', 'BM Kirang Haerang', 'BM Dohyeon', 'BM Euljiro', 'BM Euljiro 10 Years Later', 'BM LeeSa', 'BM COOLJi', 'BM Jua_TTF',
+                        'Spoqa Han Sans', 'Spoqa Han Sans Neo', 'Spoqa Han Sans Original',
+                        'Pretendard', 'Pretendard JP', 'Pretendard Std',
+                        'SUIT', 'SUIT Bold', 'SUIT ExtraBold', 'SUIT Heavy', 'SUIT Light', 'SUIT Medium', 'SUIT Regular', 'SUIT SemiBold', 'SUIT Thin',
+                        'Tmoney RoundWind', 'Tmoney RoundWind ExtraBold', 'Tmoney RoundWind Regular',
+                        'SeoulNamsan', 'SeoulNamsanM', 'SeoulNamsanB', 'SeoulHangang', 'SeoulHangangM', 'SeoulHangangB', 'SeoulHangangEB',
+                        'Hanna', 'Hanna Pro',
+                        'Nanum Gothic', 'Nanum Gothic Coding', 'Nanum Myeongjo', 'Nanum Pen Script', 'Nanum Barun Gothic', 'Nanum Barun Pen',
+                        'Noto Sans KR', 'Noto Serif KR', 'Noto Sans CJK KR',
+                        'Black Han Sans', 'Do Hyeon', 'Jua', 'Yeon Sung', 'Bagel Fat One', 'Gowun Batang', 'Gowun Dodum', 'Song Myung', 'Poor Story', 'IBM Plex Sans KR', 'Gamja Flower', 'Sunflower', 'Gugi', 'Cute Font',
+                        'Cafe24 ClassicType', 'Cafe24 Onearth', 'Cafe24 Shining Star', 'Cafe24 Ssurround', 'Cafe24 Ssurround air', 'Cafe24 Sweet', 'Cafe24 Syeheeha', 'Cafe24 Dongdong', 'Cafe24 Moheengaa', 'Cafe24 Danjunghae', 'Cafe24 Deko', 'Cafe24 Godic', 'Cafe24 Goryeong', 'Cafe24 Haeyoom', 'Cafe24 Lovely', 'Cafe24 Okta', 'Cafe24 Ohsquare air', 'Cafe24 Supermagic', 'Cafe24 Yaemin',
+                        'MapoAgape', 'MapoBackpacking', 'MapoBoulevard', 'MapoCalmness', 'MapoCapri', 'MapoCheongdaesan', 'MapoCypress', 'MapoDalrae', 'MapoDamaseng', 'MapoDaehang', 'MapoFlowerIsland', 'MapoGoldenPier', 'MapoGonyos', 'MapoGwangjin', 'MapoHongdae', 'MapoHumanism', 'MapoJangdol', 'MapoJipapen', 'MapoMapo', 'MapoMaru', 'MapoNhang', 'MapoPeaceful', 'MapoPickles', 'MapoPigpen', 'MapoPom', 'MapoDacapo',
+                      ].sort().map(f => (
                         <option key={f} value={f}>{f}</option>
                       ))}
                     </optgroup>

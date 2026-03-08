@@ -166,9 +166,19 @@ export function useLayers(docW: number, docH: number) {
   const [layers, setLayers] = useState<Layer[]>([]);
   const [activeLayerId, setActiveLayerId] = useState<string>('');
   const [historyVersion, setHistoryVersion] = useState(0);
-
   const historyStack = useRef<LayerHistoryEntry[]>([]);
   const historyIndexRef = useRef(-1);
+
+  // ── 히스토리 변경 구독 시스템 (BrushEditor 전체 리렌더 방지용) ────────
+  const listenersRef = useRef<Set<() => void>>(new Set());
+  const subscribeHistory = useCallback((fn: () => void) => {
+    listenersRef.current.add(fn);
+    return () => { listenersRef.current.delete(fn); };
+  }, []);
+
+  const notifyHistoryChange = useCallback(() => {
+    listenersRef.current.forEach(fn => fn());
+  }, []);
 
   // undo/redo 버튼 DOM ref — setState 없이 직접 disabled 토글 (리렌더 0)
   const undoBtnRef = useRef<HTMLButtonElement | null>(null);
@@ -250,9 +260,10 @@ export function useLayers(docW: number, docH: number) {
     // UI 업데이트를 지연시켜 메인 스레드 블로킹 분산 (렉 방지 핵심)
     setTimeout(() => {
       setHistoryVersion(v => v + 1);
+      notifyHistoryChange(); // 전체 리렌더 대신 구독자에게만 알림
       syncUndoRedoBtns();
     }, 0);
-  }, [syncUndoRedoBtns]);
+  }, [syncUndoRedoBtns, notifyHistoryChange]);
 
   // ── 히스토리 복원 ──────────────────────────────────────────────────────
 
@@ -261,11 +272,11 @@ export function useLayers(docW: number, docH: number) {
     const entry = historyStack.current[index]!;
     const restored = entry.layers.map(snap => snapshotToLayer(snap, docW, docH));
     historyIndexRef.current = index;
-    setHistoryVersion(v => v + 1);
+    notifyHistoryChange();
     syncUndoRedoBtns();
     setActiveLayerId(entry.activeLayerId);
     setLayers(restored);
-  }, [docW, docH, syncUndoRedoBtns]);
+  }, [docW, docH, syncUndoRedoBtns, notifyHistoryChange]);
 
   const undo = useCallback(() => {
     const prev = historyIndexRef.current;
@@ -719,6 +730,7 @@ export function useLayers(docW: number, docH: number) {
     jumpToHistory,
     undo,
     redo,
+    subscribeHistory, // 새롭게 추가된 구독 함수
 
     // 레이어 CRUD
     addImageLayer,

@@ -82,8 +82,14 @@ interface DropDialogState {
 const EYEDROPPER_CURSOR = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m2 22 1-1h3l9-9'/%3E%3Cpath d='M3 21v-3l9-9'/%3E%3Cpath d='m15 6 3.4-3.4a2.1 2.1 0 1 1 3 3L18 9l-3-3Z'/%3E%3C/svg%3E") 0 22, url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m2 22 1-1h3l9-9'/%3E%3Cpath d='M3 21v-3l9-9'/%3E%3Cpath d='m15 6 3.4-3.4a2.1 2.1 0 1 1 3 3L18 9l-3-3Z'/%3E%3C/svg%3E") 0 22, crosshair`;
 
 // ── 최적화된 레이어 썸네일 컴포넌트 ──────────────────────────────────
-const LayerThumbnail = memo(({ layer, historyVersion }: { layer: Layer, historyVersion: number }) => {
+const LayerThumbnail = memo(({ layer, subscribeHistory }: { layer: Layer, subscribeHistory: (fn: () => void) => () => void }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [tick, setTick] = useState(0);
+
+  // 히스토리 변경(픽셀 작업 완료 등) 시에만 썸네일 리렌더 트리거
+  useEffect(() => {
+    return subscribeHistory(() => setTick(t => t + 1));
+  }, [subscribeHistory]);
 
   useEffect(() => {
     const el = canvasRef.current;
@@ -101,17 +107,110 @@ const LayerThumbnail = memo(({ layer, historyVersion }: { layer: Layer, historyV
     const dx = (36 - dw) / 2;
     const dy = (36 - dh) / 2;
 
-    // 임시 캔버스 없이 직접 그리기 (성능 대폭 향상)
     ctx.save();
     ctx.drawImage(layer.originalCanvas, dx, dy, dw, dh);
     ctx.globalCompositeOperation = 'destination-in';
     ctx.drawImage(layer.maskCanvas, dx, dy, dw, dh);
     ctx.restore();
-  }, [layer.id, layer.originalCanvas, layer.maskCanvas, historyVersion]);
+  }, [layer.id, layer.originalCanvas, layer.maskCanvas, tick]);
 
   return <canvas ref={canvasRef} width={36} height={36} className="pointer-events-none" />;
 });
 LayerThumbnail.displayName = 'LayerThumbnail';
+
+// 레이어 개별 아이템 (분리됨)
+const LayerItem = memo(({ layer, active, onSelect, onSetVisible, layerDragOver, layerDragIdRef, setLayerDragOver, reorderLayer, subscribeHistory }: any) => {
+  const isDragTarget = layerDragOver === layer.id && layerDragIdRef.current !== layer.id;
+  return (
+    <div
+      draggable
+      className={cn('layer-item', active && 'layer-item-active', isDragTarget && 'layer-item-drag-over')}
+      onClick={() => onSelect(layer.id)}
+      onDragStart={() => { layerDragIdRef.current = layer.id; }}
+      onDragOver={(e) => { e.preventDefault(); setLayerDragOver(layer.id); }}
+      onDragLeave={() => setLayerDragOver(null)}
+      onDrop={(e) => {
+        e.preventDefault();
+        setLayerDragOver(null);
+        const fromId = layerDragIdRef.current;
+        layerDragIdRef.current = null;
+        reorderLayer(fromId, 0);
+      }}
+      onDragEnd={() => { layerDragIdRef.current = null; setLayerDragOver(null); }}
+    >
+      <button className={cn('layer-vis-btn', !layer.visible && 'layer-vis-btn-hidden')} onClick={(e) => { e.stopPropagation(); onSetVisible(layer.id, !layer.visible); }}>
+        {layer.visible ? <Eye size={12} /> : <EyeOff size={12} />}
+      </button>
+      <div className="layer-thumb">
+        {layer.type === 'text' ? <Type size={16} className="text-gray-400" /> : <LayerThumbnail layer={layer} subscribeHistory={subscribeHistory} />}
+      </div>
+      <div className="layer-info">
+        <span className={cn('layer-name', active && 'layer-name-active')}>{layer.name}</span>
+      </div>
+    </div>
+  );
+});
+LayerItem.displayName = 'LayerItem';
+
+// 2. 레이어 패널 (분리됨)
+const LayerPanel = memo(({
+  layers, activeLayerId, setActiveLayerId, setLayerVisible, setLayerOpacity,
+  removeLayer, reorderLayer, addPaintLayer, mergeDown, flattenAll, imageSize, subscribeHistory
+}: any) => {
+  const [layerDragOver, setLayerDragOver] = useState<string | null>(null);
+  const layerDragIdRef = useRef<string | null>(null);
+  const activeLayer = layers.find((l: any) => l.id === activeLayerId);
+
+  return (
+    <div className="flex-1 flex flex-col border-b border-[#111] min-h-[200px]">
+      <div className="layer-panel-header">
+        <span className="layer-panel-title">Layers</span>
+        <div className="layer-panel-actions">
+          <button className="layer-panel-btn" onClick={() => addPaintLayer(`Layer ${layers.length + 1}`, layers, activeLayerId)}><Plus size={13} /></button>
+          <button className="layer-panel-btn" disabled={layers.findIndex((l: any) => l.id === activeLayerId) >= layers.length - 1} onClick={() => {
+            const idx = layers.findIndex((l: any) => l.id === activeLayerId);
+            if (idx < layers.length - 1) reorderLayer(activeLayerId, idx + 1, layers, activeLayerId);
+          }}><ChevronUp size={13} /></button>
+          <button className="layer-panel-btn" disabled={layers.findIndex((l: any) => l.id === activeLayerId) <= 0} onClick={() => {
+            const idx = layers.findIndex((l: any) => l.id === activeLayerId);
+            if (idx > 0) reorderLayer(activeLayerId, idx - 1, layers, activeLayerId);
+          }}><ChevronDown size={13} /></button>
+          <button className="layer-panel-btn" disabled={layers.length <= 1} onClick={() => removeLayer(activeLayerId, layers, activeLayerId)}><Trash2 size={13} /></button>
+        </div>
+      </div>
+      <div className="layer-list custom-scrollbar">
+        {[...layers].reverse().map((layer) => (
+          <LayerItem
+            key={layer.id}
+            layer={layer}
+            active={layer.id === activeLayerId}
+            layerDragOver={layerDragOver}
+            onSelect={setActiveLayerId}
+            onSetVisible={setLayerVisible}
+            layerDragIdRef={layerDragIdRef}
+            setLayerDragOver={setLayerDragOver}
+            reorderLayer={(id: string, idx: number) => reorderLayer(id, idx, layers, activeLayerId)}
+            subscribeHistory={subscribeHistory}
+          />
+        ))}
+      </div>
+      {activeLayer && (
+        <div className="p-2 border-t border-[#111] bg-[#252526] flex flex-col gap-2 flex-shrink-0">
+          <div className="flex items-center gap-2">
+            <span className="text-[9px] font-bold text-gray-500 uppercase w-14">Opacity</span>
+            <input type="range" min={0} max={100} value={activeLayer.opacity} onChange={(e) => setLayerOpacity(activeLayerId, Number(e.target.value), layers, activeLayerId)} className="flex-1 h-1 range-slider" />
+            <span className="text-[9px] font-mono text-indigo-400 w-8">{activeLayer.opacity}%</span>
+          </div>
+          <div className="flex gap-1">
+            <button className="layer-panel-footer-btn flex-1" disabled={layers.findIndex((l: any) => l.id === activeLayerId) === 0} onClick={() => mergeDown(activeLayerId, layers, activeLayerId, () => null)}><Merge size={10} /> Merge ↓</button>
+            <button className="layer-panel-footer-btn flex-1" onClick={() => flattenAll(layers, activeLayerId, imageSize.w, imageSize.h)}>Flatten</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+});
+LayerPanel.displayName = 'LayerPanel';
 
 // 히스토리 항목 메모이제이션
 const HistoryItem = memo(({ item, index, active, onClick }: { item: any, index: number, active: boolean, onClick: (i: number) => void }) => {
@@ -127,7 +226,41 @@ const HistoryItem = memo(({ item, index, active, onClick }: { item: any, index: 
 });
 HistoryItem.displayName = 'HistoryItem';
 
+// 1. 히스토리 패널 (구독 모델 적용 - 전체 리렌더 방지)
+const HistoryPanel = memo(({ historyStack, historyIndexRef, jumpToHistory, subscribeHistory }: {
+  historyStack: LayerHistoryEntry[],
+  historyIndexRef: React.MutableRefObject<number>,
+  jumpToHistory: (i: number) => void,
+  subscribeHistory: (fn: () => void) => () => void
+}) => {
+  const [tick, setTick] = useState(0);
+  const listRef = useRef<HTMLDivElement>(null);
 
+  useEffect(() => {
+    return subscribeHistory(() => setTick(t => t + 1));
+  }, [subscribeHistory]);
+
+  useEffect(() => {
+    if (listRef.current) {
+      listRef.current.scrollTo({ top: listRef.current.scrollHeight, behavior: 'smooth' });
+    }
+  }, [historyStack.length]);
+
+  return (
+    <div ref={listRef} className="h-[250px] overflow-y-auto no-scrollbar p-0 bg-[#222]">
+      {historyStack.map((item, i) => (
+        <HistoryItem
+          key={i}
+          item={item}
+          index={i}
+          active={i === historyIndexRef.current}
+          onClick={jumpToHistory}
+        />
+      ))}
+    </div>
+  );
+});
+HistoryPanel.displayName = 'HistoryPanel';
 
 export function BrushEditor({
   imageUrl,
@@ -170,135 +303,7 @@ export function BrushEditor({
 
   // ── 최적화된 하위 컴포넌트들 ──────────────────────────────────
 
-  // 1. 히스토리 패널 (메모이제이션 적용)
-  const HistoryPanel = memo(({ historyStack, historyIndex, jumpToHistory, version }: {
-    historyStack: LayerHistoryEntry[],
-    historyIndex: number,
-    jumpToHistory: (i: number) => void,
-    version: number
-  }) => {
-    const listRef = useRef<HTMLDivElement>(null);
 
-    useEffect(() => {
-      if (listRef.current) {
-        listRef.current.scrollTo({ top: listRef.current.scrollHeight, behavior: 'smooth' });
-      }
-    }, [historyStack.length]);
-
-    return (
-      <div className="h-[250px] flex-shrink-0 flex flex-col border-b border-[#111]">
-        <div className="brush-panel-title px-3 py-2 bg-[#333] text-white font-black italic flex justify-between items-center">
-          <span>HISTORY</span><Activity size={12} className="text-gray-500" />
-        </div>
-        <div ref={listRef} className="flex-1 overflow-y-auto no-scrollbar p-0 bg-[#222]">
-          {historyStack.map((item, i) => (
-            <HistoryItem
-              key={i}
-              item={item}
-              index={i}
-              active={i === historyIndex}
-              onClick={jumpToHistory}
-            />
-          ))}
-        </div>
-      </div>
-    );
-  });
-
-  // 2. 레이어 패널
-  const LayerPanel = memo(({
-    layers, activeLayerId, setActiveLayerId, setLayerVisible, setLayerOpacity,
-    removeLayer, reorderLayer, addPaintLayer, mergeDown, flattenAll, imageSize, version
-  }: any) => {
-    const [layerDragOver, setLayerDragOver] = useState<string | null>(null);
-    const layerDragIdRef = useRef<string | null>(null);
-
-    const activeLayer = layers.find((l: any) => l.id === activeLayerId);
-
-    return (
-      <div className="flex-1 flex flex-col border-b border-[#111] min-h-[200px]">
-        <div className="layer-panel-header">
-          <span className="layer-panel-title">Layers</span>
-          <div className="layer-panel-actions">
-            <button className="layer-panel-btn" onClick={() => addPaintLayer(`Layer ${layers.length + 1}`, layers, activeLayerId)}><Plus size={13} /></button>
-            <button className="layer-panel-btn" disabled={layers.findIndex((l: any) => l.id === activeLayerId) >= layers.length - 1} onClick={() => {
-              const idx = layers.findIndex((l: any) => l.id === activeLayerId);
-              if (idx < layers.length - 1) reorderLayer(activeLayerId, idx + 1, layers, activeLayerId);
-            }}><ChevronUp size={13} /></button>
-            <button className="layer-panel-btn" disabled={layers.findIndex((l: any) => l.id === activeLayerId) <= 0} onClick={() => {
-              const idx = layers.findIndex((l: any) => l.id === activeLayerId);
-              if (idx > 0) reorderLayer(activeLayerId, idx - 1, layers, activeLayerId);
-            }}><ChevronDown size={13} /></button>
-            <button className="layer-panel-btn" disabled={layers.length <= 1} onClick={() => removeLayer(activeLayerId, layers, activeLayerId)}><Trash2 size={13} /></button>
-          </div>
-        </div>
-        <div className="layer-list custom-scrollbar">
-          {[...layers].reverse().map((layer) => (
-            <LayerItem
-              key={layer.id}
-              layer={layer}
-              active={layer.id === activeLayerId}
-              layerDragOver={layerDragOver}
-              onSelect={setActiveLayerId}
-              onSetVisible={setLayerVisible}
-              layerDragIdRef={layerDragIdRef}
-              setLayerDragOver={setLayerDragOver}
-              reorderLayer={(id: string, idx: number) => reorderLayer(id, idx, layers, activeLayerId)}
-              version={version}
-            />
-          ))}
-        </div>
-        {activeLayer && (
-          <div className="p-2 border-t border-[#111] bg-[#252526] flex flex-col gap-2 flex-shrink-0">
-            <div className="flex items-center gap-2">
-              <span className="text-[9px] font-bold text-gray-500 uppercase w-14">Opacity</span>
-              <input type="range" min={0} max={100} value={activeLayer.opacity} onChange={(e) => setLayerOpacity(activeLayerId, Number(e.target.value), layers, activeLayerId)} className="flex-1 h-1 range-slider" />
-              <span className="text-[9px] font-mono text-indigo-400 w-8">{activeLayer.opacity}%</span>
-            </div>
-            <div className="flex gap-1">
-              <button className="layer-panel-footer-btn flex-1" disabled={layers.findIndex((l: any) => l.id === activeLayerId) === 0} onClick={() => mergeDown(activeLayerId, layers, activeLayerId, () => null)}><Merge size={10} /> Merge ↓</button>
-              <button className="layer-panel-footer-btn flex-1" onClick={() => flattenAll(layers, activeLayerId, imageSize.w, imageSize.h)}>Flatten</button>
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  });
-
-  // 레이어 개별 아이템 최적화
-  const LayerItem = memo(({ layer, active, onSelect, onSetVisible, layerDragOver, layerDragIdRef, setLayerDragOver, reorderLayer, version }: any) => {
-    const isDragTarget = layerDragOver === layer.id && layerDragIdRef.current !== layer.id;
-    return (
-      <div
-        draggable
-        className={cn('layer-item', active && 'layer-item-active', isDragTarget && 'layer-item-drag-over')}
-        onClick={() => onSelect(layer.id)}
-        onDragStart={() => { layerDragIdRef.current = layer.id; }}
-        onDragOver={(e) => { e.preventDefault(); setLayerDragOver(layer.id); }}
-        onDragLeave={() => setLayerDragOver(null)}
-        onDrop={(e) => {
-          e.preventDefault();
-          setLayerDragOver(null);
-          const fromId = layerDragIdRef.current;
-          layerDragIdRef.current = null;
-          reorderLayer(fromId, 0); // 실제 인덱스는 부모에서 처리
-        }}
-        onDragEnd={() => { layerDragIdRef.current = null; setLayerDragOver(null); }}
-      >
-        <button className={cn('layer-vis-btn', !layer.visible && 'layer-vis-btn-hidden')} onClick={(e) => { e.stopPropagation(); onSetVisible(layer.id, !layer.visible); }}>
-          {layer.visible ? <Eye size={12} /> : <EyeOff size={12} />}
-        </button>
-        <div className="layer-thumb">
-          {layer.type === 'text' ? <Type size={16} className="text-gray-400" /> : <LayerThumbnail layer={layer} historyVersion={version} />}
-        </div>
-        <div className="layer-info">
-          <span className={cn('layer-name', active && 'layer-name-active')}>{layer.name}</span>
-          <span className="layer-meta">{layer.type}</span>
-        </div>
-        {layer.opacity < 100 && <span className="layer-opacity-badge">{layer.opacity}%</span>}
-      </div>
-    );
-  });
 
   // 배경 채우기 관련
   const [fillColor, setFillColor] = useState('#ffffff');
@@ -319,6 +324,7 @@ export function BrushEditor({
   const [blur, setBlur] = useState(0);
   const [showAdjustPanel, setShowAdjustPanel] = useState(false);
   const [adjOpen, setAdjOpen] = useState(false); // Adjustments 패널 접힘 (기본 닫힘)
+  const [historyOpen, setHistoryOpen] = useState(false); // 히스토리 패널 접힘 (기본 닫힘)
   const [layerDragOver, setLayerDragOver] = useState<string | null>(null); // 드래그 오버 중인 레이어 ID
   const layerDragIdRef = useRef<string | null>(null); // 드래그 중인 레이어 ID
 
@@ -367,7 +373,7 @@ export function BrushEditor({
   const layersHook = useLayers(imageSize.w, imageSize.h);
   const {
     layers, setLayers, activeLayerId, setActiveLayerId,
-    historyStack, historyIndexRef, historyVersion,
+    historyStack, historyIndexRef,
     canUndo, canRedo,
     undoBtnRef, redoBtnRef,
     saveSnapshot, jumpToHistory, undo: layerUndo, redo: layerRedo,
@@ -379,6 +385,7 @@ export function BrushEditor({
     mergeDown, flattenAll,
     getActiveLayer, getActiveLayerCanvases,
     savePixelSnapshot, prepareSnapshot, resetLayers, commitLayers,
+    subscribeHistory,
   } = layersHook;
 
   // imageUrl 변경 시 레이어 초기화 (새 이미지 로드 준비)
@@ -2985,14 +2992,28 @@ export function BrushEditor({
           </div>
         </div>
 
-        {/* Right Sidebar Panels - 컴포넌트 분리 완성 */}
         <div className="brush-editor-sidebar-right flex flex-col min-w-[240px]">
-          <HistoryPanel
-            historyStack={historyStack.current}
-            historyIndex={historyIndexRef.current}
-            jumpToHistory={jumpToHistory}
-            version={historyVersion}
-          />
+          {/* History — 기본 접힘 및 조건부 렌더링 */}
+          <div className="flex-shrink-0 flex flex-col border-b border-[#111]">
+            <button
+              className="brush-panel-title px-3 py-2 bg-[#333] text-white font-black italic flex justify-between items-center w-full"
+              onClick={() => setHistoryOpen(v => !v)}
+            >
+              <span>HISTORY</span>
+              <div className="flex items-center gap-1">
+                <Activity size={12} className="text-gray-500" />
+                <span className="text-[10px] text-gray-500">{historyOpen ? '▲' : '▼'}</span>
+              </div>
+            </button>
+            {historyOpen && (
+              <HistoryPanel
+                historyStack={historyStack.current}
+                historyIndexRef={historyIndexRef}
+                jumpToHistory={jumpToHistory}
+                subscribeHistory={subscribeHistory}
+              />
+            )}
+          </div>
 
           {/* Adjustments — 기본 접힘 */}
           <div className="flex-shrink-0 flex flex-col border-b border-[#111]">
@@ -3050,7 +3071,8 @@ export function BrushEditor({
             layers={layers}
             activeLayerId={activeLayerId}
             setActiveLayerId={setActiveLayerId}
-            setLayerVisible={(id: any, vis: any) => setLayerVisible(id, vis, layers)}
+            // (id: string, vis: boolean) => setLayerVisible(id, vis, layers) 형태의 래퍼는 useLayers에서 이미 처리되거나 여기서 직접 넘김
+            setLayerVisible={setLayerVisible}
             setLayerOpacity={setLayerOpacity}
             removeLayer={removeLayer}
             reorderLayer={reorderLayer}
@@ -3058,7 +3080,7 @@ export function BrushEditor({
             mergeDown={mergeDown}
             flattenAll={flattenAll}
             imageSize={imageSize}
-            version={historyVersion}
+            subscribeHistory={subscribeHistory}
           />
         </div>
       </div>

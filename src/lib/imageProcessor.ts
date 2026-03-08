@@ -13,7 +13,16 @@ import {
     applyGrayscale,
     autoCropCanvas,
     resizeCanvas,
+    hasTransparency,
 } from './canvasUtils';
+
+const formatToMime: Record<string, string> = {
+    'png': 'image/png',
+    'jpg': 'image/jpeg',
+    'jpeg': 'image/jpeg',
+    'webp': 'image/webp',
+    'svg': 'image/svg+xml'
+};
 
 /**
  * [이미지 처리 통합 파이프라인]
@@ -42,9 +51,15 @@ export async function processImage(file: File, options: AppOptions): Promise<str
         workCanvas = resizeCanvas(workCanvas, options.resizeWidth, options.resizeHeight, options.keepRatio);
     }
 
-    // 3. PNG/JPEG 포맷 처리
+    // 3. 포맷 결정
     let mimeType = (file.type || 'image/png');
-    if (mimeType.includes('jpeg') || mimeType.includes('jpg')) {
+    if (options.enableCustomFormat) {
+        mimeType = formatToMime[options.customFormat] || 'image/png';
+    }
+
+    // 4. 투명도 처리 및 배경 합성 (JPEG인 경우)
+    const needsBackground = mimeType.includes('jpeg') || mimeType.includes('jpg');
+    if (needsBackground) {
         const { canvas: fCanvas, ctx: fCtx } = await getCanvasAndContext(workCanvas);
         fCtx.fillStyle = '#FFFFFF';
         fCtx.fillRect(0, 0, fCanvas.width, fCanvas.height);
@@ -52,9 +67,19 @@ export async function processImage(file: File, options: AppOptions): Promise<str
         workCanvas = fCanvas;
     }
 
-    // 4. 압축 및 최종 결과 URL 생성
+    // 5. SVG 특수 처리
+    if (mimeType === 'image/svg+xml') {
+        const dataUrl = workCanvas.toDataURL('image/png');
+        const svgContent = `<svg xmlns="http://www.w3.org/2000/svg" width="${workCanvas.width}" height="${workCanvas.height}">
+  <image href="${dataUrl}" width="${workCanvas.width}" height="${workCanvas.height}" />
+</svg>`;
+        const finalBlob = new Blob([svgContent], { type: 'image/svg+xml' });
+        return URL.createObjectURL(finalBlob);
+    }
+
+    // 6. 압축 및 최종 결과 URL 생성
     let finalBlob = await canvasToBlob(workCanvas, mimeType);
-    if (options.enableCompress) {
+    if (options.enableCompress && !mimeType.includes('svg')) {
         finalBlob = await new Promise<Blob>((resolve) => {
             new Compressor(finalBlob, {
                 quality: options.quality / 100,

@@ -187,6 +187,22 @@ export default function Home() {
                 <input type="range" min="0" max="100" value={store.grayscale} onChange={e => store.setOption('grayscale', Number(e.target.value))} className="range-slider" />
               </OptionCard>
 
+              <OptionCard title="저장 타입" subtitle="Format" headerAction={<ToggleSwitch checked={store.enableCustomFormat} onChange={c => store.setOption('enableCustomFormat', c)} />} disabled={!store.enableCustomFormat}>
+                <div className="flex gap-2 mt-2">
+                  {(['png', 'jpg', 'webp', 'svg'] as const).map(fmt => (
+                    <button
+                      key={fmt}
+                      onClick={() => store.setOption('customFormat', fmt)}
+                      className={cn(
+                        "flex-1 h-8 rounded text-xs font-bold transition-all",
+                        store.customFormat === fmt ? "bg-indigo-500 text-white" : "bg-white/10 text-gray-400 hover:bg-white/20"
+                      )}
+                    >
+                      {fmt.toUpperCase()}
+                    </button>
+                  ))}
+                </div>
+              </OptionCard>
 
             </div>
 

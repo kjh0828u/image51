@@ -64,7 +64,8 @@ export function getDownloadFilename(originalName: string, blobType: string): str
         'image/png': 'png',
         'image/jpeg': 'jpg',
         'image/webp': 'webp',
-        'image/gif': 'gif'
+        'image/gif': 'gif',
+        'image/svg+xml': 'svg'
     };
     const ext = extMap[blobType] || originalName.split('.').pop() || 'png';
     return `${base}.${ext}`;

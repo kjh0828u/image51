@@ -39,7 +39,8 @@ import {
   blurAndThresholdBinary,
   expandSelection,
   floodFillSelect,
-  getAutoCropBounds
+  getAutoCropBounds,
+  hasTransparency
 } from '../lib/canvasUtils';
 import { useBrushConfig, Tool, BrushShape } from './hooks/useBrushConfig';
 import { useCanvasCore } from './hooks/useCanvasCore';
@@ -97,7 +98,8 @@ export function BrushEditor({ imageUrl, originalName, onReset }: BrushEditorProp
 
   const [downloadQuality, setDownloadQuality] = useState(90);
   const [showDownloadPanel, setShowDownloadPanel] = useState(false);
-  const [downloadFormat, setDownloadFormat] = useState<'png' | 'jpeg' | 'webp'>('png');
+  const [downloadFormat, setDownloadFormat] = useState<'png' | 'jpeg' | 'webp' | 'svg'>('png');
+  const [isTransparent, setIsTransparent] = useState(false);
 
   const [cropMargin, setCropMargin] = useState(4);
 
@@ -142,6 +144,7 @@ export function BrushEditor({ imageUrl, originalName, onReset }: BrushEditorProp
     updateCanvasSize, compositeAndRender
   } = core;
 
+
   const { performDownload } = useImageProcessing();
 
   // 3. Selection Tools
@@ -169,6 +172,23 @@ export function BrushEditor({ imageUrl, originalName, onReset }: BrushEditorProp
     canvasRef, originalRef, maskRef, updateCanvasSize,
     compositeAndRender, stopMarching, setHasSelection
   });
+
+  // 투명도 감지하여 포맷 자동 설정
+  useEffect(() => {
+    if (!canvasRef.current) return;
+    const trans = hasTransparency(canvasRef.current);
+    setIsTransparent(trans);
+    if (trans) {
+      setDownloadFormat('png');
+    } else {
+      // 투명도 없으면 원본 확장자 기반으로 설정
+      const ext = originalName.split('.').pop()?.toLowerCase();
+      if (ext === 'jpg' || ext === 'jpeg') setDownloadFormat('jpeg');
+      else if (ext === 'webp') setDownloadFormat('webp');
+      else if (ext === 'png') setDownloadFormat('png');
+      else setDownloadFormat('png');
+    }
+  }, [historyVersion, originalName]);
 
   const [isProcessing, setIsProcessing] = useState(false);
   const [aiDone, setAiDone] = useState(false);
@@ -1098,6 +1118,17 @@ export function BrushEditor({ imageUrl, originalName, onReset }: BrushEditorProp
     const format = downloadFormat;
     const quality = downloadQuality / 100;
 
+    // SVG 처리
+    if (format === 'svg') {
+      const dataUrl = canvasRef.current.toDataURL('image/png');
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${canvasRef.current.width}" height="${canvasRef.current.height}"><image href="${dataUrl}" width="${canvasRef.current.width}" height="${canvasRef.current.height}" /></svg>`;
+      const blob = new Blob([svg], { type: 'image/svg+xml' });
+      const filename = getDownloadFilename(originalName, 'image/svg+xml');
+      performDownload(blob, filename);
+      setShowDownloadPanel(false);
+      return;
+    }
+
     canvasRef.current.toBlob(async (blob) => {
       if (!blob) return;
       const filename = getDownloadFilename(originalName, blob.type);
@@ -1444,17 +1475,24 @@ export function BrushEditor({ imageUrl, originalName, onReset }: BrushEditorProp
             <div className="brush-fill-panel" style={{ position: 'absolute', left: 'auto', right: '0', top: '2.5rem', zIndex: 1000 }}>
               <div className="brush-panel-title">Export Format</div>
               <div className="flex gap-1 mb-3">
-                {(['png', 'jpeg', 'webp'] as const).map(fmt => (
+                {(['png', 'jpeg', 'webp', 'svg'] as const).map(fmt => (
                   <button
                     key={fmt}
+                    disabled={!isTransparent && downloadFormat !== fmt}
                     onClick={() => setDownloadFormat(fmt)}
-                    className={`flex-1 h-8 rounded text-[10px] uppercase font-bold ${downloadFormat === fmt ? 'bg-white text-black' : 'bg-[#333] text-[#aaa]'}`}
+                    className={`flex-1 h-8 rounded text-[10px] uppercase font-bold transition-all ${downloadFormat === fmt
+                      ? 'bg-indigo-500 text-white shadow-lg'
+                      : 'bg-[#333] text-[#aaa] hover:bg-[#444] disabled:opacity-30 disabled:pointer-events-none'
+                      }`}
                   >
-                    {fmt}
+                    {fmt === 'jpeg' ? 'JPG' : fmt}
                   </button>
                 ))}
               </div>
-              {downloadFormat !== 'png' && (
+              {!isTransparent && (
+                <p className="text-[9px] text-gray-500 mb-2 text-center">투명 배경이 없으면 원본 포맷으로 저장됩니다.</p>
+              )}
+              {downloadFormat !== 'png' && downloadFormat !== 'svg' && (
                 <div className="mb-3">
                   <div className="flex justify-between items-center mb-1">
                     <span className="text-[10px] text-[#888] font-bold">QUALITY</span>
@@ -1467,7 +1505,7 @@ export function BrushEditor({ imageUrl, originalName, onReset }: BrushEditorProp
                   />
                 </div>
               )}
-              <button onClick={download} className="brush-btn-action w-full h-8 rounded text-xs font-bold">
+              <button onClick={download} className="brush-btn-action w-full h-8 rounded text-xs font-bold shadow-lg">
                 Export Now
               </button>
             </div>

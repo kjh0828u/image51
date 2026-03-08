@@ -389,3 +389,16 @@ export function getAutoCropBounds(canvas: HTMLCanvasElement, margin = 0) {
         h: Math.min(height, maxY + 1 + margin) - Math.max(0, minY - margin),
     };
 }
+
+/**
+ * 이미지에 투명한 픽셀이 하나라도 존재하는지 확인합니다.
+ */
+export function hasTransparency(canvas: HTMLCanvasElement): boolean {
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return false;
+    const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    for (let i = 3; i < data.length; i += 4) {
+        if (data[i]! < 255) return true;
+    }
+    return false;
+}

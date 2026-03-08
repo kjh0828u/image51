@@ -46,6 +46,9 @@ export interface AppOptions {
 
     autoDownloadAfterProcessing: boolean; // 모든 변환 완료 후 자동 다운로드
     downloadMode: 'default' | 'custom';
+
+    enableCustomFormat: boolean;
+    customFormat: 'png' | 'jpg' | 'webp' | 'svg';
 }
 
 /**
@@ -77,6 +80,9 @@ const defaultOptions: AppOptions = {
 
     autoDownloadAfterProcessing: false,
     downloadMode: 'default',
+
+    enableCustomFormat: false,
+    customFormat: 'png',
 };
 
 /**
@@ -86,7 +92,8 @@ const imageOptionKeys = [
     'enableAutoCrop', 'autoCropMargin',
     'enableCompress', 'quality',
     'enableResize', 'resizeWidth', 'resizeHeight', 'keepRatio',
-    'enableGrayscale', 'grayscale'
+    'enableGrayscale', 'grayscale',
+    'enableCustomFormat', 'customFormat'
 ] as const;
 
 export interface AppState extends AppOptions {

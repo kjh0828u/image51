@@ -54,7 +54,7 @@ import {
   hasTransparency
 } from '../lib/canvasUtils';
 import { useBrushConfig, Tool, BrushShape } from './hooks/useBrushConfig';
-import { useCanvasCore } from './hooks/useCanvasCore';
+import { useCanvasCore, renderTextLayerToCtx } from './hooks/useCanvasCore';
 import { useLayers, type Layer, type TextStyle, type LayerHistoryEntry } from './hooks/useLayers';
 import { useSelectionTools } from './hooks/useSelectionTools';
 import { useImageProcessing } from '@/hooks/useImageProcessing';
@@ -495,12 +495,16 @@ export function BrushEditor({
   const textLivePosRef = useRef<{ x: number; y: number } | null>(null);
   const textScaleDragRef = useRef<{ mx: number; my: number; baseFontSize: number; baseX: number; baseY: number; corner: string; layerId: string } | null>(null);
   const textScaleLiveSizeRef = useRef<number | null>(null);
+  // 드래그/스케일 중 DOM 오버레이에서 숨길 레이어 ID (잔상 방지)
+  const [domHiddenTextId, setDomHiddenTextId] = useState<string | null>(null);
 
   // Marching animation — layerId/mode도 ref로 관리 (interval에서 최신값 사용)
   const textMarchOffsetRef = useRef(0);
   const textMarchTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const textMarchLayerIdRef = useRef<string | null>(null);
   const textMarchModeRef = useRef<'hover' | 'selected'>('hover');
+  // drawTextOutline을 ref로 관리 → zoom 변경 시 interval이 최신 함수를 참조
+  const drawTextOutlineRef = useRef<((layerId: string | null, mode: 'hover' | 'selected') => void) | null>(null);
 
   // 측정 전용 캔버스 (재사용 — 매 호출마다 생성 방지)
   const measureCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -808,6 +812,11 @@ export function BrushEditor({
     ctx.restore();
   }, [getTextLayerBounds, zoom]);
 
+  // drawTextOutline ref 항상 최신으로 유지 (interval이 zoom 변경 후 최신 함수 참조)
+  useEffect(() => {
+    drawTextOutlineRef.current = drawTextOutline;
+  }, [drawTextOutline]);
+
   // ── 오버레이 캔버스 해상도 최적화 및 자동 리드로우 ──
   // 줌 시에도 UI(크롭 가이드 등)가 흐릿해지지 않도록 내부 버퍼 크기를 디스플레이 크기에 맞춤
   useEffect(() => {
@@ -835,12 +844,12 @@ export function BrushEditor({
     if (textMarchTimerRef.current) return; // 이미 실행 중이면 ref만 갱신
     textMarchTimerRef.current = setInterval(() => {
       textMarchOffsetRef.current = (textMarchOffsetRef.current + 0.02) % 1;
-      // ref에서 최신 layerId/mode 읽기 (stale closure 없음)
-      if (textMarchLayerIdRef.current) {
-        drawTextOutline(textMarchLayerIdRef.current, textMarchModeRef.current);
+      // ref를 통해 항상 최신 drawTextOutline 참조 (zoom 변경 후에도 올바른 함수 사용)
+      if (textMarchLayerIdRef.current && drawTextOutlineRef.current) {
+        drawTextOutlineRef.current(textMarchLayerIdRef.current, textMarchModeRef.current);
       }
     }, 50);
-  }, [drawTextOutline]);
+  }, []);
 
   const stopTextMarching = useCallback(() => {
     if (textMarchTimerRef.current) {
@@ -1598,6 +1607,7 @@ export function BrushEditor({
                 layerId: curSelId,
               };
               isPainting.current = true;
+              setDomHiddenTextId(curSelId); // DOM 오버레이에서 즉시 숨김 (잔상 방지)
               return;
             }
           }
@@ -1628,6 +1638,7 @@ export function BrushEditor({
           };
           textLivePosRef.current = null;
           isPainting.current = true;
+          setDomHiddenTextId(hitId); // DOM 오버레이에서 즉시 숨김 (잔상 방지)
         } else {
           // 빈 공간 클릭
           if (curSelId) {
@@ -1759,6 +1770,7 @@ export function BrushEditor({
       textDragRef.current = null;
       textLivePosRef.current = null;
       textLiveOverrideRef.current = null; // override 해제
+      setDomHiddenTextId(null); // DOM 오버레이 잔상 해제
 
       if (didDrag && livePos) {
         // 실제 이동 → 커밋 (히스토리 1회)
@@ -1803,6 +1815,7 @@ export function BrushEditor({
       textScaleDragRef.current = null;
       textScaleLiveSizeRef.current = null;
       textLiveOverrideRef.current = null;
+      setDomHiddenTextId(null); // DOM 오버레이 잔상 해제
       if (liveSize !== null) {
         const finalX = liveOverride?.x ?? drag.baseX;
         const finalY = liveOverride?.y ?? drag.baseY;
@@ -2003,15 +2016,37 @@ export function BrushEditor({
   }, [compositeLayersAndRender, layers, stopMarching, saveMaskSnapshot, getActiveMask]);
 
   // ── 다운로드 ──────────────────────────────────────────────
+  /** 텍스트 레이어를 포함한 내보내기용 캔버스를 생성 */
+  const buildExportCanvas = useCallback(() => {
+    if (!canvasRef.current) return null;
+    const src = canvasRef.current;
+    const exportCanvas = document.createElement('canvas');
+    exportCanvas.width = src.width;
+    exportCanvas.height = src.height;
+    const ctx = exportCanvas.getContext('2d')!;
+    // 현재 합성 결과 복사
+    ctx.drawImage(src, 0, 0);
+    // 텍스트 레이어를 순서대로 래스터화 (DOM 오버레이는 캔버스에 없으므로 여기서 그림)
+    for (const layer of layersRef.current) {
+      if (layer.type === 'text' && layer.visible) {
+        ctx.globalAlpha = layer.opacity / 100;
+        renderTextLayerToCtx(ctx, layer);
+        ctx.globalAlpha = 1;
+      }
+    }
+    return exportCanvas;
+  }, []);
+
   const download = useCallback(() => {
     if (!canvasRef.current) return;
     const format = downloadFormat;
     const quality = downloadQuality / 100;
+    const exportCanvas = buildExportCanvas() ?? canvasRef.current;
 
     // SVG 처리
     if (format === 'svg') {
-      const dataUrl = canvasRef.current.toDataURL('image/png');
-      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${canvasRef.current.width}" height="${canvasRef.current.height}"><image href="${dataUrl}" width="${canvasRef.current.width}" height="${canvasRef.current.height}" /></svg>`;
+      const dataUrl = exportCanvas.toDataURL('image/png');
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${exportCanvas.width}" height="${exportCanvas.height}"><image href="${dataUrl}" width="${exportCanvas.width}" height="${exportCanvas.height}" /></svg>`;
       const blob = new Blob([svg], { type: 'image/svg+xml' });
       const filename = getDownloadFilename(originalName, 'image/svg+xml');
       performDownload(blob, filename);
@@ -2019,13 +2054,13 @@ export function BrushEditor({
       return;
     }
 
-    canvasRef.current.toBlob(async (blob) => {
+    exportCanvas.toBlob(async (blob) => {
       if (!blob) return;
       const filename = getDownloadFilename(originalName, blob.type);
       await performDownload(blob, filename);
       setShowDownloadPanel(false);
     }, `image/${format}`, quality);
-  }, [downloadFormat, downloadQuality, originalName, performDownload]);
+  }, [downloadFormat, downloadQuality, originalName, performDownload, buildExportCanvas]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -2354,7 +2389,7 @@ export function BrushEditor({
           textLiveOverrideRef.current = { x: newX, y: newY };
           // Render live using layersRef (no state update → no re-render → no lag)
           const liveLayers = layersRef.current.map(l => l.id === textDragRef.current!.layerId ? { ...l, x: newX, y: newY } : l);
-          compositeLayersAndRender(liveLayers);
+          compositeLayersAndRender(liveLayers, true);
           // 즉시 아웃라인 업데이트 (interval 50ms 기다리지 않음)
           drawTextOutline(textDragRef.current.layerId, 'selected');
         } else if (currentTool === 'text' && textScaleDragRef.current) {
@@ -2386,7 +2421,7 @@ export function BrushEditor({
           const liveLayers = layersRef.current.map(l => l.id === scaleLayerId
             ? { ...l, x: newX, y: newY, textStyle: { ...l.textStyle, fontSize: newSize } }
             : l);
-          compositeLayersAndRender(liveLayers);
+          compositeLayersAndRender(liveLayers, true);
           drawTextOutline(scaleLayerId, 'selected');
         } else if (currentTool === 'erase' || currentTool === 'restore' || currentTool === 'paint' || currentTool === 'clone' || currentTool === 'heal' || currentTool === 'blur-brush') {
           paint(pos);
@@ -2530,8 +2565,9 @@ export function BrushEditor({
     // 선택된 폰트가 구글폰트 등 외부 폰트인 경우 적용 시간을 피하기 위해 명시적 로딩 요청 후 랜더링
     if (style.fontFamily) {
       try {
+        // 폰트 로드 완료 시 DOM 오버레이 자동 업데이트 (bumpTextUI로 강제 재렌더)
         document.fonts.load(`${style.fontWeight || 'normal'} ${style.fontSize || 16}px "${style.fontFamily}"`).then(() => {
-          compositeLayersAndRender(layersRef.current);
+          bumpTextUI();
         });
       } catch (e) { }
     }
@@ -2543,15 +2579,14 @@ export function BrushEditor({
         textareaRef.current.style.lineHeight = String(style.lineHeight ?? 1.3);
       }
     } else if (selId) {
-      // 선택 상태: layersRef 즉시 패치 + 캔버스 재렌더 (setLayers 없음 → 렉 없음)
-      // layersRef를 직접 변경하되, onPointerUp에서 setLayers로 동기화
+      // 선택 상태: layersRef + state 모두 업데이트 (DOM 오버레이 즉시 반영)
       const updated = layersRef.current.map(l =>
         l.id === selId ? { ...l, textStyle: { ...l.textStyle, ...style } } : l
       );
       layersRef.current = updated;
-      compositeLayersAndRender(updated);
+      setLayers(updated);
     }
-  }, [compositeLayersAndRender]);
+  }, [setLayers]);
 
   // 슬라이더 드래그 완료: state에 커밋 (히스토리 1회)
   const commitTextStyleChange = useCallback((style: TextStyle) => {
@@ -3135,6 +3170,42 @@ export function BrushEditor({
                     backgroundColor: tool === 'erase' ? 'rgba(239,68,68,0.15)' : tool === 'paint' ? `${brushColor}33` : 'rgba(56,189,248,0.15)',
                   }}
                 />
+
+                {/* 텍스트 레이어 DOM 오버레이 — 벡터 화질로 표시 (편집 중이 아닌 레이어) */}
+                {layers.filter(l => l.type === 'text' && l.visible && l.id !== editingTextLayerIdRef.current && l.id !== domHiddenTextId).map(layer => {
+                  const ts = layer.textStyle;
+                  const lh = ts.lineHeight ?? 1.3;
+                  const ls = ts.letterSpacing ?? 0;
+                  const lx = (textLiveOverrideRef.current?.x != null && layer.id === textMarchLayerIdRef.current ? textLiveOverrideRef.current.x : layer.x) * zoom;
+                  const ly = (textLiveOverrideRef.current?.y != null && layer.id === textMarchLayerIdRef.current ? textLiveOverrideRef.current.y : layer.y) * zoom;
+                  const fontSize = (textLiveOverrideRef.current?.fontSize != null && layer.id === textMarchLayerIdRef.current ? textLiveOverrideRef.current.fontSize : ts.fontSize) * zoom;
+                  return (
+                    <div
+                      key={layer.id}
+                      className="text-layer-dom-overlay"
+                      style={{
+                        position: 'absolute',
+                        left: lx,
+                        top: ly,
+                        opacity: layer.opacity / 100,
+                        pointerEvents: 'none',
+                        whiteSpace: 'pre',
+                        fontFamily: ts.fontFamily,
+                        fontSize: `${fontSize}px`,
+                        fontWeight: ts.fontWeight,
+                        fontStyle: ts.fontStyle,
+                        color: ts.color,
+                        letterSpacing: `${ls * zoom}px`,
+                        lineHeight: lh,
+                        textAlign: ts.align,
+                        transform: ts.align === 'center' ? 'translateX(-50%)' : ts.align === 'right' ? 'translateX(-100%)' : 'none',
+                        userSelect: 'none',
+                      }}
+                    >
+                      {layer.textContent}
+                    </div>
+                  );
+                })}
 
                 {/* 텍스트 툴 입력 오버레이 — uncontrolled textarea (렉 없음) */}
                 {isEditingTextRef.current && textPosRef.current && (

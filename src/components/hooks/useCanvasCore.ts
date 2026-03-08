@@ -1,6 +1,40 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Layer } from './useLayers';
 
+/** 텍스트 레이어를 주어진 canvas context에 래스터화. 내보내기/썸네일 전용. */
+export function renderTextLayerToCtx(ctx: CanvasRenderingContext2D, layer: Layer) {
+    const { textContent, textStyle, x, y } = layer;
+    if (!textContent) return;
+
+    const { fontFamily, fontSize, fontWeight, fontStyle, color, align,
+        letterSpacing = 0, lineHeight = 1.3 } = textStyle;
+    ctx.font = `${fontStyle} ${fontWeight} ${fontSize}px ${fontFamily}`;
+    ctx.fillStyle = color;
+    ctx.textBaseline = 'top';
+
+    const lines = textContent.split('\n');
+    const lineH = fontSize * lineHeight;
+
+    lines.forEach((line, i) => {
+        const lineY = y + i * lineH;
+        if (letterSpacing === 0) {
+            ctx.textAlign = align;
+            ctx.fillText(line, x, lineY);
+        } else {
+            let totalW = 0;
+            for (const ch of line) totalW += ctx.measureText(ch).width + letterSpacing;
+            totalW -= letterSpacing;
+            let curX = x;
+            if (align === 'center') curX = x - totalW / 2;
+            else if (align === 'right') curX = x - totalW;
+            for (const ch of line) {
+                ctx.fillText(ch, curX, lineY);
+                curX += ctx.measureText(ch).width + letterSpacing;
+            }
+        }
+    });
+}
+
 export function useCanvasCore(imageUrl: string, onImageLoaded: () => void) {
     // ── 캔버스 Refs ────────────────────────────────────────────────────────
     // display: 최종 합성 결과 표시
@@ -59,7 +93,7 @@ export function useCanvasCore(imageUrl: string, onImageLoaded: () => void) {
     // 레이어 합성용 재사용 임시 캔버스 (매 렌더마다 createElement 방지)
     const compositeTemp = useRef<HTMLCanvasElement | null>(null);
 
-    const compositeLayersAndRender = useCallback((layers: Layer[]) => {
+    const compositeLayersAndRender = useCallback((layers: Layer[], includeText = false) => {
         if (!canvasRef.current) return;
         const canvas = canvasRef.current;
         const ctx = canvas.getContext('2d')!;
@@ -78,7 +112,10 @@ export function useCanvasCore(imageUrl: string, onImageLoaded: () => void) {
             ctx.globalCompositeOperation = 'source-over';
 
             if (layer.type === 'text') {
-                renderTextLayer(ctx, layer);
+                // 기본적으로 텍스트 레이어는 DOM 오버레이로 렌더링 (화질 개선)
+                // includeText=true 시에만 캔버스에 래스터화 (드래그 live 렌더링용)
+                if (includeText) renderTextLayerToCtx(ctx, layer);
+                else continue;
             } else if (layer.originalCanvas && layer.maskCanvas) {
                 const { originalCanvas, maskCanvas, x, y } = layer;
                 // 크기가 다를 때만 재설정 (불필요한 리셋 방지)
@@ -110,42 +147,6 @@ export function useCanvasCore(imageUrl: string, onImageLoaded: () => void) {
             compositeSingleLayer();
         }
     }, [compositeLayersAndRender, compositeSingleLayer]);
-
-    // ── 텍스트 레이어 렌더링 ──────────────────────────────────────────────
-    function renderTextLayer(ctx: CanvasRenderingContext2D, layer: Layer) {
-        const { textContent, textStyle, x, y } = layer;
-        if (!textContent) return;
-
-        const { fontFamily, fontSize, fontWeight, fontStyle, color, align,
-            letterSpacing = 0, lineHeight = 1.3 } = textStyle;
-        ctx.font = `${fontStyle} ${fontWeight} ${fontSize}px ${fontFamily}`;
-        ctx.fillStyle = color;
-        ctx.textBaseline = 'top';
-
-        const lines = textContent.split('\n');
-        const lineH = fontSize * lineHeight;
-
-        lines.forEach((line, i) => {
-            const lineY = y + i * lineH;
-            if (letterSpacing === 0) {
-                ctx.textAlign = align;
-                ctx.fillText(line, x, lineY);
-            } else {
-                // 자간 적용: 문자 하나씩 배치
-                // align 처리를 위해 전체 너비 먼저 계산
-                let totalW = 0;
-                for (const ch of line) totalW += ctx.measureText(ch).width + letterSpacing;
-                totalW -= letterSpacing; // 마지막 문자 후 간격 제거
-                let curX = x;
-                if (align === 'center') curX = x - totalW / 2;
-                else if (align === 'right') curX = x - totalW;
-                for (const ch of line) {
-                    ctx.fillText(ch, curX, lineY);
-                    curX += ctx.measureText(ch).width + letterSpacing;
-                }
-            }
-        });
-    }
 
     // ── 이미지 로드 ───────────────────────────────────────────────────────
     const onImageLoadedRef = useRef(onImageLoaded);

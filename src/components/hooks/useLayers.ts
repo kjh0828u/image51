@@ -140,10 +140,13 @@ function snapshotToLayer(snap: LayerSnapshot, docW: number, docH: number): Layer
 export function useLayers(docW: number, docH: number) {
   const [layers, setLayers] = useState<Layer[]>([]);
   const [activeLayerId, setActiveLayerId] = useState<string>('');
-  const [historyVersion, setHistoryVersion] = useState(0);
+  // historyVersion: 히스토리 패널 표시용 — 리렌더 최소화를 위해 ref 사용
+  const historyVersion = useRef(0);
 
-  // 히스토리 스택
+  // 히스토리 스택 — 모두 ref (히스토리 저장이 리렌더를 트리거하지 않음)
   const historyStack = useRef<LayerHistoryEntry[]>([]);
+  const historyIndexRef = useRef(-1);
+  // canUndo/canRedo는 버튼 활성화를 위해 최소한의 state 유지
   const [historyIndex, setHistoryIndex] = useState(-1);
 
   // ── 히스토리 저장 ──────────────────────────────────────────────────────
@@ -163,14 +166,13 @@ export function useLayers(docW: number, docH: number) {
       time,
     };
 
-    setHistoryIndex(prev => {
-      const newIdx = prev + 1;
-      // 미래 히스토리 삭제
-      historyStack.current = historyStack.current.slice(0, newIdx);
-      historyStack.current.push(entry);
-      setHistoryVersion(v => v + 1);
-      return newIdx;
-    });
+    const newIdx = historyIndexRef.current + 1;
+    historyStack.current = historyStack.current.slice(0, newIdx);
+    historyStack.current.push(entry);
+    historyIndexRef.current = newIdx;
+    historyVersion.current += 1;
+    // canUndo/canRedo 버튼만 업데이트 (setLayers 없음 → 합성 effect 재실행 없음)
+    setHistoryIndex(newIdx);
   }, []);
 
   // ── 히스토리 복원 ──────────────────────────────────────────────────────
@@ -179,36 +181,37 @@ export function useLayers(docW: number, docH: number) {
     if (index < 0 || index >= historyStack.current.length) return;
     const entry = historyStack.current[index]!;
     const restored = entry.layers.map(snap => snapshotToLayer(snap, docW, docH));
-    setLayers(restored);
-    setActiveLayerId(entry.activeLayerId);
+    historyIndexRef.current = index;
+    historyVersion.current += 1;
     setHistoryIndex(index);
-    setHistoryVersion(v => v + 1);
+    setActiveLayerId(entry.activeLayerId);
+    setLayers(restored);
   }, [docW, docH]);
 
   const undo = useCallback(() => {
-    setHistoryIndex(prev => {
-      if (prev <= 0) return prev;
-      const newIdx = prev - 1;
-      const entry = historyStack.current[newIdx]!;
-      const restored = entry.layers.map(snap => snapshotToLayer(snap, docW, docH));
-      setLayers(restored);
-      setActiveLayerId(entry.activeLayerId);
-      setHistoryVersion(v => v + 1);
-      return newIdx;
-    });
+    const prev = historyIndexRef.current;
+    if (prev <= 0) return;
+    const newIdx = prev - 1;
+    const entry = historyStack.current[newIdx]!;
+    const restored = entry.layers.map(snap => snapshotToLayer(snap, docW, docH));
+    historyIndexRef.current = newIdx;
+    historyVersion.current += 1;
+    setHistoryIndex(newIdx);
+    setActiveLayerId(entry.activeLayerId);
+    setLayers(restored);
   }, [docW, docH]);
 
   const redo = useCallback(() => {
-    setHistoryIndex(prev => {
-      if (prev >= historyStack.current.length - 1) return prev;
-      const newIdx = prev + 1;
-      const entry = historyStack.current[newIdx]!;
-      const restored = entry.layers.map(snap => snapshotToLayer(snap, docW, docH));
-      setLayers(restored);
-      setActiveLayerId(entry.activeLayerId);
-      setHistoryVersion(v => v + 1);
-      return newIdx;
-    });
+    const prev = historyIndexRef.current;
+    if (prev >= historyStack.current.length - 1) return;
+    const newIdx = prev + 1;
+    const entry = historyStack.current[newIdx]!;
+    const restored = entry.layers.map(snap => snapshotToLayer(snap, docW, docH));
+    historyIndexRef.current = newIdx;
+    historyVersion.current += 1;
+    setHistoryIndex(newIdx);
+    setActiveLayerId(entry.activeLayerId);
+    setLayers(restored);
   }, [docW, docH]);
 
   const canUndo = historyIndex > 0;
@@ -224,7 +227,10 @@ export function useLayers(docW: number, docH: number) {
   ) => {
     setLayers(nextLayers);
     setActiveLayerId(nextActiveId);
-    saveSnapshot(nextLayers, nextActiveId, label);
+    // 다음 틱에 스냅샷 저장 → setLayers 렌더링 먼저 완료 후 canvas copy 수행
+    setTimeout(() => {
+      saveSnapshot(nextLayers, nextActiveId, label);
+    }, 0);
   }, [saveSnapshot]);
 
   // ── 레이어 생성 ────────────────────────────────────────────────────────
@@ -380,8 +386,6 @@ export function useLayers(docW: number, docH: number) {
   ) => {
     const nextLayers = currentLayers.map(l => l.id === id ? { ...l, visible } : l);
     setLayers(nextLayers);
-    // 가시성 변경은 히스토리 저장 안 함 (포토샵 동일)
-    setHistoryVersion(v => v + 1);
   }, []);
 
   const setLayerOpacity = useCallback((
@@ -431,7 +435,6 @@ export function useLayers(docW: number, docH: number) {
   ) => {
     const nextLayers = currentLayers.map(l => l.id === id ? { ...l, x, y } : l);
     setLayers(nextLayers);
-    setHistoryVersion(v => v + 1);
     return nextLayers;
   }, []);
 
@@ -440,7 +443,9 @@ export function useLayers(docW: number, docH: number) {
     currentLayers: Layer[],
     currentActiveId: string
   ) => {
-    saveSnapshot(currentLayers, currentActiveId, 'Move Layer');
+    setTimeout(() => {
+      saveSnapshot(currentLayers, currentActiveId, 'Move Layer');
+    }, 0);
   }, [saveSnapshot]);
 
   // ── 병합 ──────────────────────────────────────────────────────────────
@@ -595,7 +600,11 @@ export function useLayers(docW: number, docH: number) {
   useEffect(() => { activeLayerIdRef.current = activeLayerId; }, [activeLayerId]);
 
   const savePixelSnapshot = useCallback((label: string) => {
-    saveSnapshot(layersRef.current, activeLayerIdRef.current, label);
+    // setTimeout 0: 마우스업 직후 렌더링 완료 후 다음 틱에 스냅샷 저장
+    // → 히스토리 저장(canvas copyCanvas)이 현재 프레임을 블로킹하지 않음
+    setTimeout(() => {
+      saveSnapshot(layersRef.current, activeLayerIdRef.current, label);
+    }, 0);
   }, [saveSnapshot]);
 
   // ── 초기화 ────────────────────────────────────────────────────────────
@@ -604,8 +613,9 @@ export function useLayers(docW: number, docH: number) {
     setLayers([]);
     setActiveLayerId('');
     historyStack.current = [];
+    historyIndexRef.current = -1;
+    historyVersion.current = 0;
     setHistoryIndex(-1);
-    setHistoryVersion(0);
   }, []);
 
   return {

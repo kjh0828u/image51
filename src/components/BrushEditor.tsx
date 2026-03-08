@@ -190,7 +190,7 @@ export function BrushEditor({
   const layersHook = useLayers(imageSize.w, imageSize.h);
   const {
     layers, setLayers, activeLayerId, setActiveLayerId,
-    historyVersion, historyStack, historyIndex,
+    historyStack, historyIndex,
     canUndo, canRedo,
     saveSnapshot, jumpToHistory, undo: layerUndo, redo: layerRedo,
     addImageLayer, addPaintLayer, addTextLayer,
@@ -217,12 +217,12 @@ export function BrushEditor({
     };
   }, [addImageLayer, originalName]);
 
-  // 레이어 변경 시 화면 재합성
+  // 레이어 변경 시 화면 재합성 (historyVersion은 ref → dep 불필요)
   useEffect(() => {
     if (layers.length > 0) {
       compositeLayersAndRender(layers);
     }
-  }, [layers, historyVersion, compositeLayersAndRender]);
+  }, [layers, compositeLayersAndRender]);
 
   // activeLayerIdRef: activeLayerId를 항상 최신 상태로 유지 (stale closure 방지)
   const activeLayerIdRef = useRef(activeLayerId);
@@ -381,7 +381,7 @@ export function BrushEditor({
       else if (ext === 'png') setDownloadFormat('png');
       else setDownloadFormat('png');
     }
-  }, [historyVersion, originalName]);
+  }, [layers, originalName]);
 
   const [isProcessing, setIsProcessing] = useState(false);
   const [aiDone, setAiDone] = useState(false);

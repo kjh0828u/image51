@@ -56,32 +56,43 @@ export function useCanvasCore(imageUrl: string, onImageLoaded: () => void) {
      * layers 배열을 bottom-to-top 순서로 합성하여 canvasRef에 렌더링.
      * 텍스트 레이어는 별도로 래스터화하여 그린다.
      */
+    // 레이어 합성용 재사용 임시 캔버스 (매 렌더마다 createElement 방지)
+    const compositeTemp = useRef<HTMLCanvasElement | null>(null);
+
     const compositeLayersAndRender = useCallback((layers: Layer[]) => {
         if (!canvasRef.current) return;
         const canvas = canvasRef.current;
         const ctx = canvas.getContext('2d')!;
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+        // 재사용 temp 캔버스 (필요 시 크기 맞춤)
+        if (!compositeTemp.current) {
+            compositeTemp.current = document.createElement('canvas');
+        }
+        const temp = compositeTemp.current;
+
         for (const layer of layers) {
             if (!layer.visible) continue;
 
             ctx.globalAlpha = layer.opacity / 100;
-            // Phase 1: blendMode는 항상 'source-over'
             ctx.globalCompositeOperation = 'source-over';
 
             if (layer.type === 'text') {
-                // 텍스트 레이어: 직접 렌더링
                 renderTextLayer(ctx, layer);
             } else if (layer.originalCanvas && layer.maskCanvas) {
-                // 픽셀 레이어: temp에서 original + mask 합성 후 배치
                 const { originalCanvas, maskCanvas, x, y } = layer;
-                const temp = document.createElement('canvas');
-                temp.width = originalCanvas.width;
-                temp.height = originalCanvas.height;
+                // 크기가 다를 때만 재설정 (불필요한 리셋 방지)
+                if (temp.width !== originalCanvas.width || temp.height !== originalCanvas.height) {
+                    temp.width = originalCanvas.width;
+                    temp.height = originalCanvas.height;
+                } else {
+                    temp.getContext('2d')!.clearRect(0, 0, temp.width, temp.height);
+                }
                 const tCtx = temp.getContext('2d')!;
                 tCtx.drawImage(originalCanvas, 0, 0);
                 tCtx.globalCompositeOperation = 'destination-in';
                 tCtx.drawImage(maskCanvas, 0, 0);
+                tCtx.globalCompositeOperation = 'source-over';
                 ctx.drawImage(temp, x, y);
             }
         }

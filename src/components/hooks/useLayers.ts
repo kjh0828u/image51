@@ -54,9 +54,9 @@ export interface LayerSnapshot {
   locked: boolean;
   x: number;
   y: number;
-  // 픽셀 데이터
-  originalData: ImageData | null;
-  maskData: ImageData | null;
+  // 픽셀 데이터 — canvas 복사본으로 저장 (getImageData보다 10x 빠름)
+  originalCanvas: HTMLCanvasElement | null;
+  maskCanvas: HTMLCanvasElement | null;
   // 텍스트
   textContent: string;
   textStyle: TextStyle;
@@ -86,19 +86,13 @@ const DEFAULT_TEXT_STYLE: TextStyle = {
   lineHeight: 1.3,
 };
 
+function copyCanvas(src: HTMLCanvasElement): HTMLCanvasElement {
+  const dst = makeCanvas(src.width, src.height);
+  dst.getContext('2d')!.drawImage(src, 0, 0);
+  return dst;
+}
+
 function layerToSnapshot(layer: Layer): LayerSnapshot {
-  let originalData: ImageData | null = null;
-  let maskData: ImageData | null = null;
-
-  if (layer.originalCanvas && layer.originalCanvas.width > 0) {
-    const ctx = layer.originalCanvas.getContext('2d', { willReadFrequently: true })!;
-    originalData = ctx.getImageData(0, 0, layer.originalCanvas.width, layer.originalCanvas.height);
-  }
-  if (layer.maskCanvas && layer.maskCanvas.width > 0) {
-    const ctx = layer.maskCanvas.getContext('2d', { willReadFrequently: true })!;
-    maskData = ctx.getImageData(0, 0, layer.maskCanvas.width, layer.maskCanvas.height);
-  }
-
   return {
     id: layer.id,
     name: layer.name,
@@ -109,26 +103,19 @@ function layerToSnapshot(layer: Layer): LayerSnapshot {
     locked: layer.locked,
     x: layer.x,
     y: layer.y,
-    originalData,
-    maskData,
+    // canvas 복사 (drawImage = GPU 가속, getImageData보다 훨씬 빠름)
+    originalCanvas: layer.originalCanvas && layer.originalCanvas.width > 0
+      ? copyCanvas(layer.originalCanvas) : null,
+    maskCanvas: layer.maskCanvas && layer.maskCanvas.width > 0
+      ? copyCanvas(layer.maskCanvas) : null,
     textContent: layer.textContent,
     textStyle: { ...layer.textStyle },
   };
 }
 
 function snapshotToLayer(snap: LayerSnapshot, docW: number, docH: number): Layer {
-  const w = snap.originalData?.width ?? docW;
-  const h = snap.originalData?.height ?? docH;
-
-  const originalCanvas = makeCanvas(w, h);
-  const maskCanvas = makeCanvas(w, h);
-
-  if (snap.originalData) {
-    originalCanvas.getContext('2d')!.putImageData(snap.originalData, 0, 0);
-  }
-  if (snap.maskData) {
-    maskCanvas.getContext('2d')!.putImageData(snap.maskData, 0, 0);
-  }
+  const w = snap.originalCanvas?.width ?? docW;
+  const h = snap.originalCanvas?.height ?? docH;
 
   return {
     id: snap.id,
@@ -140,8 +127,9 @@ function snapshotToLayer(snap: LayerSnapshot, docW: number, docH: number): Layer
     locked: snap.locked,
     x: snap.x,
     y: snap.y,
-    originalCanvas,
-    maskCanvas,
+    // 복원 시에도 canvas 복사 (스냅샷 캔버스를 재사용하지 않고 복사해서 독립성 유지)
+    originalCanvas: snap.originalCanvas ? copyCanvas(snap.originalCanvas) : makeCanvas(w, h),
+    maskCanvas: snap.maskCanvas ? copyCanvas(snap.maskCanvas) : makeCanvas(w, h),
     textContent: snap.textContent,
     textStyle: { ...snap.textStyle },
   };

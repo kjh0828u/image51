@@ -146,6 +146,8 @@ export function BrushEditor({
   const [blur, setBlur] = useState(0);
   const [showAdjustPanel, setShowAdjustPanel] = useState(false);
   const [adjOpen, setAdjOpen] = useState(false); // Adjustments 패널 접힘 (기본 닫힘)
+  const [layerDragOver, setLayerDragOver] = useState<string | null>(null); // 드래그 오버 중인 레이어 ID
+  const layerDragIdRef = useRef<string | null>(null); // 드래그 중인 레이어 ID
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDraggingFile, setIsDraggingFile] = useState(false);
@@ -222,18 +224,21 @@ export function BrushEditor({
     }
   }, [layers, historyVersion, compositeLayersAndRender]);
 
+  // activeLayerIdRef: activeLayerId를 항상 최신 상태로 유지 (stale closure 방지)
+  const activeLayerIdRef = useRef(activeLayerId);
+  useEffect(() => { activeLayerIdRef.current = activeLayerId; }, [activeLayerId]);
+
   // activeLayerRef: 기존 originalRef/maskRef 대신 활성 레이어 캔버스를 가리키는 동적 ref
-  // 기존 도구(paint, erase, wand 등)가 originalRef/maskRef를 직접 참조하는 코드들을
-  // 아래 getter를 통해 활성 레이어로 리다이렉트
+  // layersRef + activeLayerIdRef 사용으로 stale closure 완전 제거
   const getActiveOriginal = useCallback((): HTMLCanvasElement | null => {
-    const active = layers.find(l => l.id === activeLayerId);
+    const active = layersRef.current.find(l => l.id === activeLayerIdRef.current);
     return active?.originalCanvas ?? originalRef.current;
-  }, [layers, activeLayerId]);
+  }, []);
 
   const getActiveMask = useCallback((): HTMLCanvasElement | null => {
-    const active = layers.find(l => l.id === activeLayerId);
+    const active = layersRef.current.find(l => l.id === activeLayerIdRef.current);
     return active?.maskCanvas ?? maskRef.current;
-  }, [layers, activeLayerId]);
+  }, []);
 
   // 레이어 시스템의 undo/redo + 기존 히스토리 겸용
   const undo = useCallback(() => {
@@ -317,6 +322,14 @@ export function BrushEditor({
   // layers ref (interval 콜백에서 최신 레이어 접근)
   const layersRef = useRef<Layer[]>(layers);
   useEffect(() => { layersRef.current = layers; }, [layers]);
+
+  // brushColor ref (paint 콜백 dep 제거 → 색상 변경 시 paint 재생성 안함 → 렉 없음)
+  const brushColorRef = useRef(brushColor);
+  const updateBrushTipRef = useRef<() => void>(() => {});
+  useEffect(() => {
+    brushColorRef.current = brushColor;
+    updateBrushTipRef.current(); // 색 변경 시 tip 즉시 갱신
+  }, [brushColor]);
 
   // Move 툴 드래그 상태
   const moveDragStart = useRef<{ mx: number; my: number; lx: number; ly: number } | null>(null);
@@ -851,9 +864,9 @@ export function BrushEditor({
     const mData = mCtx.getImageData(0, 0, w, h);
 
     // RGB 값 준비
-    const r = parseInt(brushColor.slice(1, 3), 16);
-    const g = parseInt(brushColor.slice(3, 5), 16);
-    const b = parseInt(brushColor.slice(5, 7), 16);
+    const r = parseInt(brushColorRef.current.slice(1, 3), 16);
+    const g = parseInt(brushColorRef.current.slice(3, 5), 16);
+    const b = parseInt(brushColorRef.current.slice(5, 7), 16);
 
     for (let i = 0; i < sel.length; i++) {
       if (sel[i]) {
@@ -873,10 +886,10 @@ export function BrushEditor({
 
     oCtx.putImageData(oData, 0, 0);
     mCtx.putImageData(mData, 0, 0);
-    compositeLayersAndRender(layers);
+    compositeLayersAndRender(layersRef.current);
     stopMarching();
     saveMaskSnapshot('Selection Fill');
-  }, [brushColor, compositeLayersAndRender, layers, saveMaskSnapshot, stopMarching, getActiveOriginal, getActiveMask]);
+  }, [compositeLayersAndRender, saveMaskSnapshot, stopMarching, getActiveOriginal, getActiveMask]);
 
   const handleBucket = useCallback(
     (pos: { x: number; y: number }) => {
@@ -900,9 +913,9 @@ export function BrushEditor({
       const mData = mCtx.getImageData(0, 0, w, h);
 
       // 브러시 컬러 적용
-      const r = parseInt(brushColor.slice(1, 3), 16);
-      const g = parseInt(brushColor.slice(3, 5), 16);
-      const b = parseInt(brushColor.slice(5, 7), 16);
+      const r = parseInt(brushColorRef.current.slice(1, 3), 16);
+      const g = parseInt(brushColorRef.current.slice(3, 5), 16);
+      const b = parseInt(brushColorRef.current.slice(5, 7), 16);
 
       for (let i = 0; i < sel.length; i++) {
         if (sel[i]) {
@@ -922,10 +935,10 @@ export function BrushEditor({
 
       oCtx.putImageData(oData, 0, 0);
       mCtx.putImageData(mData, 0, 0);
-      compositeLayersAndRender(layers);
+      compositeLayersAndRender(layersRef.current);
       saveMaskSnapshot('Bucket Fill');
     },
-    [brushColor, tolerance, compositeLayersAndRender, layers, saveMaskSnapshot, getActiveOriginal, getActiveMask]
+    [tolerance, compositeLayersAndRender, saveMaskSnapshot, getActiveOriginal, getActiveMask]
   );
 
   const handleEyedropper = useCallback((pos: { x: number; y: number }) => {
@@ -1004,7 +1017,7 @@ export function BrushEditor({
 
     // 기본 스타일 설정
     if (tool === 'paint') {
-      tCtx.fillStyle = brushColor;
+      tCtx.fillStyle = brushColorRef.current;
     } else {
       tCtx.fillStyle = 'black';
     }
@@ -1017,7 +1030,7 @@ export function BrushEditor({
 
         if (tool === 'paint') {
           tCtx.globalCompositeOperation = 'source-over';
-          tCtx.fillStyle = brushColor;
+          tCtx.fillStyle = brushColorRef.current;
           tCtx.beginPath();
           tCtx.arc(center, center, r, 0, Math.PI * 2);
           tCtx.fill();
@@ -1054,7 +1067,10 @@ export function BrushEditor({
       }
     }
     tCtx.restore();
-  }, [brushSize, brushHardness, brushColor, tool, brushShape]);
+  }, [brushSize, brushHardness, tool, brushShape]);
+
+  // updateBrushTip을 ref에 등록 (brushColor effect에서 forward 호출용)
+  useEffect(() => { updateBrushTipRef.current = updateBrushTip; }, [updateBrushTip]);
 
   // 브러시 설정 변경 시 팁 업데이트
   useEffect(() => {
@@ -1164,9 +1180,9 @@ export function BrushEditor({
       origCtx.restore();
       lastPos.current = pos;
       hasStrokeRef.current = true;
-      compositeLayersAndRender(layers);
+      compositeLayersAndRender(layersRef.current);
     },
-    [tool, brushSize, brushOpacity, brushHardness, brushColor, compositeLayersAndRender, layers, originalSnapshotRef, blurCacheRef, getActiveOriginal, getActiveMask]
+    [tool, brushSize, brushOpacity, brushHardness, compositeLayersAndRender, originalSnapshotRef, blurCacheRef, getActiveOriginal, getActiveMask]
   );
 
 
@@ -1676,7 +1692,7 @@ export function BrushEditor({
     const flat = document.createElement('canvas');
     flat.width = w; flat.height = h;
     const fctx = flat.getContext('2d')!;
-    fctx.fillStyle = brushColor;
+    fctx.fillStyle = brushColorRef.current;
     fctx.fillRect(0, 0, w, h);
     fctx.drawImage(canvasRef.current, 0, 0);
 
@@ -1685,9 +1701,9 @@ export function BrushEditor({
     activeMask.getContext('2d')!.fillStyle = 'black';
     activeMask.getContext('2d')!.fillRect(0, 0, w, h);
 
-    compositeLayersAndRender(layers);
+    compositeLayersAndRender(layersRef.current);
     saveMaskSnapshot('Brush Fill');
-  }, [brushColor, compositeLayersAndRender, layers, saveMaskSnapshot, getActiveOriginal, getActiveMask]);
+  }, [compositeLayersAndRender, saveMaskSnapshot, getActiveOriginal, getActiveMask]);
 
 
 
@@ -2893,11 +2909,27 @@ export function BrushEditor({
             <div className="layer-list custom-scrollbar">
               {[...layers].reverse().map((layer) => {
                 const isActive = layer.id === activeLayerId;
+                const isDragTarget = layerDragOver === layer.id && layerDragIdRef.current !== layer.id;
                 return (
                   <div
                     key={layer.id}
-                    className={cn('layer-item', isActive && 'layer-item-active')}
+                    draggable
+                    className={cn('layer-item', isActive && 'layer-item-active', isDragTarget && 'layer-item-drag-over')}
                     onClick={() => setActiveLayerId(layer.id)}
+                    onDragStart={() => { layerDragIdRef.current = layer.id; }}
+                    onDragOver={(e) => { e.preventDefault(); setLayerDragOver(layer.id); }}
+                    onDragLeave={() => setLayerDragOver(null)}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      setLayerDragOver(null);
+                      const fromId = layerDragIdRef.current;
+                      layerDragIdRef.current = null;
+                      if (!fromId || fromId === layer.id) return;
+                      // panel은 역순이므로 layers 배열에서 실제 인덱스로 변환
+                      const toIndex = layers.findIndex(l => l.id === layer.id);
+                      reorderLayer(fromId, toIndex, layers, activeLayerId);
+                    }}
+                    onDragEnd={() => { layerDragIdRef.current = null; setLayerDragOver(null); }}
                     onDoubleClick={() => {
                       if (layer.type === 'text') {
                         setTool('text');

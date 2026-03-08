@@ -2466,6 +2466,11 @@ body::before {
   background: rgba(79,163,156,0.2);
 }
 
+.layer-item-drag-over {
+  border-top: 2px solid #4fa39c;
+  background: rgba(79,163,156,0.1);
+}
+
 .layer-vis-btn {
   display: flex;
   align-items: center;

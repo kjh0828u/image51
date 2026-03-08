@@ -223,6 +223,7 @@ export default function Home() {
             <BrushEditor
               imageUrl={individualImage.url}
               originalName={individualImage.name}
+              onImageChange={handleIndividualFile}
               onReset={() => {
                 URL.revokeObjectURL(individualImage.url);
                 setIndividualImage(null);

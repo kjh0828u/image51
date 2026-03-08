@@ -33,7 +33,8 @@ import {
   Circle as CircleIcon,
   Stamp,
   LifeBuoy,
-  Droplets
+  Droplets,
+  ImagePlus
 } from 'lucide-react';
 import {
   blurAndThresholdBinary,
@@ -52,6 +53,7 @@ import { getDownloadFilename } from '@/lib/fileUtils';
 interface BrushEditorProps {
   imageUrl: string;
   originalName: string;
+  onImageChange: (file: File) => void;
   onReset: () => void;
 }
 
@@ -59,7 +61,7 @@ const EYEDROPPER_CURSOR = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.o
 
 
 
-export function BrushEditor({ imageUrl, originalName, onReset }: BrushEditorProps) {
+export function BrushEditor({ imageUrl, originalName, onImageChange, onReset }: BrushEditorProps) {
   const isPainting = useRef(false);
   const lastPos = useRef<{ x: number; y: number } | null>(null);
 
@@ -111,13 +113,17 @@ export function BrushEditor({ imageUrl, originalName, onReset }: BrushEditorProp
   const [blur, setBlur] = useState(0);
   const [showAdjustPanel, setShowAdjustPanel] = useState(false);
 
+  const [showExitConfirm, setShowExitConfirm] = useState(false);
+  const [showReplaceConfirm, setShowReplaceConfirm] = useState(false);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isDraggingFile, setIsDraggingFile] = useState(false);
+
   // 상태바 및 눈금자 정보
   // 상태바 정보 전용 Ref (리렌더링 방지)
   const statusBarXRef = useRef<HTMLSpanElement>(null);
   const statusBarYRef = useRef<HTMLSpanElement>(null);
-  // 뒤로가기 컨펌 모달
-  const [showExitConfirm, setShowExitConfirm] = useState(false);
-
   // 1. 도구(Tool) 및 브러시 설정 가져오기
   const {
     tool, setTool, toolRef,
@@ -1414,7 +1420,32 @@ export function BrushEditor({ imageUrl, originalName, onReset }: BrushEditorProp
   const verticalRulerBg = `url("data:image/svg+xml,%3Csvg width='20' height='100' xmlns='http://www.w3.org/2000/svg'%3E%3Cline x1='10' y1='0' x2='20' y2='0' stroke='%23555' stroke-width='1'/%3E%3Cline x1='15' y1='10' x2='20' y2='10' stroke='%23444' stroke-width='1'/%3E%3Cline x1='15' y1='20' x2='20' y2='20' stroke='%23444' stroke-width='1'/%3E%3Cline x1='15' y1='30' x2='20' y2='30' stroke='%23444' stroke-width='1'/%3E%3Cline x1='15' y1='40' x2='20' y2='40' stroke='%23444' stroke-width='1'/%3E%3Cline x1='12' y1='50' x2='20' y2='50' stroke='%23555' stroke-width='1'/%3E%3Cline x1='15' y1='60' x2='20' y2='60' stroke='%23444' stroke-width='1'/%3E%3Cline x1='15' y1='70' x2='20' y2='70' stroke='%23444' stroke-width='1'/%3E%3Cline x1='15' y1='80' x2='20' y2='80' stroke='%23444' stroke-width='1'/%3E%3Cline x1='15' y1='90' x2='20' y2='90' stroke='%23444' stroke-width='1'/%3E%3C/svg%3E")`;
 
   return (
-    <div className="brush-editor-wrap">
+    <div
+      className="brush-editor-wrap"
+      onDragOver={(e) => {
+        e.preventDefault();
+        if (e.dataTransfer.types.includes('Files')) setIsDraggingFile(true);
+      }}
+      onDragLeave={() => setIsDraggingFile(false)}
+      onDrop={(e) => {
+        e.preventDefault();
+        setIsDraggingFile(false);
+        const file = e.dataTransfer.files[0];
+        if (file && file.type.startsWith('image/')) {
+          setPendingFile(file);
+          setShowReplaceConfirm(true);
+        }
+      }}
+    >
+      {isDraggingFile && (
+        <div className="absolute inset-0 z-[2000] flex flex-col items-center justify-center bg-indigo-600/20 backdrop-blur-sm border-2 border-indigo-400 border-dashed rounded-lg">
+          <div className="w-16 h-16 bg-indigo-500 rounded-full flex items-center justify-center mb-4 shadow-xl">
+            <ImagePlus size={32} className="text-white animate-bounce" />
+          </div>
+          <p className="text-white font-black text-xl drop-shadow-lg">이곳에 이미지를 놓아 즉시 교체</p>
+          <p className="text-indigo-200 text-sm mt-2">편집하던 내용은 사라집니다</p>
+        </div>
+      )}
       {/* ── TOP BAR (Header) ────────────────────────────────── */}
       <div className="brush-top-bar">
         <button onClick={() => setShowExitConfirm(true)} className="brush-tool-btn" title="목록으로">
@@ -1428,6 +1459,34 @@ export function BrushEditor({ imageUrl, originalName, onReset }: BrushEditorProp
           </button>
           <button onClick={redo} disabled={!canRedo} className="brush-tool-btn" title="다시 실행 (Ctrl+Y)">
             <Redo2 size={18} />
+          </button>
+        </div>
+
+        <div className="brush-top-sep" />
+
+        <div className="flex items-center gap-1">
+          <input
+            type="file"
+            ref={fileInputRef}
+            className="hidden"
+            accept="image/*"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) {
+                setPendingFile(file);
+                setShowReplaceConfirm(true);
+              }
+              // Reset input so the same file can be selected again
+              e.target.value = '';
+            }}
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="brush-tool-btn text-indigo-400 hover:text-indigo-300"
+            title="이미지 다른 파일로 교체"
+          >
+            <ImagePlus size={18} />
+            <span className="text-[10px] ml-1 font-bold hidden sm:inline">교체</span>
           </button>
         </div>
 
@@ -1921,6 +1980,75 @@ export function BrushEditor({ imageUrl, originalName, onReset }: BrushEditorProp
         <canvas ref={maskRef} />
         <canvas ref={aiResultRef} />
       </div>
+      {/* ── 이미지 교체 컨펌 모달 ──────────────────────────── */}
+      {showReplaceConfirm && (
+        <div className="modal-overlay z-[3000]" onClick={() => { setShowReplaceConfirm(false); setPendingFile(null); }}>
+          <div className="modal-container max-w-sm" onClick={e => e.stopPropagation()}>
+            <div className="modal-content p-6 bg-[#1a1a1b] border border-white/10 rounded-2xl shadow-2xl">
+              <div className="flex flex-col items-center text-center">
+                <div className="w-12 h-12 bg-amber-500/20 text-amber-500 rounded-full flex items-center justify-center mb-4">
+                  <AlertCircle size={24} />
+                </div>
+                <h3 className="text-white text-lg font-bold mb-2">이미지를 교체하시겠습니까?</h3>
+                <p className="text-gray-400 text-sm mb-6 leading-relaxed">
+                  새 이미지를 불러오면 <span className="text-white font-bold">현재 편집 중인 모든 내용과 히스토리</span>가 사라집니다.<br />계속하시겠습니까?
+                </p>
+                <div className="flex gap-2 w-full">
+                  <button
+                    onClick={() => { setShowReplaceConfirm(false); setPendingFile(null); }}
+                    className="flex-1 h-10 rounded-xl bg-white/5 text-gray-400 font-bold hover:bg-white/10 transition-colors"
+                  >
+                    취소
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (pendingFile) onImageChange(pendingFile);
+                      setShowReplaceConfirm(false);
+                      setPendingFile(null);
+                    }}
+                    className="flex-1 h-10 rounded-xl bg-indigo-500 text-white font-bold hover:bg-indigo-400 shadow-lg shadow-indigo-500/20 transition-all"
+                  >
+                    교체하기
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── 나가기 컨펌 모달 ────────────────────────────── */}
+      {showExitConfirm && (
+        <div className="modal-overlay z-[3000]" onClick={() => setShowExitConfirm(false)}>
+          <div className="modal-container max-w-sm" onClick={e => e.stopPropagation()}>
+            <div className="modal-content p-6 bg-[#1a1a1b] border border-white/10 rounded-2xl shadow-2xl">
+              <div className="flex flex-col items-center text-center">
+                <div className="w-12 h-12 bg-red-500/20 text-red-500 rounded-full flex items-center justify-center mb-4">
+                  <AlertCircle size={24} />
+                </div>
+                <h3 className="text-white text-lg font-bold mb-2">편집을 중단하시겠습니까?</h3>
+                <p className="text-gray-400 text-sm mb-6 leading-relaxed">
+                  나가면 현재 이미지의 <span className="text-white font-bold">편집 내용이 저장되지 않습니다.</span><br />정말 목록으로 돌아가시겠습니까?
+                </p>
+                <div className="flex gap-2 w-full">
+                  <button
+                    onClick={() => setShowExitConfirm(false)}
+                    className="flex-1 h-10 rounded-xl bg-white/5 text-gray-400 font-bold hover:bg-white/10 transition-colors"
+                  >
+                    취소
+                  </button>
+                  <button
+                    onClick={onReset}
+                    className="flex-1 h-10 rounded-xl bg-red-500 text-white font-bold hover:bg-red-400 shadow-lg shadow-red-500/20 transition-all"
+                  >
+                    나가기
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

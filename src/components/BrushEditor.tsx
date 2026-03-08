@@ -552,6 +552,7 @@ export function BrushEditor({
   const [showDownloadPanel, setShowDownloadPanel] = useState(false);
   const [downloadFormat, setDownloadFormat] = useState<'png' | 'jpeg' | 'webp' | 'svg'>('png');
   const [isTransparent, setIsTransparent] = useState(false);
+  const [showSaveToast, setShowSaveToast] = useState(false);
 
   const [cropMargin, setCropMargin] = useState(4);
 
@@ -2297,14 +2298,24 @@ export function BrushEditor({
       const filename = getDownloadFilename(originalName, blob.type);
       await performDownload(blob, filename);
       setShowDownloadPanel(false);
+      setShowSaveToast(true);
     }, `image/${format}`, quality);
   }, [downloadFormat, downloadQuality, originalName, performDownload, buildExportCanvas]);
+
+  // Toast Auto-dismiss
+  useEffect(() => {
+    if (showSaveToast) {
+      const timer = setTimeout(() => setShowSaveToast(false), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [showSaveToast]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const isRangeInput = e.target instanceof HTMLInputElement && (e.target as HTMLInputElement).type === 'range';
       const isTextInput = (e.target instanceof HTMLInputElement && !isRangeInput) || e.target instanceof HTMLTextAreaElement;
       if (isTextInput) return;
+      if (!imageUrl) return;
 
       if (e.key === 'Delete' || e.key === 'Backspace') {
         if (hasSelection) applySelectionToMask('erase');
@@ -2316,6 +2327,11 @@ export function BrushEditor({
       if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
         e.preventDefault();
         redo();
+      }
+
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        setShowDownloadPanel(prev => !prev);
       }
 
       if (e.key === 'Alt') {
@@ -2409,7 +2425,7 @@ export function BrushEditor({
       window.removeEventListener('keyup', handleKeyUp);
       window.removeEventListener('blur', handleBlur);
     };
-  }, [hasSelection, applySelectionToMask, undo, redo, tool, cancelCrop, applyCrop, cropRect, startMarching, stopMarching, setTool, stopTextMarching, startTextMarching, bumpTextUI, setBrushSize]);
+  }, [hasSelection, applySelectionToMask, undo, redo, tool, cancelCrop, applyCrop, cropRect, startMarching, stopMarching, setTool, stopTextMarching, startTextMarching, bumpTextUI, setBrushSize, download, setShowDownloadPanel]);
 
   // ── 전역 마우스/터치 이동 리스너 (캔버스 밖에서도 작업 유지) ─────────────────
   const handleMouseMove = useCallback((e: MouseEvent | TouchEvent) => {
@@ -3024,6 +3040,21 @@ export function BrushEditor({
             <Save size={14} />
             Download
           </button>
+
+          {/* Save Success Toast (Positioned near download button) */}
+          {showSaveToast && (
+            <div className="absolute right-0 top-10 z-[1001] pointer-events-none min-w-[160px]">
+              <div className="flex items-center gap-2 px-4 py-2 bg-emerald-500 border border-emerald-400 rounded-xl shadow-[0_8px_24px_rgba(16,185,129,0.4)] animate-in fade-in slide-in-from-bottom-2">
+                <div className="w-5 h-5 bg-white/20 rounded-full flex items-center justify-center">
+                  <Save size={12} className="text-white" />
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-[12px] font-black text-white leading-tight">저장 완료!</span>
+                  <span className="text-[8px] text-white/70 font-bold uppercase tracking-wider leading-none">Saved Successfully</span>
+                </div>
+              </div>
+            </div>
+          )}
 
           {showDownloadPanel && (
             <div className="brush-fill-panel" style={{ position: 'absolute', left: 'auto', right: '0', top: '2.5rem', zIndex: 1000 }}>

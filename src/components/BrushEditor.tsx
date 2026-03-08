@@ -168,7 +168,8 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
   const [isProcessing, setIsProcessing] = useState(false);
   const [aiDone, setAiDone] = useState(false);
   const [progress, setProgress] = useState(0);
-  const [aiThreshold, setAiThreshold] = useState(1); // 1-255, 기본값 1 (최소한의 알파라도 있으면 유지)
+  const [aiAdjust, setAiAdjust] = useState(0); // -100 ~ 100 (양수: 축소, 음수: 내부 복원)
+  const outerMaskRef = useRef<Uint8Array | null>(null);
 
   // 히스토리 추가 시 하단 자동 스크롤
   useEffect(() => {
@@ -260,21 +261,73 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
 
   // ── 크롭 오버레이 그리기 ──────────────────────────────────
 
-  const applyAiThreshold = useCallback((threshold: number) => {
-    if (!aiResultRef.current || !maskRef.current) return;
+  const applyAiThreshold = useCallback((offset: number) => {
+    if (!aiResultRef.current || !maskRef.current || !aiResultRef.current) return;
     const aiCtx = aiResultRef.current.getContext('2d')!;
     const aiData = aiCtx.getImageData(0, 0, aiResultRef.current.width, aiResultRef.current.height);
     const maskCtx = maskRef.current.getContext('2d')!;
     const maskData = maskCtx.getImageData(0, 0, maskRef.current.width, maskRef.current.height);
 
+    const w = aiData.width;
+    const h = aiData.height;
+
     for (let i = 0; i < aiData.data.length; i += 4) {
       const a = aiData.data[i + 3];
-      // 임계값보다 낮은 알파는 0으로, 그 외에는 원래 알파 유지
-      maskData.data[i + 3] = a < threshold ? 0 : a;
+      const idx = i / 4;
+      let finalA = a;
+
+      if (offset > 0) {
+        // [축소/수축] 양수일 때는 기존처럼 낮은 알파를 커트 (임계값 처리)
+        const threshold = (offset / 100) * 255;
+        finalA = a < threshold ? 0 : a;
+      } else if (offset < 0) {
+        // [스마트 복원] 음수일 때는 "외부 배경"이 아닌 "내부 구멍"만 알파를 높여 복원
+        const isOuter = outerMaskRef.current ? outerMaskRef.current[idx] : 1;
+        if (!isOuter) {
+          // 내부 영역(로고 안쪽 등)이라면 알파를 특정 값만큼 강제로 끌어올림
+          const boost = Math.abs(offset / 100) * 255;
+          finalA = Math.max(a, boost);
+        }
+      }
+      maskData.data[i + 3] = finalA;
     }
     maskCtx.putImageData(maskData, 0, 0);
     compositeAndRender();
   }, [compositeAndRender]);
+
+  // 외부 배경 연결성 계산 (Flood Fill)
+  const computeOuterBackground = (alphaData: Uint8ClampedArray, width: number, height: number) => {
+    const total = width * height;
+    const isOuter = new Uint8Array(total);
+    const stack: number[] = [];
+    const threshold = 128; // 배경으로 간주할 최소 투명도 지점
+
+    // 테두리 픽셀을 시작점으로 추가
+    for (let x = 0; x < width; x++) {
+      if (alphaData[x * 4 + 3] < threshold) stack.push(x);
+      if (alphaData[((height - 1) * width + x) * 4 + 3] < threshold) stack.push((height - 1) * width + x);
+    }
+    for (let y = 1; y < height - 1; y++) {
+      if (alphaData[(y * width) * 4 + 3] < threshold) stack.push(y * width);
+      if (alphaData[(y * width + width - 1) * 4 + 3] < threshold) stack.push(y * width + width - 1);
+    }
+
+    while (stack.length > 0) {
+      const idx = stack.pop()!;
+      if (isOuter[idx]) continue;
+      isOuter[idx] = 1;
+
+      const x = idx % width;
+      const y = (idx / width) | 0;
+
+      // 상하좌우 탐색
+      if (y > 0 && !isOuter[idx - width] && alphaData[(idx - width) * 4 + 3] < threshold) stack.push(idx - width);
+      if (y < height - 1 && !isOuter[idx + width] && alphaData[(idx + width) * 4 + 3] < threshold) stack.push(idx + width);
+      if (x > 0 && !isOuter[idx - 1] && alphaData[(idx - 1) * 4 + 3] < threshold) stack.push(idx - 1);
+      if (x < width - 1 && !isOuter[idx + 1] && alphaData[(idx + 1) * 4 + 3] < threshold) stack.push(idx + 1);
+    }
+    return isOuter;
+  };
 
   const runAI = useCallback(async () => {
     if (!originalRef.current || !maskRef.current || !aiResultRef.current) return;
@@ -300,7 +353,14 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
         ctx.clearRect(0, 0, aiResultRef.current!.width, aiResultRef.current!.height);
         ctx.drawImage(resultImg, 0, 0);
 
-        applyAiThreshold(aiThreshold);
+        const aiData = ctx.getImageData(0, 0, aiResultRef.current!.width, aiResultRef.current!.height);
+
+        // 1. 외부 배경 마스크 미리 계산 (Flood fill)
+        outerMaskRef.current = computeOuterBackground(aiData.data, aiData.width, aiData.height);
+
+        // 2. 현재 설정된 조절값 적용
+        applyAiThreshold(aiAdjust);
+
         URL.revokeObjectURL(resultUrl);
         saveMaskSnapshot('AI Removal');
         setIsProcessing(false);
@@ -311,14 +371,14 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
       console.error('배경제거 실패:', err);
       setIsProcessing(false);
     }
-  }, [compositeAndRender, saveMaskSnapshot, aiThreshold, applyAiThreshold]);
+  }, [compositeAndRender, saveMaskSnapshot, aiAdjust, applyAiThreshold]);
 
   // 임계값 변경 시 즉시 반영
   useEffect(() => {
     if (aiDone && !isProcessing) {
-      applyAiThreshold(aiThreshold);
+      applyAiThreshold(aiAdjust);
     }
-  }, [aiThreshold, aiDone, isProcessing, applyAiThreshold]);
+  }, [aiAdjust, aiDone, isProcessing, applyAiThreshold]);
 
   const getCanvasPos = useCallback((e: React.MouseEvent | React.TouchEvent) => {
     const canvas = canvasRef.current!;
@@ -1351,16 +1411,19 @@ export function BrushEditor({ imageUrl, onReset }: BrushEditorProps) {
 
         {aiDone && (
           <div className="flex items-center gap-2 ml-4">
-            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-tighter">AI Threshold</span>
+            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-tighter">AI Smart Adjust (Restore/Shrink)</span>
             <input
               type="range"
-              min={1}
-              max={254}
-              value={aiThreshold}
-              onChange={(e) => setAiThreshold(Number(e.target.value))}
+              min={-100}
+              max={100}
+              step={1}
+              value={aiAdjust}
+              onChange={(e) => setAiAdjust(Number(e.target.value))}
               className="w-32 h-1 range-slider"
             />
-            <span className="text-[10px] font-mono text-indigo-400 w-8">{Math.round((aiThreshold / 255) * 100)}%</span>
+            <span className="text-[10px] font-mono text-indigo-400 w-10">
+              {aiAdjust === 0 ? 'Original' : aiAdjust > 0 ? `+${aiAdjust}` : aiAdjust}
+            </span>
           </div>
         )}
 

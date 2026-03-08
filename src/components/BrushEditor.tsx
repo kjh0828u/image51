@@ -1422,21 +1422,28 @@ export function BrushEditor({
           for (const hnd of handles) {
             if (Math.abs(pos.x - hnd.x) < zoomHs && Math.abs(pos.y - hnd.y) < zoomHs) {
               setIsDraggingHandle(hnd.id);
+              isDraggingHandleRef.current = hnd.id; // 즉시 동기화 (disappearing 버그 방지)
               isPainting.current = true;
               return;
             }
           }
+
+          // 영역 내부 클릭 시 이동
+          if (pos.x >= x && pos.x <= x + w && pos.y >= y && pos.y <= y + h) {
+            setIsDraggingHandle('move');
+            isDraggingHandleRef.current = 'move'; // 즉시 동기화
+            cropStartRef.current = pos;
+            isPainting.current = true;
+            return;
+          }
         }
 
+        setIsDraggingHandle('new');
+        isDraggingHandleRef.current = 'new'; // 새 크롭 상태 명시
         cropStartRef.current = pos;
         cropRectRef.current = { x: pos.x, y: pos.y, w: 0, h: 0 };
         setCropRect({ x: pos.x, y: pos.y, w: 0, h: 0 });
         drawCropOverlay({ x: pos.x, y: pos.y, w: 0, h: 0 });
-        isPainting.current = true;
-      } else if (tool === 'marquee-rect' || tool === 'marquee-circle') {
-        cropStartRef.current = pos;
-        cropRectRef.current = { x: pos.x, y: pos.y, w: 0, h: 0 };
-        setCropRect({ x: pos.x, y: pos.y, w: 0, h: 0 });
         isPainting.current = true;
       } else if (tool === 'move') {
         // Move 툴: 활성 레이어 이동 시작
@@ -1647,9 +1654,6 @@ export function BrushEditor({
   }, [tool, drawMarching, startMarching]);
 
   const handleMouseUp = useCallback(() => {
-    if (toolRef.current === 'marquee-rect' || toolRef.current === 'marquee-circle') {
-      applyMarqueeSelection();
-    }
     if (toolRef.current === 'move' && moveDragStart.current) {
       // Move 드래그 완료 → live 위치를 state에 커밋 (히스토리 1회)
       const livePos = moveLivePosRef.current;
@@ -1749,7 +1753,8 @@ export function BrushEditor({
     hasStrokeRef.current = false;
     lastPos.current = null;
     setIsDraggingHandle(null);
-  }, [applyMarqueeSelection, saveMaskSnapshot, commitLayerMove, setLayers, activeLayerId, startTextMarching, stopTextMarching, bumpTextUI]);
+    isDraggingHandleRef.current = null; // Ref 동시 초기화
+  }, [saveMaskSnapshot, commitLayerMove, setLayers, activeLayerId, startTextMarching, stopTextMarching, bumpTextUI]);
 
   // ── 크롭 실행 ────────────────────────────────────────────
   const applyCrop = useCallback(() => {
@@ -2043,7 +2048,14 @@ export function BrushEditor({
           found = hnd.cur; break;
         }
       }
-      overlay.style.cursor = found || 'crosshair';
+
+      if (found) {
+        overlay.style.cursor = found;
+      } else if (canvasPos.x >= x && canvasPos.x <= x + w && canvasPos.y >= y && canvasPos.y <= y + h) {
+        overlay.style.cursor = 'move'; // 영역 내부 커서
+      } else {
+        overlay.style.cursor = 'crosshair';
+      }
     } else if (toolRef.current === 'move') {
       overlay.style.cursor = 'move';
     } else if (toolRef.current === 'text') {
@@ -2097,6 +2109,8 @@ export function BrushEditor({
       rafId.current = requestAnimationFrame(() => {
         const currentTool = toolRef.current;
         const pos = canvasPos;
+        const draggingHnd = isDraggingHandleRef.current;
+        const curCropRect = cropRectRef.current;
 
         // Aligned Source Preview for Clone/Heal
         if ((currentTool === 'clone' || currentTool === 'heal') && cloneSourceRef.current && initialMousePos.current) {
@@ -2114,11 +2128,28 @@ export function BrushEditor({
           ctx.stroke();
         }
 
-        const draggingHnd = isDraggingHandleRef.current;
-        const curCropRect = cropRectRef.current;
-
-        if (currentTool === 'crop' || currentTool === 'marquee-rect' || currentTool === 'marquee-circle') {
-          if (draggingHnd && curCropRect) {
+        if (currentTool === 'crop') {
+          if (draggingHnd === 'move' && curCropRect) {
+            // 크롭 영역 이동 로직
+            const dx = pos.x - cropStartRef.current!.x;
+            const dy = pos.y - cropStartRef.current!.y;
+            const newRect = { ...curCropRect, x: curCropRect.x + dx, y: curCropRect.y + dy };
+            cropRectRef.current = newRect;
+            cropStartRef.current = pos;
+            drawCropOverlay(newRect);
+          } else if (draggingHnd === 'new') {
+            // 새 크롭 영역 그리기
+            const start = cropStartRef.current!;
+            const newRect = {
+              x: Math.min(start.x, pos.x),
+              y: Math.min(start.y, pos.y),
+              w: Math.abs(pos.x - start.x),
+              h: Math.abs(pos.y - start.y)
+            };
+            cropRectRef.current = newRect;
+            drawCropOverlay(newRect);
+          } else if (draggingHnd && curCropRect) {
+            // 핸들 리사이즈 로직
             const newRect = { ...curCropRect };
             if (draggingHnd.includes('t')) {
               const bottom = newRect.y + newRect.h;
@@ -2132,16 +2163,6 @@ export function BrushEditor({
               newRect.w = right - newRect.x;
             }
             if (draggingHnd.includes('r')) newRect.w = Math.max(1, pos.x - newRect.x);
-            cropRectRef.current = newRect;
-            drawCropOverlay(newRect);
-          } else if (cropStartRef.current) {
-            const start = cropStartRef.current;
-            const newRect = {
-              x: Math.min(start.x, pos.x),
-              y: Math.min(start.y, pos.y),
-              w: Math.abs(pos.x - start.x),
-              h: Math.abs(pos.y - start.y)
-            };
             cropRectRef.current = newRect;
             drawCropOverlay(newRect);
           }
@@ -2233,7 +2254,7 @@ export function BrushEditor({
     const handleGlobalUp = () => {
       if (isPainting.current) {
         // 드래그 종료 시 최종 상태 동기화
-        if (toolRef.current === 'crop' || toolRef.current === 'marquee-rect' || toolRef.current === 'marquee-circle') {
+        if (toolRef.current === 'crop') {
           if (cropRectRef.current) setCropRect({ ...cropRectRef.current });
         }
         handleMouseUp();
@@ -2612,8 +2633,6 @@ export function BrushEditor({
         <div className="brush-editor-sidebar-left bg-[#252526] border-r border-[#111] py-2 flex flex-col items-center gap-1">
           <div className="flex flex-col gap-1 mb-2">
             <button onClick={() => { cancelCrop(); setTool('move'); }} className={`brush-tool-btn ${tool === 'move' ? 'brush-tool-btn-active' : ''}`} title="Move (V)"><Move size={18} /></button>
-            <button onClick={() => { cancelCrop(); setTool('marquee-rect'); }} className={`brush-tool-btn ${tool === 'marquee-rect' ? 'brush-tool-btn-active' : ''}`} title="Marquee Rect (M)"><SquareIcon size={18} /></button>
-            <button onClick={() => { cancelCrop(); setTool('marquee-circle'); }} className={`brush-tool-btn ${tool === 'marquee-circle' ? 'brush-tool-btn-active' : ''}`} title="Marquee Circle (Shift+M)"><CircleIcon size={18} /></button>
             <button onClick={() => { cancelCrop(); setTool('wand'); }} className={`brush-tool-btn ${tool === 'wand' ? 'brush-tool-btn-active' : ''}`} title="Magic Wand (W)"><Wand2 size={18} /></button>
           </div>
           <div className="w-8 h-[1px] bg-[#333] mb-2" />
@@ -2686,8 +2705,6 @@ export function BrushEditor({
           <div className="h-10 border-b border-[#111] bg-[#2d2d2d] flex items-center px-4 gap-4 overflow-hidden flex-shrink-0">
             <div className="flex items-center gap-2 pr-4 border-r border-[#444]">
               {tool === 'move' && <Move size={16} className="text-gray-400" />}
-              {tool === 'marquee-rect' && <SquareIcon size={16} className="text-gray-400" />}
-              {tool === 'marquee-circle' && <CircleIcon size={16} className="text-gray-400" />}
               {tool === 'wand' && <Wand2 size={16} className="text-gray-400" />}
               {tool === 'erase' && <Eraser size={16} className="text-gray-400" />}
               {tool === 'restore' && <RefreshCcw size={16} className="text-gray-400" />}
@@ -2782,17 +2799,6 @@ export function BrushEditor({
                 </div>
               )}
 
-              {(tool === 'marquee-rect' || tool === 'marquee-circle') && (
-                <div className="flex items-center gap-4">
-                  <span className="text-[10px] font-bold text-gray-400">SELECTION</span>
-                  {cropRect && (
-                    <span className="text-[11px] font-mono text-indigo-400">{Math.round(cropRect.w)} × {Math.round(cropRect.h)}</span>
-                  )}
-                  <div className="flex gap-2">
-                    <button onClick={() => setTool('wand')} className="text-[10px] font-bold text-gray-400 hover:text-white underline">Clear Selection</button>
-                  </div>
-                </div>
-              )}
 
               {tool === 'move' && (
                 <div className="flex items-center gap-3">

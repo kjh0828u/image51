@@ -81,6 +81,222 @@ interface DropDialogState {
 
 const EYEDROPPER_CURSOR = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m2 22 1-1h3l9-9'/%3E%3Cpath d='M3 21v-3l9-9'/%3E%3Cpath d='m15 6 3.4-3.4a2.1 2.1 0 1 1 3 3L18 9l-3-3Z'/%3E%3C/svg%3E") 0 22, url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m2 22 1-1h3l9-9'/%3E%3Cpath d='M3 21v-3l9-9'/%3E%3Cpath d='m15 6 3.4-3.4a2.1 2.1 0 1 1 3 3L18 9l-3-3Z'/%3E%3C/svg%3E") 0 22, crosshair`;
 
+// ── 컬러 피커 팝업 컴포넌트 (직접 구현) ───────────────────────────────────────────────
+interface ColorPickerPopupProps {
+  color: string;
+  onChange: (hex: string) => void;
+  size?: number;
+  className?: string;
+  title?: string;
+}
+
+// hex to hsv 변환
+function hexToHsv(hex: string): { h: number; s: number; v: number } {
+  const r = parseInt(hex.slice(1, 3), 16) / 255;
+  const g = parseInt(hex.slice(3, 5), 16) / 255;
+  const b = parseInt(hex.slice(5, 7), 16) / 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const d = max - min;
+  let h = 0;
+  const s = max === 0 ? 0 : d / max;
+  const v = max;
+  if (d !== 0) {
+    switch (max) {
+      case r: h = ((g - b) / d + (g < b ? 6 : 0)) / 6; break;
+      case g: h = ((b - r) / d + 2) / 6; break;
+      case b: h = ((r - g) / d + 4) / 6; break;
+    }
+  }
+  return { h: h * 360, s: s * 100, v: v * 100 };
+}
+
+// hsv to hex 변환
+function hsvToHex(h: number, s: number, v: number): string {
+  s /= 100; v /= 100;
+  const c = v * s;
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+  const m = v - c;
+  let r = 0, g = 0, b = 0;
+  if (h < 60) { r = c; g = x; }
+  else if (h < 120) { r = x; g = c; }
+  else if (h < 180) { g = c; b = x; }
+  else if (h < 240) { g = x; b = c; }
+  else if (h < 300) { r = x; b = c; }
+  else { r = c; b = x; }
+  const toHex = (n: number) => Math.round((n + m) * 255).toString(16).padStart(2, '0');
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+}
+
+const ColorPickerPopup = memo(({ color, onChange, size = 24, className = '', title = '색상 선택' }: ColorPickerPopupProps) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const popupRef = useRef<HTMLDivElement>(null);
+  const [hexInput, setHexInput] = useState(color);
+
+  // HSV 상태
+  const hsv = hexToHsv(color);
+  const [hue, setHue] = useState(hsv.h);
+  const [sat, setSat] = useState(hsv.s);
+  const [val, setVal] = useState(hsv.v);
+
+  // 외부 색상 변경 동기화
+  useEffect(() => {
+    const newHsv = hexToHsv(color);
+    setHue(newHsv.h);
+    setSat(newHsv.s);
+    setVal(newHsv.v);
+    setHexInput(color);
+  }, [color]);
+
+  // 외부 클릭 시 닫기
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleClick = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node) &&
+          popupRef.current && !popupRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [isOpen]);
+
+  // 팝업 위치 계산
+  const [popupPosition, setPopupPosition] = useState({ top: 0, left: 0 });
+
+  useEffect(() => {
+    if (!isOpen || !containerRef.current) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    const popupWidth = 280;
+    const popupHeight = 165;
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const spaceRight = window.innerWidth - rect.left;
+    const showAbove = spaceBelow < popupHeight;
+    const showLeft = spaceRight < popupWidth;
+
+    setPopupPosition({
+      top: showAbove ? rect.top - popupHeight - 8 : rect.bottom + 8,
+      left: showLeft ? rect.right - popupWidth : rect.left
+    });
+  }, [isOpen]);
+
+  // 색상 변경 핸들러
+  const handleColorChange = useCallback((newHue: number, newSat: number, newVal: number) => {
+    setHue(newHue);
+    setSat(newSat);
+    setVal(newVal);
+    const hex = hsvToHex(newHue, newSat, newVal);
+    setHexInput(hex);
+    onChange(hex);
+  }, [onChange]);
+
+  // HEX 입력 변경
+  const handleHexChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    let val = e.target.value;
+    if (!val.startsWith('#')) val = '#' + val;
+    setHexInput(val);
+    if (/^#[0-9A-Fa-f]{6}$/.test(val)) {
+      const newHsv = hexToHsv(val);
+      setHue(newHsv.h);
+      setSat(newHsv.s);
+      setVal(newHsv.v);
+      onChange(val);
+    }
+  }, [onChange]);
+
+  // 채도/명도 영역 클릭/드래그
+  const svRef = useRef<HTMLDivElement>(null);
+  const [isDraggingSv, setIsDraggingSv] = useState(false);
+
+  const handleSvInteraction = useCallback((clientX: number, clientY: number) => {
+    if (!svRef.current) return;
+    const rect = svRef.current.getBoundingClientRect();
+    const newSat = Math.max(0, Math.min(100, ((clientX - rect.left) / rect.width) * 100));
+    const newVal = Math.max(0, Math.min(100, 100 - ((clientY - rect.top) / rect.height) * 100));
+    handleColorChange(hue, newSat, newVal);
+  }, [hue, handleColorChange]);
+
+  // Hue 슬라이더 (세로)
+  const hueRef = useRef<HTMLDivElement>(null);
+  const [isDraggingHue, setIsDraggingHue] = useState(false);
+
+  const handleHueInteraction = useCallback((clientY: number) => {
+    if (!hueRef.current) return;
+    const rect = hueRef.current.getBoundingClientRect();
+    const newHue = Math.max(0, Math.min(360, ((clientY - rect.top) / rect.height) * 360));
+    handleColorChange(newHue, sat, val);
+  }, [sat, val, handleColorChange]);
+
+  return (
+    <div ref={containerRef} className={`relative ${className}`}>
+      <div
+        className="rounded border border-[#555] cursor-pointer transition-transform hover:scale-110 active:scale-95 shadow-md"
+        style={{ width: size, height: size, backgroundColor: color }}
+        title={title}
+        onClick={() => setIsOpen(v => !v)}
+      />
+      {isOpen && (
+        <div ref={popupRef} className="fixed z-[9999] color-picker-popup" style={{ top: popupPosition.top, left: popupPosition.left }}>
+          <div className="color-picker-content">
+            {/* 채도/명도 영역 */}
+            <div
+              ref={svRef}
+              className="color-picker-sv"
+              style={{
+                backgroundColor: `hsl(${hue}, 100%, 50%)`
+              }}
+              onMouseDown={(e) => {
+                setIsDraggingSv(true);
+                handleSvInteraction(e.clientX, e.clientY);
+              }}
+              onMouseMove={(e) => {
+                if (isDraggingSv) handleSvInteraction(e.clientX, e.clientY);
+              }}
+              onMouseUp={() => setIsDraggingSv(false)}
+              onMouseLeave={() => setIsDraggingSv(false)}
+            >
+              <div className="color-picker-sv-white" />
+              <div className="color-picker-sv-black" />
+              <div className="color-picker-cursor" style={{ left: `${sat}%`, top: `${100 - val}%` }} />
+            </div>
+
+            {/* Hue 슬라이더 (세로) */}
+            <div
+              ref={hueRef}
+              className="color-picker-hue"
+              onMouseDown={(e) => {
+                setIsDraggingHue(true);
+                handleHueInteraction(e.clientY);
+              }}
+              onMouseMove={(e) => {
+                if (isDraggingHue) handleHueInteraction(e.clientY);
+              }}
+              onMouseUp={() => setIsDraggingHue(false)}
+              onMouseLeave={() => setIsDraggingHue(false)}
+            >
+              <div className="color-picker-hue-cursor" style={{ top: `${(hue / 360) * 100}%` }} />
+            </div>
+
+            {/* HEX 입력 */}
+            <div className="color-picker-input-row">
+              <span className="color-picker-label">HEX</span>
+              <input
+                type="text"
+                value={hexInput}
+                onChange={handleHexChange}
+                className="color-picker-hex-input"
+                maxLength={7}
+              />
+              <div className="color-picker-preview" style={{ backgroundColor: color }} />
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+});
+
 // ── 최적화된 레이어 썸네일 컴포넌트 ──────────────────────────────────
 const LayerThumbnail = memo(({ layer, subscribeHistory }: { layer: Layer, subscribeHistory: (fn: () => void) => () => void }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -2871,18 +3087,12 @@ export function BrushEditor({
                 title="Background Color (Fixed White for UI)"
               />
               {/* Foreground Color Square (Active) */}
-              <div
-                className="absolute top-0 left-0 w-6 h-6 border border-[#111] z-10 rounded-sm shadow-md cursor-pointer transition-transform hover:scale-110 active:scale-95"
-                style={{ backgroundColor: brushColor }}
-                title="Click to change foreground color"
-                onClick={() => document.getElementById('global-color-picker')?.click()}
-              />
-              <input
-                id="global-color-picker"
-                type="color"
-                value={brushColor}
-                onChange={(e) => setBrushColor(e.target.value)}
-                className="absolute inset-0 opacity-0 pointer-events-none"
+              <ColorPickerPopup
+                color={brushColor}
+                onChange={setBrushColor}
+                size={24}
+                className="absolute top-0 left-0 z-10"
+                title="전경색 변경"
               />
             </div>
           </div>
@@ -2982,7 +3192,12 @@ export function BrushEditor({
               {(tool === 'paint' || tool === 'bucket') && (
                 <div className="flex items-center gap-2">
                   <span className="text-[10px] font-bold text-gray-400">COLOR</span>
-                  <input type="color" value={brushColor} onChange={(e) => setBrushColor(e.target.value)} className="w-5 h-5 rounded overflow-hidden border-0 p-0 bg-transparent cursor-pointer" />
+                  <ColorPickerPopup
+                    color={brushColor}
+                    onChange={setBrushColor}
+                    size={20}
+                    title="브러시 색상"
+                  />
                   <span className="text-[11px] font-mono text-gray-400">{brushColor.toUpperCase()}</span>
                 </div>
               )}
@@ -3078,8 +3293,12 @@ export function BrushEditor({
                       </button>
                     ))}
                   </div>
-                  <input type="color" value={textStyle.color} onChange={(e) => { const v = { ...textStyleRef.current, color: e.target.value }; textStyleRef.current = v; setTextStyle(v); applyTextStyleLive(v); commitTextStyleChange(v); }}
-                    className="w-6 h-6 rounded border-0 cursor-pointer" />
+                  <ColorPickerPopup
+                    color={textStyle.color}
+                    onChange={(hex) => { const v = { ...textStyleRef.current, color: hex }; textStyleRef.current = v; setTextStyle(v); applyTextStyleLive(v); commitTextStyleChange(v); }}
+                    size={24}
+                    title="텍스트 색상"
+                  />
                   <div className="w-px h-4 bg-[#444]" />
                   <span className="text-[10px] text-gray-400">자간</span>
                   <input

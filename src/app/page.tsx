@@ -245,37 +245,6 @@ export default function Home() {
         <div className="individual-tab-content h-full flex flex-col pt-1">
           {individualTabs.length > 0 ? (
             <>
-              {/* Tab Bar */}
-              <div className="flex items-center gap-1 px-4 py-2 border-b border-white/5 bg-black/20 backdrop-blur-md overflow-x-auto no-scrollbar">
-                {individualTabs.map((tab) => (
-                  <div
-                    key={tab.id}
-                    onClick={() => setActiveTabId(tab.id)}
-                    className={cn(
-                      "flex items-center gap-2 px-3 h-8 rounded-lg cursor-pointer transition-all group shrink-0",
-                      activeTabId === tab.id
-                        ? "bg-indigo-500/20 border border-indigo-500/30 text-indigo-400 shadow-lg shadow-indigo-500/10 font-bold"
-                        : "text-gray-500 hover:bg-white/5 hover:text-gray-300"
-                    )}
-                  >
-                    <span className="text-xs truncate max-w-[120px]">{tab.name}</span>
-                    <button
-                      onClick={(e) => handleCloseTab(tab.id, e)}
-                      className="p-0.5 rounded-full hover:bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity"
-                    >
-                      <X size={12} />
-                    </button>
-                  </div>
-                ))}
-                <button
-                  onClick={() => individualFileInputRef.current?.click()}
-                  className="p-1.5 rounded-lg text-gray-500 hover:bg-white/5 hover:text-indigo-400 transition-all ml-1"
-                  title="새 이미지 열기"
-                >
-                  <Plus size={18} />
-                </button>
-              </div>
-
               {/* Editor Viewports */}
               <div className="flex-1 relative bg-[#0a0a0b]">
                 {individualTabs.map((tab) => (
@@ -291,6 +260,11 @@ export default function Home() {
                       originalName={tab.name}
                       onImageChange={handleIndividualFile}
                       onReset={() => handleCloseTab(tab.id, { stopPropagation: () => { } } as any)}
+                      tabs={individualTabs}
+                      activeTabId={activeTabId}
+                      setActiveTabId={setActiveTabId}
+                      onCloseTab={handleCloseTab}
+                      onAddNewTab={() => individualFileInputRef.current?.click()}
                     />
                   </div>
                 ))}

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { cn } from '@/lib/utils';
 import {
   Wand2,
   Eraser,
@@ -33,7 +34,9 @@ import {
   Stamp,
   LifeBuoy,
   Droplets,
-  ImagePlus
+  ImagePlus,
+  Plus,
+  X
 } from 'lucide-react';
 import {
   blurAndThresholdBinary,
@@ -54,13 +57,29 @@ interface BrushEditorProps {
   originalName: string;
   onImageChange: (file: File) => void;
   onReset: () => void;
+  // Tab Props
+  tabs?: { id: string; name: string; url: string }[];
+  activeTabId?: string | null;
+  setActiveTabId?: (id: string) => void;
+  onCloseTab?: (id: string, e: React.MouseEvent) => void;
+  onAddNewTab?: () => void;
 }
 
 const EYEDROPPER_CURSOR = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m2 22 1-1h3l9-9'/%3E%3Cpath d='M3 21v-3l9-9'/%3E%3Cpath d='m15 6 3.4-3.4a2.1 2.1 0 1 1 3 3L18 9l-3-3Z'/%3E%3C/svg%3E") 0 22, url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m2 22 1-1h3l9-9'/%3E%3Cpath d='M3 21v-3l9-9'/%3E%3Cpath d='m15 6 3.4-3.4a2.1 2.1 0 1 1 3 3L18 9l-3-3Z'/%3E%3C/svg%3E") 0 22, crosshair`;
 
 
 
-export function BrushEditor({ imageUrl, originalName, onImageChange, onReset }: BrushEditorProps) {
+export function BrushEditor({
+  imageUrl,
+  originalName,
+  onImageChange,
+  onReset,
+  tabs = [],
+  activeTabId = null,
+  setActiveTabId = () => { },
+  onCloseTab = () => { },
+  onAddNewTab = () => { }
+}: BrushEditorProps) {
   const isPainting = useRef(false);
   const lastPos = useRef<{ x: number; y: number } | null>(null);
 
@@ -1457,11 +1476,47 @@ export function BrushEditor({ imageUrl, originalName, onImageChange, onReset }: 
         <button
           onClick={runAI}
           disabled={isProcessing || aiDone}
-          className={`brush-btn-action px-4 h-8 flex items-center gap-2 rounded-full text-xs font-bold ${aiDone ? 'opacity-50' : ''}`}
+          className={`brush-btn-action px-4 h-8 shrink-0 flex items-center gap-2 rounded-full text-xs font-bold ${aiDone ? 'opacity-50' : ''}`}
         >
           <Sparkles size={14} className={isProcessing ? "animate-spin" : ""} />
-          {isProcessing ? `AI 처리 중... ${progress}%` : aiDone ? 'AI 처리 완료' : 'AI 배경 제거'}
+          {isProcessing ? `AI...` : aiDone ? 'AI 완료' : 'AI 배경 제거'}
         </button>
+
+        <div className="brush-top-sep" />
+
+        {/* Integrated Tab Bar */}
+        <div className="flex items-center gap-1 overflow-x-auto no-scrollbar max-w-2xl px-2">
+          {tabs.map((tab) => (
+            <div
+              key={tab.id}
+              onClick={() => setActiveTabId(tab.id)}
+              className={cn(
+                "flex items-center gap-2 px-3 h-8 rounded-lg cursor-pointer transition-all group shrink-0",
+                activeTabId === tab.id
+                  ? "bg-indigo-500/20 border border-indigo-500/30 text-indigo-400 shadow-lg shadow-indigo-500/10 font-bold"
+                  : "text-gray-500 hover:bg-white/5 hover:text-gray-300"
+              )}
+            >
+              <span className="text-xs truncate max-w-[100px]">{tab.name}</span>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onCloseTab(tab.id, e);
+                }}
+                className="p-0.5 rounded-full hover:bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity"
+              >
+                <X size={12} />
+              </button>
+            </div>
+          ))}
+          <button
+            onClick={() => onAddNewTab()}
+            className="p-1.5 rounded-lg text-gray-500 hover:bg-white/5 hover:text-indigo-400 transition-all ml-1 shrink-0"
+            title="새 이미지 열기"
+          >
+            <Plus size={18} />
+          </button>
+        </div>
 
         {aiDone && (
           <div className="flex items-center gap-2 ml-4">

@@ -293,7 +293,9 @@ export function BrushEditor({
   const [cropRect, setCropRect] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const [isDraggingHandle, setIsDraggingHandle] = useState<string | null>(null);
   const cloneSourceRef = useRef<{ x: number; y: number } | null>(null);
+  const cloneOffsetRef = useRef<{ x: number; y: number } | null>(null); // Aligned clone offset
   const [hasCloneSource, setHasCloneSource] = useState(false);
+  const isAltPressedRef = useRef(false);
 
   // 성능 최적화용 Ref (고빈도 이벤트 처리용)
   const isDraggingHandleRef = useRef<string | null>(null);
@@ -503,13 +505,32 @@ export function BrushEditor({
   const layersRef = useRef<Layer[]>(layers);
   useEffect(() => { layersRef.current = layers; }, [layers]);
 
-  // brushColor ref (paint 콜백 dep 제거 → 색상 변경 시 paint 재생성 안함 → 렉 없음)
+  // brushColor/brushSize ref (paint 콜백 dep 제거 → 변경 시 paint 재생성 안함 → 렉 없음)
   const brushColorRef = useRef(brushColor);
+  const brushSizeRef = useRef(brushSize);
+  const brushOpacityRef = useRef(brushOpacity);
+  const brushHardnessRef = useRef(brushHardness);
+  const brushShapeRef = useRef(brushShape);
   const updateBrushTipRef = useRef<() => void>(() => { });
   useEffect(() => {
     brushColorRef.current = brushColor;
     updateBrushTipRef.current(); // 색 변경 시 tip 즉시 갱신
   }, [brushColor]);
+  useEffect(() => {
+    brushSizeRef.current = brushSize;
+  }, [brushSize]);
+  useEffect(() => {
+    brushOpacityRef.current = brushOpacity;
+  }, [brushOpacity]);
+  useEffect(() => {
+    brushHardnessRef.current = brushHardness;
+  }, [brushHardness]);
+  useEffect(() => {
+    brushShapeRef.current = brushShape;
+  }, [brushShape]);
+
+  // ── 브러시 크기 상태 업데이트 스로틀링 (연속 키 입력 대응) ──
+  const updateSizeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Move 툴 드래그 상태
   const moveDragStart = useRef<{ mx: number; my: number; lx: number; ly: number } | null>(null);
@@ -1300,21 +1321,27 @@ export function BrushEditor({
       const from = { x: rawFrom.x - layerOffsetX, y: rawFrom.y - layerOffsetY };
       const pos2 = localPos;
 
-      const alpha = brushOpacity / 100;
+      const alpha = brushOpacityRef.current / 100;
       const dx = pos2.x - from.x;
       const dy = pos2.y - from.y;
       const distance = Math.sqrt(dx * dx + dy * dy);
 
       // 간격을 브러시 크기의 1/10 정도로 설정 (더 부드럽게)
-      const stepSize = Math.max(1, brushSize / 10);
+      const currentSize = brushSizeRef.current;
+      const stepSize = Math.max(1, currentSize / 10);
       const steps = Math.ceil(distance / stepSize);
 
       let startOffset = { x: 0, y: 0 };
-      if ((tool === 'clone' || tool === 'heal') && cloneSourceRef.current && initialMousePos.current) {
-        startOffset = {
-          x: cloneSourceRef.current.x - initialMousePos.current.x,
-          y: cloneSourceRef.current.y - initialMousePos.current.y
-        };
+      const currentTool = toolRef.current;
+      if ((currentTool === 'clone' || currentTool === 'heal') && cloneSourceRef.current) {
+        // Aligned behavior: use fixed offset if exists, otherwise set it on first mouse down
+        if (!cloneOffsetRef.current && initialMousePos.current) {
+          cloneOffsetRef.current = {
+            x: cloneSourceRef.current.x - initialMousePos.current.x,
+            y: cloneSourceRef.current.y - initialMousePos.current.y
+          };
+        }
+        startOffset = cloneOffsetRef.current || { x: 0, y: 0 };
       }
 
       const tipCanvas = brushTipRef.current;
@@ -1327,9 +1354,9 @@ export function BrushEditor({
       origCtx.save();
 
       // 도구별 공통 설정
-      if (tool === 'erase') {
+      if (currentTool === 'erase') {
         maskCtx.globalCompositeOperation = 'destination-out';
-      } else if (tool === 'restore') {
+      } else if (currentTool === 'restore') {
         maskCtx.globalCompositeOperation = 'source-over';
       }
 
@@ -1338,15 +1365,15 @@ export function BrushEditor({
         const px = from.x + dx * t;
         const py = from.y + dy * t;
 
-        if (tool === 'paint') {
+        if (currentTool === 'paint') {
           origCtx.globalAlpha = alpha;
           origCtx.drawImage(tipCanvas, px - offset, py - offset);
           maskCtx.globalAlpha = 1;
           maskCtx.drawImage(tipCanvas, px - offset, py - offset);
-        } else if (tool === 'erase' || tool === 'restore') {
+        } else if (currentTool === 'erase' || currentTool === 'restore') {
           maskCtx.globalAlpha = alpha;
           maskCtx.drawImage(tipCanvas, px - offset, py - offset);
-        } else if (tool === 'blur-brush' && blurCacheRef.current) {
+        } else if (currentTool === 'blur-brush' && blurCacheRef.current) {
           const tCanvas = tempCanvasRef.current!;
           tCanvas.width = tipW;
           tCanvas.height = tipH;
@@ -1361,7 +1388,7 @@ export function BrushEditor({
           tCtx.drawImage(tipCanvas, 0, 0);
           origCtx.globalAlpha = alpha;
           origCtx.drawImage(tCanvas, px - offset, py - offset);
-        } else if ((tool === 'clone' || tool === 'heal') && originalSnapshotRef.current) {
+        } else if ((currentTool === 'clone' || currentTool === 'heal') && originalSnapshotRef.current) {
           const tCanvas = tempCanvasRef.current!;
           tCanvas.width = tipW;
           tCanvas.height = tipH;
@@ -1374,7 +1401,7 @@ export function BrushEditor({
           );
           tCtx.globalCompositeOperation = 'destination-in';
           tCtx.drawImage(tipCanvas, 0, 0);
-          origCtx.globalAlpha = tool === 'heal' ? alpha * 0.7 : alpha;
+          origCtx.globalAlpha = currentTool === 'heal' ? alpha * 0.7 : alpha;
           origCtx.drawImage(tCanvas, px - offset, py - offset);
 
           // 투명 배경일 경우 그려진 위치가 보여야 하므로 마스크에도 그려 줌 (불투명하게)
@@ -1390,7 +1417,7 @@ export function BrushEditor({
       hasStrokeRef.current = true;
       compositeLayersAndRender(layersRef.current);
     },
-    [tool, brushSize, brushOpacity, brushHardness, compositeLayersAndRender, originalSnapshotRef, blurCacheRef, getActiveOriginal, getActiveMask]
+    [compositeLayersAndRender, originalSnapshotRef, blurCacheRef, getActiveOriginal, getActiveMask]
   );
 
 
@@ -1405,12 +1432,13 @@ export function BrushEditor({
       e.preventDefault();
       if (canvasRef.current) containerRectRef.current = canvasRef.current.getBoundingClientRect();
       const pos = getCanvasPos(e);
-      const isAlt = (e as any).altKey;
+      const isAlt = (e as any).altKey || isAltPressedRef.current;
       const clientX = 'touches' in e ? (e as React.TouchEvent).touches[0]!.clientX : (e as React.MouseEvent).clientX;
       const clientY = 'touches' in e ? (e as React.TouchEvent).touches[0]!.clientY : (e as React.MouseEvent).clientY;
 
       if ((tool === 'clone' || tool === 'heal') && isAlt) {
         cloneSourceRef.current = pos;
+        cloneOffsetRef.current = null; // Reset aligned offset when source is picked
         setHasCloneSource(true);
         return;
       }
@@ -1983,6 +2011,10 @@ export function BrushEditor({
         redo();
       }
 
+      if (e.key === 'Alt') {
+        isAltPressedRef.current = true;
+      }
+
       // Photoshop shortcuts
       const key = e.key.toLowerCase();
       if (key === 'v') { setTool('move'); stopMarching(); cancelCrop(); }
@@ -1994,6 +2026,37 @@ export function BrushEditor({
       if (key === 'c') { setTool('crop'); stopMarching(); startMarching(); }
       if (key === 'r') { setTool('restore'); stopMarching(); cancelCrop(); }
       if (key === 'i') { setTool('eyedropper'); stopMarching(); cancelCrop(); }
+
+      // Brush Size shortcuts: + (or =), -, [ , ]
+      if (['paint', 'erase', 'restore', 'clone', 'heal', 'blur-brush'].includes(tool)) {
+        if (e.key === '=' || e.key === '+' || e.key === ']' || e.key === '-' || e.key === '_' || e.key === '[') {
+          e.preventDefault();
+          const isIncr = e.key === '=' || e.key === '+' || e.key === ']';
+          const step = e.shiftKey ? 10 : 2;
+          const nextSize = isIncr
+            ? Math.min(500, brushSizeRef.current + step)
+            : Math.max(1, brushSizeRef.current - step);
+
+          // 1. Ref 즉시 업데이트 (페인팅용)
+          brushSizeRef.current = nextSize;
+
+          // 2. DOM 즉시 조작 (시각 피드백용 - 렉 방지 핵심)
+          if (brushCursorRef.current) {
+            const shape = brushShapeRef.current;
+            const z = zoomRef.current;
+            const finalW = (shape === 'rect-v' || shape === 'rect-v-thin') ? (nextSize / (shape === 'rect-v' ? 2 : 4)) * z : nextSize * z;
+            const finalH = (shape === 'rect-h' || shape === 'rect-h-thin') ? (nextSize / (shape === 'rect-h' ? 2 : 4)) * z : nextSize * z;
+            brushCursorRef.current.style.width = `${finalW}px`;
+            brushCursorRef.current.style.height = `${finalH}px`;
+          }
+
+          // 3. React 상태는 스로틀링하여 업데이트 (슬라이더 등 UI 레이턴시 제거)
+          if (updateSizeTimerRef.current) clearTimeout(updateSizeTimerRef.current);
+          updateSizeTimerRef.current = setTimeout(() => {
+            setBrushSize(brushSizeRef.current);
+          }, 32); // 약 30fps로 상태 동기화
+        }
+      }
 
       if (e.key === 'Escape') {
         if (tool === 'crop') cancelCrop();
@@ -2021,9 +2084,19 @@ export function BrushEditor({
       }
     };
 
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.key === 'Alt') {
+        isAltPressedRef.current = false;
+      }
+    };
+
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [hasSelection, applySelectionToMask, undo, redo, tool, cancelCrop, applyCrop, cropRect, startMarching, stopMarching, setTool, stopTextMarching, startTextMarching, bumpTextUI]);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, [hasSelection, applySelectionToMask, undo, redo, tool, cancelCrop, applyCrop, cropRect, startMarching, stopMarching, setTool, stopTextMarching, startTextMarching, bumpTextUI, setBrushSize]);
 
   // ── 전역 마우스/터치 이동 리스너 (캔버스 밖에서도 작업 유지) ─────────────────
   const handleMouseMove = useCallback((e: MouseEvent | TouchEvent) => {
@@ -2042,7 +2115,10 @@ export function BrushEditor({
       brushCursor.style.left = `${lx}px`;
       brushCursor.style.top = `${ly}px`;
       const needsBrush = (toolRef.current === 'erase' || toolRef.current === 'restore' || toolRef.current === 'paint' || toolRef.current === 'clone' || toolRef.current === 'heal' || toolRef.current === 'blur-brush');
-      brushCursor.style.display = needsBrush ? 'block' : 'none';
+      const isAltHeld = (e as any).altKey || isAltPressedRef.current;
+      const isPickMode = (toolRef.current === 'clone' || toolRef.current === 'heal' || toolRef.current === 'paint' || toolRef.current === 'bucket' || toolRef.current === 'eyedropper') && isAltHeld;
+      brushCursor.style.display = (needsBrush && !isPickMode) ? 'block' : 'none';
+      if (isPickMode) overlay.style.cursor = 'crosshair';
     }
 
     const canvasPos = getCanvasPos(e as any);
@@ -2110,18 +2186,12 @@ export function BrushEditor({
         }
       }
     } else if (!isPainting.current) {
-      const isAltHeld = (e as any).altKey;
-      const isEyedropperTool = toolRef.current === 'eyedropper';
-      const isDropperHover = (toolRef.current === 'paint' || toolRef.current === 'bucket') && isAltHeld;
+      const t = toolRef.current;
+      const needsBrush = (t === 'erase' || t === 'restore' || t === 'paint' || t === 'clone' || t === 'heal' || t === 'blur-brush');
+      const isPickMode = (t === 'clone' || t === 'heal' || t === 'paint' || t === 'bucket' || t === 'eyedropper') && isAltHeld;
 
-      if (isEyedropperTool || isDropperHover) {
-        overlay.style.cursor = EYEDROPPER_CURSOR;
-        if (brushCursor) brushCursor.style.display = 'none';
-      } else {
-        const showBrush = (toolRef.current === 'erase' || toolRef.current === 'restore' || toolRef.current === 'paint' || toolRef.current === 'clone' || toolRef.current === 'heal' || toolRef.current === 'blur-brush');
-        overlay.style.cursor = (toolRef.current === 'wand' || toolRef.current === 'crop' || toolRef.current === 'bucket' || toolRef.current.startsWith('marquee')) ? 'crosshair' : 'none';
-        if (brushCursor) brushCursor.style.display = showBrush ? 'block' : 'none';
-      }
+      overlay.style.cursor = isPickMode ? 'crosshair' : (t === 'wand' || t === 'crop' || t === 'bucket' || t.startsWith('marquee')) ? 'crosshair' : 'none';
+      if (brushCursor) brushCursor.style.display = (needsBrush && !isPickMode) ? 'block' : 'none';
     }
 
     if (isPainting.current) {

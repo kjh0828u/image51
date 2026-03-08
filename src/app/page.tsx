@@ -288,9 +288,9 @@ export default function Home() {
                 </div>
                 <p className="upload-text text-2xl font-black text-white text-center">
                   이미지를 드래그하거나 클릭하여 열기<br />
-                  <span className="text-sm font-bold text-indigo-400 uppercase tracking-widest mt-2 block">Multi-Tab Workspace Mode</span>
+                  <span className="text-sm font-bold text-indigo-400 uppercase tracking-widest mt-2 block">이미지 배경제거, 자르기 등 여러 도구를 이용해보세요.</span>
                 </p>
-                <p className="individual-upload-hint text-gray-500 text-sm mt-6">여러 이미지를 동시에 열어 탭으로 자유롭게 전환하며 편집하세요</p>
+                <p className="individual-upload-hint text-gray-500 text-sm mt-6"></p>
               </Glass>
             </div>
           )}

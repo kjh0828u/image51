@@ -73,6 +73,7 @@ interface BrushEditorProps {
   setActiveTabId?: (id: string) => void;
   onCloseTab?: (id: string, e: React.MouseEvent) => void;
   onAddNewTab?: () => void;
+  tabId?: string;
 }
 
 // 드롭 다이얼로그 상태
@@ -509,7 +510,8 @@ export function BrushEditor({
   activeTabId = null,
   setActiveTabId = () => { },
   onCloseTab = () => { },
-  onAddNewTab = () => { }
+  onAddNewTab = () => { },
+  tabId = ""
 }: BrushEditorProps) {
   const isPainting = useRef(false);
   const lastPos = useRef<{ x: number; y: number } | null>(null);
@@ -826,7 +828,7 @@ export function BrushEditor({
   const {
     hasSelection, setHasSelection,
     drawMarching, startMarching, stopMarching,
-    handleWand, applySelectionToMask
+    handleWand, handleSelectAll, applySelectionToMask
   } = selectionTools;
 
   // 투명도 감지하여 포맷 자동 설정
@@ -2127,7 +2129,6 @@ export function BrushEditor({
     cropRectRef.current = null;
     setCropRect(null);
     overlayRef.current?.getContext('2d')?.clearRect(0, 0, sw, sh);
-    setTool('wand');
     saveMaskSnapshot('Crop');
   }, [compositeLayersAndRender, saveMaskSnapshot, updateCanvasSize, setLayers]);
 
@@ -2137,7 +2138,6 @@ export function BrushEditor({
     if (overlayRef.current) {
       overlayRef.current.getContext('2d')!.clearRect(0, 0, overlayRef.current.width, overlayRef.current.height);
     }
-    setTool('wand');
   }, []);
 
   // ── 여백 컷 ──────────────────────────────────────────────
@@ -2316,24 +2316,56 @@ export function BrushEditor({
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // 1. 활성 탭이 아니면 키보드 이벤트 무시 (전역 리스너 충돌 방지)
+      if (activeTabId && tabId && activeTabId !== tabId) return;
+
       const isRangeInput = e.target instanceof HTMLInputElement && (e.target as HTMLInputElement).type === 'range';
       const isTextInput = (e.target instanceof HTMLInputElement && !isRangeInput) || e.target instanceof HTMLTextAreaElement;
       if (isTextInput) return;
-      if (!imageUrl) return;
+
+      const currentTool = toolRef.current;
+      const isCtrl = e.ctrlKey || e.metaKey;
 
       if (e.key === 'Delete' || e.key === 'Backspace') {
         if (hasSelection) applySelectionToMask('erase');
       }
-      if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+      if (isCtrl && e.key === 'z') {
         e.preventDefault();
         undo();
       }
-      if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
+      if (isCtrl && (e.key === 'y' || (e.shiftKey && e.key.toLowerCase() === 'z'))) {
         e.preventDefault();
         redo();
       }
+      if (isCtrl && e.key.toLowerCase() === 'd') {
+        e.preventDefault();
+        stopMarching();
+      }
+      if (isCtrl && e.key.toLowerCase() === 'a') {
+        e.preventDefault();
+        handleSelectAll();
+      }
 
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+      // Zooming Shortcuts
+      if (isCtrl) {
+        if (e.key === '=' || e.key === '+') {
+          e.preventDefault();
+          setZoom(z => Math.min(10, z * 1.2));
+        } else if (e.key === '-' || e.key === '_') {
+          e.preventDefault();
+          setZoom(z => Math.max(0.01, z / 1.2));
+        } else if (e.key === '0') {
+          e.preventDefault();
+          const cw = containerRef.current?.clientWidth ?? 800;
+          const ch = containerRef.current?.clientHeight ?? 600;
+          setZoom(Math.min((cw - 40) / imageSize.w, (ch - 40) / imageSize.h, 1));
+        } else if (e.key === '1') {
+          e.preventDefault();
+          setZoom(1);
+        }
+      }
+
+      if (isCtrl && e.key.toLowerCase() === 's') {
         e.preventDefault();
         setShowDownloadPanel(prev => !prev);
       }
@@ -2344,54 +2376,69 @@ export function BrushEditor({
 
       // Photoshop shortcuts
       const key = e.key.toLowerCase();
-      if (key === 'v') { setTool('move'); stopMarching(); cancelCrop(); }
-      if (key === 'w') { setTool('wand'); cancelCrop(); }
-      if (key === 't') { setTool('text'); stopMarching(); cancelCrop(); }
-      if (key === 'b') { setTool('paint'); stopMarching(); cancelCrop(); }
-      if (key === 'e') { setTool('erase'); stopMarching(); cancelCrop(); }
-      if (key === 'g') { setTool('bucket'); stopMarching(); cancelCrop(); }
-      if (key === 'c') { setTool('crop'); stopMarching(); startMarching(); }
-      if (key === 'r') { setTool('restore'); stopMarching(); cancelCrop(); }
-      if (key === 'i') { setTool('eyedropper'); stopMarching(); cancelCrop(); }
-      if (key === 'x') { e.preventDefault(); swapColors(); }
-      if (key === 'd') { e.preventDefault(); resetColors(); }
+      const code = e.code;
 
-      // Brush Size shortcuts: + (or =), -, [ , ]
-      if (['paint', 'erase', 'restore', 'clone', 'heal', 'blur-brush'].includes(tool)) {
-        if (e.key === '=' || e.key === '+' || e.key === ']' || e.key === '-' || e.key === '_' || e.key === '[') {
+      if (!isCtrl) {
+        // Tool Selection
+        if (code === 'KeyV' || key === 'v' || key === 'ㅍ') { e.preventDefault(); setTool('move'); stopMarching(); cancelCrop(); }
+        else if (code === 'KeyW' || key === 'w' || key === 'ㅈ') { e.preventDefault(); setTool('wand'); cancelCrop(); }
+        else if (code === 'KeyT' || key === 't' || key === 'ㅅ') { e.preventDefault(); setTool('text'); stopMarching(); cancelCrop(); }
+        else if (code === 'KeyB' || key === 'b' || key === 'ㅠ') { e.preventDefault(); setTool('paint'); stopMarching(); cancelCrop(); }
+        else if (code === 'KeyE' || key === 'e' || key === 'ㄷ') { e.preventDefault(); setTool('erase'); stopMarching(); cancelCrop(); }
+        else if (code === 'KeyG' || key === 'g' || key === 'ㅎ') { e.preventDefault(); setTool('bucket'); stopMarching(); cancelCrop(); }
+        else if (code === 'KeyC' || key === 'c' || key === 'ㅊ') { e.preventDefault(); setTool('crop'); stopMarching(); startMarching(); }
+        else if (code === 'KeyR' || key === 'r' || key === 'ㄱ') { e.preventDefault(); setTool('restore'); stopMarching(); cancelCrop(); }
+        else if (code === 'KeyI' || key === 'i' || key === 'ㅑ') { e.preventDefault(); setTool('eyedropper'); stopMarching(); cancelCrop(); }
+        else if (code === 'KeyS' || key === 's' || key === 'ㄴ') { e.preventDefault(); setTool('clone'); stopMarching(); cancelCrop(); }
+        else if (code === 'KeyH' || key === 'h' || key === 'ㅗ') { e.preventDefault(); setTool('heal'); stopMarching(); cancelCrop(); }
+
+        else if (code === 'KeyX' || key === 'x' || key === 'ㅌ') { e.preventDefault(); swapColors(); }
+        else if (code === 'KeyD' || key === 'd' || key === 'ㅇ') { e.preventDefault(); resetColors(); }
+      }
+
+      // Brush Size shortcuts
+      if (['paint', 'erase', 'restore', 'clone', 'heal', 'blur-brush'].includes(currentTool)) {
+        const isBracket = e.key === '[' || e.key === ']' || e.key === '{' || e.key === '}';
+        const isMath = e.key === '=' || e.key === '+' || e.key === '-' || e.key === '_';
+
+        if (isBracket || isMath) {
           e.preventDefault();
-          const isIncr = e.key === '=' || e.key === '+' || e.key === ']';
-          const step = e.shiftKey ? 10 : 2;
-          const nextSize = isIncr
-            ? Math.min(500, brushSizeRef.current + step)
-            : Math.max(1, brushSizeRef.current - step);
+          const isIncr = e.key === '=' || e.key === '+' || e.key === ']' || e.key === '}';
+          const isHardness = e.key === '{' || e.key === '}';
 
-          // 1. Ref 즉시 업데이트 (페인팅용)
-          brushSizeRef.current = nextSize;
+          if (isHardness) {
+            const hStep = 10;
+            const nextHardness = e.key === '}'
+              ? Math.min(100, brushHardnessRef.current + hStep)
+              : Math.max(0, brushHardnessRef.current - hStep);
+            setBrushHardness(nextHardness);
+          } else {
+            const step = e.shiftKey ? 10 : 2;
+            const nextSize = isIncr
+              ? Math.min(500, brushSizeRef.current + step)
+              : Math.max(1, brushSizeRef.current - step);
 
-          // 2. DOM 즉시 조작 (시각 피드백용 - 렉 방지 핵심)
-          if (brushCursorRef.current) {
-            const shape = brushShapeRef.current;
-            const z = zoomRef.current;
-            const finalW = (shape === 'rect-v' || shape === 'rect-v-thin') ? (nextSize / (shape === 'rect-v' ? 2 : 4)) * z : nextSize * z;
-            const finalH = (shape === 'rect-h' || shape === 'rect-h-thin') ? (nextSize / (shape === 'rect-h' ? 2 : 4)) * z : nextSize * z;
-            brushCursorRef.current.style.width = `${finalW}px`;
-            brushCursorRef.current.style.height = `${finalH}px`;
+            brushSizeRef.current = nextSize;
+            if (brushCursorRef.current) {
+              const shape = brushShapeRef.current;
+              const z = zoomRef.current;
+              const finalW = (shape === 'rect-v' || shape === 'rect-v-thin') ? (nextSize / (shape === 'rect-v' ? 2 : 4)) * z : nextSize * z;
+              const finalH = (shape === 'rect-h' || shape === 'rect-h-thin') ? (nextSize / (shape === 'rect-h' ? 2 : 4)) * z : nextSize * z;
+              brushCursorRef.current.style.width = `${finalW}px`;
+              brushCursorRef.current.style.height = `${finalH}px`;
+            }
+            if (updateSizeTimerRef.current) clearTimeout(updateSizeTimerRef.current);
+            updateSizeTimerRef.current = setTimeout(() => {
+              setBrushSize(brushSizeRef.current);
+            }, 32);
           }
-
-          // 3. React 상태는 스로틀링하여 업데이트 (슬라이더 등 UI 레이턴시 제거)
-          if (updateSizeTimerRef.current) clearTimeout(updateSizeTimerRef.current);
-          updateSizeTimerRef.current = setTimeout(() => {
-            setBrushSize(brushSizeRef.current);
-          }, 32); // 약 30fps로 상태 동기화
         }
       }
 
       if (e.key === 'Escape') {
-        if (tool === 'crop') cancelCrop();
+        if (currentTool === 'crop') cancelCrop();
         if (hasSelection) stopMarching();
         if (isEditingTextRef.current) {
-          // 편집 취소 — 기존 레이어 편집이었으면 selected 상태로 복귀
           const wasEditingId = editingTextLayerIdRef.current;
           isEditingTextRef.current = false;
           textPosRef.current = null;
@@ -2409,7 +2456,7 @@ export function BrushEditor({
         }
       }
       if (e.key === 'Enter') {
-        if (tool === 'crop' && cropRect && cropRect.w > 2) applyCrop();
+        if (currentTool === 'crop' && cropRect && cropRect.w > 2) applyCrop();
       }
     };
 
@@ -2431,7 +2478,7 @@ export function BrushEditor({
       window.removeEventListener('keyup', handleKeyUp);
       window.removeEventListener('blur', handleBlur);
     };
-  }, [hasSelection, applySelectionToMask, undo, redo, tool, cancelCrop, applyCrop, cropRect, startMarching, stopMarching, setTool, stopTextMarching, startTextMarching, bumpTextUI, setBrushSize, download, setShowDownloadPanel]);
+  }, [activeTabId, tabId, hasSelection, applySelectionToMask, undo, redo, cancelCrop, applyCrop, cropRect, startMarching, stopMarching, setTool, stopTextMarching, startTextMarching, bumpTextUI, setBrushSize, handleSelectAll, swapColors, resetColors]);
 
   // ── 전역 마우스/터치 이동 리스너 (캔버스 밖에서도 작업 유지) ─────────────────
   const handleMouseMove = useCallback((e: MouseEvent | TouchEvent) => {

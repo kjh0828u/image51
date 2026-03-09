@@ -254,6 +254,7 @@ export default function Home() {
                   )}
                 >
                   <BrushEditor
+                    tabId={tab.id}
                     imageUrl={tab.url}
                     originalName={tab.name}
                     onImageChange={handleIndividualFile}
@@ -268,6 +269,7 @@ export default function Home() {
               ))
             ) : (
               <BrushEditor
+                tabId=""
                 imageUrl=""
                 originalName=""
                 onImageChange={handleIndividualFile}

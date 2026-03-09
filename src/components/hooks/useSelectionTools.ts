@@ -271,6 +271,18 @@ export function useSelectionTools({
         [originalRef, tolerance, wandSmooth, wandExpand, baseSelectionRef, selectionRef, drawMarching, startMarching]
     );
 
+    const handleSelectAll = useCallback(() => {
+        if (!originalRef.current) return;
+        const w = originalRef.current.width;
+        const h = originalRef.current.height;
+        const all = new Uint8Array(w * h).fill(1);
+        baseSelectionRef.current = all;
+        selectionRef.current = all;
+        setHasSelection(true);
+        drawMarching();
+        startMarching();
+    }, [originalRef, baseSelectionRef, selectionRef, drawMarching, startMarching]);
+
     const applySelectionToMask = useCallback(
         (mode: 'erase' | 'restore') => {
             const sel = selectionRef.current;
@@ -307,6 +319,7 @@ export function useSelectionTools({
         startMarching,
         stopMarching,
         handleWand,
+        handleSelectAll,
         applySelectionToMask
     };
 }

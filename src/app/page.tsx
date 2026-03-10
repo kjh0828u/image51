@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils';
 import { getHandle } from '@/lib/idb';
 import { DndContext, closestCenter } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { useTranslation } from 'react-i18next';
 import {
   Glass,
   ToggleSwitch,
@@ -37,6 +38,7 @@ export default function Home() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [resizeError, setResizeError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>('individual');
+  const { t } = useTranslation();
 
   // 멀티 탭 워크스페이스 상태
   interface TabItem { id: string; url: string; name: string; }
@@ -66,22 +68,24 @@ export default function Home() {
   }, [store]);
 
   const handleSavePreset = useCallback(() => {
-    const n = prompt('이름:');
+    const n = prompt(t('presets.preset_name_prompt'));
     if (n) store.saveProfile(n);
-  }, [store]);
+  }, [store, t]);
 
   const handleUpdatePreset = useCallback((id: string, name: string) => {
-    if (confirm(`현재 설정을 '${name}' 프리셋에 덮어씌우겠습니까?`)) store.updateProfile(id);
-  }, [store]);
+    if (confirm(t('presets.update_confirm', { name }))) store.updateProfile(id);
+  }, [store, t]);
 
   const handleRenamePreset = useCallback((id: string, oldName: string) => {
-    const newName = prompt('프리셋 이름 수정:', oldName);
+    const newName = prompt(t('presets.rename_prompt'), oldName);
     if (newName && newName.trim()) store.renameProfile(id, newName.trim());
-  }, [store]);
+  }, [store, t]);
 
   const handleDeletePreset = useCallback((id: string, name: string) => {
-    if (confirm(`'${name}' 프리셋을 삭제하시겠습니까?`)) store.deleteProfile(id);
-  }, [store]);
+    if (confirm(t('presets.delete_confirm', { name }))) store.setOption('activeProfileId', null); // 임시 방편 (실제 삭제는 아래)
+    // Confirm 로직은 store.deleteProfile(id) 호출용
+    if (confirm(t('presets.delete_confirm'))) store.deleteProfile(id);
+  }, [store, t]);
 
   const handleIndividualFile = useCallback((file: File) => {
     if (!file.type.startsWith('image/')) return;
@@ -133,7 +137,7 @@ export default function Home() {
         <main className="main-content">
           <div className="sidebar custom-scrollbar">
             <section>
-              <h2 className="section-title">이미지 업로드</h2>
+              <h2 className="section-title">{t('sidebar.upload_title')}</h2>
               <div onDragOver={handleDragOver} onDrop={handleDrop} onClick={() => fileInputRef.current?.click()}>
                 <Glass
                   variant="bright"
@@ -144,7 +148,7 @@ export default function Home() {
                   {store.images.length === 0 ? (
                     <>
                       <div className="upload-icon-container"><Plus className="w-10 h-10" /></div>
-                      <p className="upload-text">Click or<br /><span className="upload-text-accent">drag & drop</span></p>
+                      <p className="upload-text">{t('sidebar.click_or_drag')}</p>
                     </>
                   ) : (
                     <ImageList
@@ -162,7 +166,7 @@ export default function Home() {
 
             <section>
               <h2 className="section-title section-header-with-action">
-                <span>프리셋 관리</span>
+                <span>{t('sidebar.preset_title')}</span>
                 <div className="section-header-actions">
                   <button onClick={handleSavePreset} className="btn-icon section-header-btn"><Plus className="w-3.5 h-3.5" /></button>
                 </div>
@@ -171,7 +175,7 @@ export default function Home() {
                 <div className="liquidGlass-effect"></div>
                 <div className="preset-list custom-scrollbar">
                   {store.profiles.length === 0 ? (
-                    <p className="empty-state">옵션 구성을 프리셋으로 저장해 보세요.</p>
+                    <p className="empty-state">{t('presets.no_presets_desc')}</p>
                   ) : (
                     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
                       <SortableContext items={store.profiles.map(p => p.id)} strategy={verticalListSortingStrategy}>
@@ -192,26 +196,26 @@ export default function Home() {
           </div>
 
           <div className="content-area custom-scrollbar">
-            <h2 className="section-title">변환 옵션</h2>
+            <h2 className="section-title">{t('common.batch')}</h2>
             <div className="options-grid">
-              <OptionCard title="자동 여백 제거" subtitle="Auto Crop" headerAction={<ToggleSwitch checked={store.enableAutoCrop} onChange={c => store.setOption('enableAutoCrop', c)} />} disabled={!store.enableAutoCrop}>
-                <div className="option-row"><span className="input-label">여백을 없애고 사물에 맞게 조정</span><span className="option-value">{store.autoCropMargin}</span></div>
+              <OptionCard title={t('options.auto_crop')} subtitle="Auto Crop" headerAction={<ToggleSwitch checked={store.enableAutoCrop} onChange={c => store.setOption('enableAutoCrop', c)} />} disabled={!store.enableAutoCrop}>
+                <div className="option-row"><span className="input-label">{t('options.auto_crop_row')}</span><span className="option-value">{store.autoCropMargin}</span></div>
                 <input type="range" min="0" max="100" value={store.autoCropMargin} onChange={e => store.setOption('autoCropMargin', Number(e.target.value))} className="range-slider" />
               </OptionCard>
 
-              <OptionCard title="이미지 품질 압축" subtitle="Compress" headerAction={<ToggleSwitch checked={store.enableCompress} onChange={c => store.setOption('enableCompress', c)} />} disabled={!store.enableCompress}>
-                <div className="option-row"><span className="input-label">품질 (%)</span><span className="option-value">{store.quality}</span></div>
+              <OptionCard title={t('options.compress')} subtitle="Compress" headerAction={<ToggleSwitch checked={store.enableCompress} onChange={c => store.setOption('enableCompress', c)} />} disabled={!store.enableCompress}>
+                <div className="option-row"><span className="input-label">{t('options.quality_row')}</span><span className="option-value">{store.quality}</span></div>
                 <input type="range" min="1" max="100" value={store.quality} onChange={e => store.setOption('quality', Number(e.target.value))} className="range-slider" />
               </OptionCard>
 
               <ResizeOptionsCard resizeError={resizeError} onResizeErrorChange={setResizeError} />
 
-              <OptionCard title="흑백 필터 전환" subtitle="Grayscale" headerAction={<ToggleSwitch checked={store.enableGrayscale} onChange={c => store.setOption('enableGrayscale', c)} />} disabled={!store.enableGrayscale}>
-                <div className="option-row"><span className="input-label">강도 (%)</span><span className="option-value">{store.grayscale}%</span></div>
+              <OptionCard title={t('options.grayscale')} subtitle="Grayscale" headerAction={<ToggleSwitch checked={store.enableGrayscale} onChange={c => store.setOption('enableGrayscale', c)} />} disabled={!store.enableGrayscale}>
+                <div className="option-row"><span className="input-label">{t('options.grayscale_intensity')}</span><span className="option-value">{store.grayscale}%</span></div>
                 <input type="range" min="0" max="100" value={store.grayscale} onChange={e => store.setOption('grayscale', Number(e.target.value))} className="range-slider" />
               </OptionCard>
 
-              <OptionCard title="저장 타입" subtitle="Format" headerAction={<ToggleSwitch checked={store.enableCustomFormat} onChange={c => store.setOption('enableCustomFormat', c)} />} disabled={!store.enableCustomFormat}>
+              <OptionCard title={t('options.format')} subtitle="Format" headerAction={<ToggleSwitch checked={store.enableCustomFormat} onChange={c => store.setOption('enableCustomFormat', c)} />} disabled={!store.enableCustomFormat}>
                 <div className="flex gap-2 mt-2">
                   {(['png', 'jpg', 'webp', 'svg'] as const).map(fmt => (
                     <button
@@ -231,9 +235,9 @@ export default function Home() {
             </div>
 
             <div className="floating-actions">
-              <button onClick={() => handleStartProcessing(setResizeError)} disabled={pendingCount === 0} className="btn-floating-primary">변환 시작</button>
+              <button onClick={() => handleStartProcessing(setResizeError)} disabled={pendingCount === 0} className="btn-floating-primary">{t('actions.start_process')}</button>
               {downloadableCount > 0 && (
-                <button onClick={() => handleDownloadAll()} className="btn-floating-secondary"><Download className="w-4 h-4" /> 일괄 다운로드</button>
+                <button onClick={() => handleDownloadAll()} className="btn-floating-secondary"><Download className="w-4 h-4" /> {t('actions.batch_download')}</button>
               )}
             </div>
           </div>
@@ -300,3 +304,4 @@ export default function Home() {
     </div>
   );
 }
+

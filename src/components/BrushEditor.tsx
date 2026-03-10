@@ -61,6 +61,7 @@ import { useLayers, type Layer, type TextStyle, type LayerHistoryEntry } from '.
 import { useSelectionTools } from './hooks/useSelectionTools';
 import { useImageProcessing } from '@/hooks/useImageProcessing';
 import { getDownloadFilename } from '@/lib/fileUtils';
+import { useTranslation } from 'react-i18next';
 
 interface BrushEditorProps {
   imageUrl: string;
@@ -131,7 +132,9 @@ function hsvToHex(h: number, s: number, v: number): string {
   return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
 }
 
-const ColorPickerPopup = memo(({ color, onChange, size = 24, className = '', title = '색상 선택' }: ColorPickerPopupProps) => {
+const ColorPickerPopup = memo(({ color, onChange, size = 24, className = '', title }: ColorPickerPopupProps) => {
+  const { t } = useTranslation();
+  const displayTitle = title || t('common.color_picker');
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const popupRef = useRef<HTMLDivElement>(null);
@@ -240,7 +243,7 @@ const ColorPickerPopup = memo(({ color, onChange, size = 24, className = '', tit
       <div
         className="rounded border border-[#555] cursor-pointer transition-transform hover:scale-110 active:scale-95 shadow-md"
         style={{ width: size, height: size, backgroundColor: color }}
-        title={title}
+        title={displayTitle}
         onClick={() => setIsOpen(v => !v)}
       />
       {isOpen && (
@@ -359,6 +362,7 @@ LayerThumbnail.displayName = 'LayerThumbnail';
 
 // 레이어 개별 아이템 (분리됨)
 const LayerItem = memo(({ layer, active, onSelect, onSetVisible, layerDragOver, layerDragIdRef, setLayerDragOver, reorderLayer, subscribeHistory }: any) => {
+  const { t } = useTranslation();
   const isDragTarget = layerDragOver === layer.id && layerDragIdRef.current !== layer.id;
   return (
     <div
@@ -396,6 +400,7 @@ const LayerPanel = memo(({
   layers, activeLayerId, setActiveLayerId, setLayerVisible, setLayerOpacity,
   removeLayer, reorderLayer, addPaintLayer, mergeDown, flattenAll, imageSize, subscribeHistory
 }: any) => {
+  const { t } = useTranslation();
   const [layerDragOver, setLayerDragOver] = useState<string | null>(null);
   const layerDragIdRef = useRef<string | null>(null);
   const activeLayer = layers.find((l: any) => l.id === activeLayerId);
@@ -403,7 +408,7 @@ const LayerPanel = memo(({
   return (
     <div className="flex-1 flex flex-col border-b border-[#111] min-h-[200px]">
       <div className="layer-panel-header">
-        <span className="layer-panel-title">Layers</span>
+        <span className="layer-panel-title">{t('editor.layers')}</span>
         <div className="layer-panel-actions">
           <button className="layer-panel-btn" onClick={() => addPaintLayer(`Layer ${layers.length + 1}`, layers, activeLayerId)}><Plus size={13} /></button>
           <button className="layer-panel-btn" disabled={layers.findIndex((l: any) => l.id === activeLayerId) >= layers.length - 1} onClick={() => {
@@ -436,13 +441,13 @@ const LayerPanel = memo(({
       {activeLayer && (
         <div className="p-2 border-t border-[#111] bg-[#252526] flex flex-col gap-2 flex-shrink-0">
           <div className="flex items-center gap-2">
-            <span className="text-[9px] font-bold text-gray-500 uppercase w-14">Opacity</span>
+            <span className="text-[9px] font-bold text-gray-500 uppercase w-14">{t('editor.opacity')}</span>
             <input type="range" min={0} max={100} value={activeLayer.opacity} onChange={(e) => setLayerOpacity(activeLayerId, Number(e.target.value), layers, activeLayerId)} className="flex-1 h-1 range-slider" />
             <span className="text-[9px] font-mono text-indigo-400 w-8">{activeLayer.opacity}%</span>
           </div>
           <div className="flex gap-1">
-            <button className="layer-panel-footer-btn flex-1" disabled={layers.findIndex((l: any) => l.id === activeLayerId) === 0} onClick={() => mergeDown(activeLayerId, layers, activeLayerId, () => null)}><Merge size={10} /> Merge ↓</button>
-            <button className="layer-panel-footer-btn flex-1" onClick={() => flattenAll(layers, activeLayerId, imageSize.w, imageSize.h)}>Flatten</button>
+            <button className="layer-panel-footer-btn flex-1" disabled={layers.findIndex((l: any) => l.id === activeLayerId) === 0} onClick={() => mergeDown(activeLayerId, layers, activeLayerId, () => null)}><Merge size={10} /> {t('editor.merge_down')}</button>
+            <button className="layer-panel-footer-btn flex-1" onClick={() => flattenAll(layers, activeLayerId, imageSize.w, imageSize.h)}>{t('editor.flatten')}</button>
           </div>
         </div>
       )}
@@ -453,10 +458,11 @@ LayerPanel.displayName = 'LayerPanel';
 
 // 히스토리 항목 메모이제이션
 const HistoryItem = memo(({ item, index, active, onClick }: { item: any, index: number, active: boolean, onClick: (i: number) => void }) => {
+  const { t } = useTranslation();
   return (
     <button onClick={() => onClick(index)} className={`w-full px-4 py-2 text-[11px] flex justify-between items-center border-b border-[#333] transition-colors ${active ? 'bg-[#4f46e5] text-white' : 'text-gray-400 hover:bg-white/5'}`}>
       <div className="flex items-center gap-2">
-        {item.label === 'Open' ? <Palette size={12} /> : (item.label === 'Brush' || item.label === 'Paint') ? <Brush size={12} /> : item.label === 'Crop' ? <Crop size={12} /> : item.label === 'Adjustments' ? <Sliders size={12} /> : <Scissors size={12} />}
+        {item.label === 'Open' ? <Palette size={12} /> : (item.label === 'Brush' || item.label === 'Brush Tool' || item.label === t('tools.brush')) ? <Brush size={12} /> : item.label === 'Crop' ? <Crop size={12} /> : item.label === 'Adjustments' ? <Sliders size={12} /> : <Scissors size={12} />}
         <span className="font-bold uppercase tracking-tighter">{item.label}</span>
       </div>
       <span className="text-[9px] opacity-40 font-mono">{item.time}</span>
@@ -513,6 +519,28 @@ export function BrushEditor({
   onAddNewTab = () => { },
   tabId = ""
 }: BrushEditorProps) {
+  const { t } = useTranslation();
+
+  const getToolName = (tool: Tool) => {
+    switch (tool) {
+      case 'paint': return t('tools.brush');
+      case 'erase': return t('tools.eraser');
+      case 'restore': return t('tools.restore');
+      case 'wand': return t('tools.wand');
+      case 'marquee-rect': return t('tools.marquee_rect');
+      case 'marquee-ellipse': return t('tools.marquee_ellipse');
+      case 'crop': return t('tools.crop');
+      case 'eyedropper': return t('tools.eyedropper');
+      case 'bucket': return t('tools.bucket');
+      case 'clone': return t('tools.clone');
+      case 'heal': return t('tools.heal');
+      case 'blur-brush': return t('tools.blur');
+      case 'move': return t('tools.move');
+      case 'text': return t('tools.text');
+      default: return tool.replace('-', ' ');
+    }
+  }
+
   const isPainting = useRef(false);
   const lastPos = useRef<{ x: number; y: number } | null>(null);
 
@@ -1387,7 +1415,7 @@ export function BrushEditor({
     mCtx.putImageData(mData, 0, 0);
     compositeLayersAndRender(layersRef.current);
     stopMarching();
-    saveMaskSnapshot('Selection Fill');
+    saveMaskSnapshot('Fill');
   }, [compositeLayersAndRender, saveMaskSnapshot, stopMarching, getActiveOriginal, getActiveMask]);
 
   const handleBucket = useCallback(
@@ -1435,7 +1463,7 @@ export function BrushEditor({
       oCtx.putImageData(oData, 0, 0);
       mCtx.putImageData(mData, 0, 0);
       compositeLayersAndRender(layersRef.current);
-      saveMaskSnapshot('Bucket Fill');
+      saveMaskSnapshot('Paint Bucket');
     },
     [tolerance, compositeLayersAndRender, saveMaskSnapshot, getActiveOriginal, getActiveMask]
   );
@@ -2081,12 +2109,12 @@ export function BrushEditor({
     if (isPainting.current && (hasStrokeRef.current || toolRef.current === 'paint' || toolRef.current === 'erase' || toolRef.current === 'restore')) {
       let label = 'Edit';
       const t = toolRef.current;
-      if (t === 'erase') label = 'Eraser';
+      if (t === 'erase') label = 'Eraser Tool';
       else if (t === 'restore') label = 'Restore';
-      else if (t === 'paint') label = 'Brush';
-      else if (t === 'clone') label = 'Clone Stamp';
-      else if (t === 'heal') label = 'Healing';
-      else if (t === 'blur-brush') label = 'Blur';
+      else if (t === 'paint') label = 'Brush Tool';
+      else if (t === 'clone') label = 'Clone Stamp Tool';
+      else if (t === 'heal') label = 'Healing Brush Tool';
+      else if (t === 'blur-brush') label = 'Blur Tool';
 
       saveMaskSnapshot(label);
       // 픽셀 작업 후 동기식 setLayers 제거 (setTimeout을 통한 비동기 히스토리 업데이트가 UI를 갱신함)
@@ -2165,7 +2193,7 @@ export function BrushEditor({
 
     updateCanvasSize(w, h);
     stopMarching();
-    saveMaskSnapshot('Auto Crop');
+    saveMaskSnapshot('Crop');
   }, [compositeLayersAndRender, stopMarching, cropMargin, saveMaskSnapshot, updateCanvasSize, setLayers]);
 
   // ── 배경색 채우기 ─────────────────────────────────────────
@@ -2192,7 +2220,7 @@ export function BrushEditor({
 
     setShowFillPanel(false);
     compositeLayersAndRender(layers);
-    saveMaskSnapshot('Fill Bg');
+    saveMaskSnapshot('Fill');
   }, [fillColor, compositeLayersAndRender, layers, saveMaskSnapshot, getActiveOriginal, getActiveMask]);
 
   const applyBackgroundToTransparency = useCallback(() => {
@@ -2217,7 +2245,7 @@ export function BrushEditor({
 
     setShowFillPanel(false);
     compositeLayersAndRender(layers);
-    saveMaskSnapshot('Fill Transp.');
+    saveMaskSnapshot('Fill');
   }, [fillColor, compositeLayersAndRender, layers, saveMaskSnapshot, getActiveOriginal, getActiveMask]);
 
   const fillAllTransparency = useCallback(() => {
@@ -2241,7 +2269,7 @@ export function BrushEditor({
     activeMask.getContext('2d')!.fillRect(0, 0, w, h);
 
     compositeLayersAndRender(layersRef.current);
-    saveMaskSnapshot('Brush Fill');
+    saveMaskSnapshot('Fill');
   }, [compositeLayersAndRender, saveMaskSnapshot, getActiveOriginal, getActiveMask]);
 
 
@@ -2977,20 +3005,20 @@ export function BrushEditor({
       {dropDialog?.visible && (
         <div className="layer-drop-dialog">
           <div className="layer-drop-dialog-box">
-            <div className="layer-drop-dialog-title">이미지를 어떻게 열까요?</div>
-            <div className="layer-drop-dialog-sub">현재 작업 탭에 레이어로 추가하거나 새 탭으로 열 수 있습니다.</div>
+            <div className="layer-drop-dialog-title">{t('editor.drop_question')}</div>
+            <div className="layer-drop-dialog-sub">{t('editor.drop_desc')}</div>
             <div className="layer-drop-dialog-filename">{dropDialog.file.name}</div>
             <div className="layer-drop-dialog-btns">
               <button className="layer-drop-btn-primary" onClick={handleDropAddAsLayer}>
                 <Layers size={14} />
-                현재 탭에 레이어 추가
+                {t('editor.add_layer')}
               </button>
               <button className="layer-drop-btn-secondary" onClick={handleDropNewTab}>
                 <Plus size={14} />
-                새 탭으로 열기
+                {t('editor.open_new_tab')}
               </button>
               <button className="layer-drop-btn-secondary" onClick={() => setDropDialog(null)}>
-                취소
+                {t('common.cancel')}
               </button>
             </div>
           </div>
@@ -3002,18 +3030,18 @@ export function BrushEditor({
           <div className="w-16 h-16 bg-indigo-500 rounded-full flex items-center justify-center mb-4 shadow-xl">
             <ImagePlus size={32} className="text-white animate-bounce" />
           </div>
-          <p className="text-white font-black text-xl drop-shadow-lg">레이어 추가 또는 새 탭으로 열기</p>
-          <p className="text-indigo-200 text-sm mt-3">드롭 후 선택하세요</p>
+          <p className="text-white font-black text-xl drop-shadow-lg">{t('editor.drop_action_desc')}</p>
+          <p className="text-indigo-200 text-sm mt-3">{t('editor.drop_hint')}</p>
         </div>
       )}
 
       {/* ── TOP BAR (Header) ────────────────────────────────── */}
       <div className="brush-top-bar">
         <div className="flex items-center gap-1">
-          <button ref={undoBtnRef} onClick={undo} disabled={!canUndo} className="brush-tool-btn" title="되돌리기 (Ctrl+Z)">
+          <button ref={undoBtnRef} onClick={undo} disabled={!canUndo} className="brush-tool-btn" title={`${t('editor.undo')} (Ctrl+Z)`}>
             <Undo2 size={18} />
           </button>
-          <button ref={redoBtnRef} onClick={redo} disabled={!canRedo} className="brush-tool-btn" title="다시 실행 (Ctrl+Y)">
+          <button ref={redoBtnRef} onClick={redo} disabled={!canRedo} className="brush-tool-btn" title={`${t('editor.redo')} (Ctrl+Y)`}>
             <Redo2 size={18} />
           </button>
         </div>
@@ -3026,7 +3054,7 @@ export function BrushEditor({
           className={`brush-btn-action px-4 h-8 shrink-0 flex items-center gap-2 rounded-full text-xs font-bold ${aiDone ? 'opacity-50' : ''}`}
         >
           <Sparkles size={14} className={isProcessing ? "animate-spin" : ""} />
-          {isProcessing ? `AI...` : aiDone ? 'AI 완료' : 'AI 배경 제거'}
+          {isProcessing ? t('editor.ai_processing') : aiDone ? t('editor.ai_done') : t('editor.ai_bg_removal')}
         </button>
 
         <div className="brush-top-sep" />
@@ -3059,7 +3087,7 @@ export function BrushEditor({
           <button
             onClick={() => onAddNewTab()}
             className="p-1.5 rounded-lg text-gray-500 hover:bg-white/5 hover:text-indigo-400 transition-all ml-1 shrink-0"
-            title="새 이미지 열기"
+            title={t('editor.open_new_tab')}
           >
             <Plus size={18} />
           </button>
@@ -3091,7 +3119,7 @@ export function BrushEditor({
             className="btn-save-result px-4 h-8 flex items-center gap-2 rounded-full text-xs font-black uppercase tracking-tight"
           >
             <Save size={14} />
-            Download
+            {t('common.download')}
           </button>
 
           {/* Save Success Toast (Positioned near download button) */}
@@ -3102,7 +3130,7 @@ export function BrushEditor({
                   <Save size={12} className="text-white" />
                 </div>
                 <div className="flex flex-col">
-                  <span className="text-[12px] font-black text-white leading-tight">저장 완료!</span>
+                  <span className="text-[12px] font-black text-white leading-tight">{t('editor.save_success')}</span>
                   <span className="text-[8px] text-white/70 font-bold uppercase tracking-wider leading-none">Saved Successfully</span>
                 </div>
               </div>
@@ -3111,7 +3139,7 @@ export function BrushEditor({
 
           {showDownloadPanel && (
             <div className="brush-fill-panel" style={{ position: 'absolute', left: 'auto', right: '0', top: '2.5rem', zIndex: 1000 }}>
-              <div className="brush-panel-title">Export Format</div>
+              <div className="brush-panel-title">{t('editor.export_format')}</div>
               <div className="flex gap-1 mb-3">
                 {(['png', 'jpeg', 'webp', 'svg'] as const).map(fmt => (
                   <button
@@ -3123,17 +3151,17 @@ export function BrushEditor({
                       : 'bg-[#333] text-[#aaa] hover:bg-[#444] disabled:opacity-30 disabled:pointer-events-none'
                       }`}
                   >
-                    {fmt === 'jpeg' ? 'JPG' : fmt}
+                    {fmt === 'jpeg' ? 'JPG' : fmt.toUpperCase()}
                   </button>
                 ))}
               </div>
               {!isTransparent && (
-                <p className="text-[9px] text-gray-500 mb-2 text-center">투명 배경이 없으면 원본 포맷으로 저장됩니다.</p>
+                <p className="text-[9px] text-gray-500 mb-2 text-center">{t('editor.transparency_notice')}</p>
               )}
               {downloadFormat !== 'png' && downloadFormat !== 'svg' && (
                 <div className="mb-3">
                   <div className="flex justify-between items-center mb-1">
-                    <span className="text-[10px] text-[#888] font-bold">QUALITY</span>
+                    <span className="text-[10px] text-[#888] font-bold">{t('editor.quality').toUpperCase()}</span>
                     <span className="text-[10px] text-indigo-400 font-bold">{downloadQuality}%</span>
                   </div>
                   <input
@@ -3144,37 +3172,38 @@ export function BrushEditor({
                 </div>
               )}
               <button onClick={download} className="brush-btn-action w-full h-8 rounded text-xs font-bold shadow-lg">
-                Export Now
+                {t('editor.export_now')}
               </button>
             </div>
           )}
         </div>
       </div>
 
+
       {/* ── MAIN WORKSPACE (Layout) ─────────────────────────── */}
       <div className="brush-editor-layout">
         {/* Left Toolbar */}
         <div className="brush-editor-sidebar-left bg-[#252526] border-r border-[#111] py-2 flex flex-col items-center gap-1">
           <div className="flex flex-col gap-1 mb-2">
-            <button onClick={() => { cancelCrop(); setTool('move'); }} className={`brush-tool-btn ${tool === 'move' ? 'brush-tool-btn-active' : ''}`} title="Move (V)"><Move size={18} /></button>
-            <button onClick={() => { cancelCrop(); setTool('wand'); }} className={`brush-tool-btn ${tool === 'wand' ? 'brush-tool-btn-active' : ''}`} title="Magic Wand (W)"><Wand2 size={18} /></button>
+            <button onClick={() => { cancelCrop(); setTool('move'); }} className={`brush-tool-btn ${tool === 'move' ? 'brush-tool-btn-active' : ''}`} title="Move Tool (V)"><Move size={18} /></button>
+            <button onClick={() => { cancelCrop(); setTool('wand'); }} className={`brush-tool-btn ${tool === 'wand' ? 'brush-tool-btn-active' : ''}`} title="Magic Wand Tool (W)"><Wand2 size={18} /></button>
           </div>
           <div className="w-8 h-[1px] bg-[#333] mb-2" />
           <div className="flex flex-col gap-1 mb-2">
-            <button onClick={() => { stopMarching(); cancelCrop(); setTool('crop'); setCropRect(null); cropRectRef.current = null; startMarching(); }} className={`brush-tool-btn ${tool === 'crop' ? 'brush-tool-btn-active' : ''}`} title="Crop (C)"><Crop size={18} /></button>
-            <button onClick={() => { stopMarching(); cancelCrop(); setTool('eyedropper'); }} className={`brush-tool-btn ${tool === 'eyedropper' ? 'brush-tool-btn-active' : ''}`} title="Eyedropper (I)"><Pipette size={18} /></button>
+            <button onClick={() => { stopMarching(); cancelCrop(); setTool('crop'); setCropRect(null); cropRectRef.current = null; startMarching(); }} className={`brush-tool-btn ${tool === 'crop' ? 'brush-tool-btn-active' : ''}`} title="Crop Tool (C)"><Crop size={18} /></button>
+            <button onClick={() => { stopMarching(); cancelCrop(); setTool('eyedropper'); }} className={`brush-tool-btn ${tool === 'eyedropper' ? 'brush-tool-btn-active' : ''}`} title="Eyedropper Tool (I)"><Pipette size={18} /></button>
           </div>
           <div className="w-8 h-[1px] bg-[#333] mb-2" />
           <div className="flex flex-col gap-1 mb-2">
-            <button onClick={() => { stopMarching(); cancelCrop(); setTool('paint'); }} className={`brush-tool-btn ${tool === 'paint' ? 'brush-tool-btn-active' : ''}`} title="Brush (B)"><Brush size={18} /></button>
-            <button onClick={() => { stopMarching(); cancelCrop(); setTool('erase'); }} className={`brush-tool-btn ${tool === 'erase' ? 'brush-tool-btn-active' : ''}`} title="Eraser (E)"><Eraser size={18} /></button>
+            <button onClick={() => { stopMarching(); cancelCrop(); setTool('paint'); }} className={`brush-tool-btn ${tool === 'paint' ? 'brush-tool-btn-active' : ''}`} title="Brush Tool (B)"><Brush size={18} /></button>
+            <button onClick={() => { stopMarching(); cancelCrop(); setTool('erase'); }} className={`brush-tool-btn ${tool === 'erase' ? 'brush-tool-btn-active' : ''}`} title="Eraser Tool (E)"><Eraser size={18} /></button>
             <button onClick={() => { stopMarching(); cancelCrop(); setTool('restore'); }} className={`brush-tool-btn ${tool === 'restore' ? 'brush-tool-btn-active' : ''}`} title="Restore (R)"><RefreshCcw size={18} /></button>
-            <button onClick={() => { stopMarching(); cancelCrop(); setTool('bucket'); }} className={`brush-tool-btn ${tool === 'bucket' ? 'brush-tool-btn-active' : ''}`} title="Fill (G)"><PaintBucket size={18} /></button>
+            <button onClick={() => { stopMarching(); cancelCrop(); setTool('bucket'); }} className={`brush-tool-btn ${tool === 'bucket' ? 'brush-tool-btn-active' : ''}`} title="Paint Bucket Tool (G)"><PaintBucket size={18} /></button>
           </div>
           <div className="w-8 h-[1px] bg-[#333] mb-2" />
           <div className="flex flex-col gap-1 mb-2">
-            <button onClick={() => { stopMarching(); cancelCrop(); setTool('clone'); }} className={`brush-tool-btn ${tool === 'clone' ? 'brush-tool-btn-active' : ''}`} title="Clone Stamp (S, Alt+Click to set source)"><Stamp size={18} /></button>
-            <button onClick={() => { stopMarching(); cancelCrop(); setTool('heal'); }} className={`brush-tool-btn ${tool === 'heal' ? 'brush-tool-btn-active' : ''}`} title="Healing Brush (H, Alt+Click to set source)"><LifeBuoy size={18} /></button>
+            <button onClick={() => { stopMarching(); cancelCrop(); setTool('clone'); }} className={`brush-tool-btn ${tool === 'clone' ? 'brush-tool-btn-active' : ''}`} title="Clone Stamp Tool (S, Alt+Click to set source)"><Stamp size={18} /></button>
+            <button onClick={() => { stopMarching(); cancelCrop(); setTool('heal'); }} className={`brush-tool-btn ${tool === 'heal' ? 'brush-tool-btn-active' : ''}`} title="Healing Brush Tool (H, Alt+Click to set source)"><LifeBuoy size={18} /></button>
             <button onClick={() => { stopMarching(); cancelCrop(); setTool('blur-brush'); }} className={`brush-tool-btn ${tool === 'blur-brush' ? 'brush-tool-btn-active' : ''}`} title="Blur Tool"><Droplets size={18} /></button>
           </div>
           <div className="w-8 h-[1px] bg-[#333] mb-2" />
@@ -3264,7 +3293,7 @@ export function BrushEditor({
               {tool === 'heal' && <LifeBuoy size={16} className="text-gray-400" />}
               {tool === 'blur-brush' && <Droplets size={16} className="text-gray-400" />}
               {tool === 'text' && <Type size={16} className="text-gray-400" />}
-              <span className="text-[10px] font-bold text-gray-500 uppercase">{tool.replace('-', ' ')}</span>
+              <span className="text-[10px] font-bold text-gray-500 uppercase">{getToolName(tool)}</span>
             </div>
             {/* Tool Options */}
             <div className="flex items-center gap-6 overflow-x-auto no-scrollbar">
@@ -3622,7 +3651,7 @@ export function BrushEditor({
                           textAlign: textStyle.align,
                           whiteSpace: 'pre',
                         }}
-                        placeholder="텍스트 입력 후 Enter…"
+                        placeholder={t('editor.text_placeholder')}
                         rows={1}
                       />
                     </div>
@@ -3651,8 +3680,8 @@ export function BrushEditor({
                         <ImagePlus className="w-12 h-12 text-indigo-400" />
                       </div>
                       <p className="upload-text text-2xl font-black text-white text-center">
-                        이미지를 드래그하거나 클릭하여 열기<br />
-                        <span className="text-sm font-bold text-indigo-400 uppercase tracking-widest mt-2 block">배경제거, 자르기 등 다양한 도구를 이용해보세요.</span>
+                        {t('editor.empty_desc')}<br />
+                        <span className="text-sm font-bold text-indigo-400 uppercase tracking-widest mt-2 block">{t('editor.empty_hint')}</span>
                       </p>
                     </div>
                   </div>
@@ -3669,7 +3698,7 @@ export function BrushEditor({
               className="brush-panel-title px-3 py-2 bg-[#333] text-white font-black italic flex justify-between items-center w-full"
               onClick={() => setHistoryOpen(v => !v)}
             >
-              <span>HISTORY</span>
+              <span>{t('editor.history').toUpperCase()}</span>
               <div className="flex items-center gap-1">
                 <Activity size={12} className="text-gray-500" />
                 <span className="text-[10px] text-gray-500">{historyOpen ? '▲' : '▼'}</span>
@@ -3691,7 +3720,7 @@ export function BrushEditor({
               className="brush-panel-title px-3 py-2 bg-[#333] text-white font-black italic flex justify-between items-center w-full"
               onClick={() => setAdjOpen(v => !v)}
             >
-              <span>ADJUSTMENTS</span>
+              <span>{t('editor.adjustments').toUpperCase()}</span>
               <div className="flex items-center gap-1">
                 <Sliders size={12} className="text-gray-500" />
                 <span className="text-[10px] text-gray-500">{adjOpen ? '▲' : '▼'}</span>
@@ -3701,28 +3730,28 @@ export function BrushEditor({
               <div className="space-y-3">
                 <div className="flex flex-col gap-1">
                   <div className="flex justify-between items-center text-[10px] font-bold text-gray-400">
-                    <span>BRIGHTNESS</span>
+                    <span>{t('options.brightness').toUpperCase()}</span>
                     <span className="text-indigo-400">{brightness}%</span>
                   </div>
                   <input type="range" min={0} max={200} value={brightness} onChange={(e) => setBrightness(Number(e.target.value))} className="w-full h-1 range-slider" />
                 </div>
                 <div className="flex flex-col gap-1">
                   <div className="flex justify-between items-center text-[10px] font-bold text-gray-400">
-                    <span>CONTRAST</span>
+                    <span>{t('options.contrast').toUpperCase()}</span>
                     <span className="text-indigo-400">{contrast}%</span>
                   </div>
                   <input type="range" min={0} max={200} value={contrast} onChange={(e) => setContrast(Number(e.target.value))} className="w-full h-1 range-slider" />
                 </div>
                 <div className="flex flex-col gap-1">
                   <div className="flex justify-between items-center text-[10px] font-bold text-gray-400">
-                    <span>SATURATION</span>
+                    <span>{t('options.saturation').toUpperCase()}</span>
                     <span className="text-indigo-400">{saturation}%</span>
                   </div>
                   <input type="range" min={0} max={200} value={saturation} onChange={(e) => setSaturation(Number(e.target.value))} className="w-full h-1 range-slider" />
                 </div>
                 <div className="flex flex-col gap-1">
                   <div className="flex justify-between items-center text-[10px] font-bold text-gray-400">
-                    <span>BLUR</span>
+                    <span>{t('options.blur').toUpperCase()}</span>
                     <span className="text-indigo-400">{blur}px</span>
                   </div>
                   <input type="range" min={0} max={20} value={blur} onChange={(e) => setBlur(Number(e.target.value))} className="w-full h-1 range-slider" />
@@ -3732,7 +3761,7 @@ export function BrushEditor({
                 onClick={applyAdjustments}
                 className="w-full h-8 bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-black uppercase rounded transition-colors"
               >
-                Apply Changes
+                {t('common.save')}
               </button>
             </div>}
           </div>
@@ -3782,6 +3811,6 @@ export function BrushEditor({
         <canvas ref={maskRef} />
         <canvas ref={aiResultRef} />
       </div>
-    </div>
+    </div >
   );
 }

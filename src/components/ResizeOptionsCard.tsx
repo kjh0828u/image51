@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useAppStore } from '@/store/useAppStore';
 import { OptionCard } from './OptionCard';
 import { ToggleSwitch } from './ToggleSwitch';
+import { useTranslation } from 'react-i18next';
 
 interface ResizeOptionsCardProps {
   resizeError: string | null;
@@ -13,13 +14,14 @@ interface ResizeOptionsCardProps {
 export function ResizeOptionsCard({ resizeError, onResizeErrorChange }: ResizeOptionsCardProps) {
   const store = useAppStore();
   const [ratioTooltip, setRatioTooltip] = useState<{ type: 'w' | 'h'; msg: string } | null>(null);
+  const { t } = useTranslation();
 
   const createResizeHandler = (type: 'w' | 'h') => (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value.replace(/[^0-9]/g, '');
     const otherVal = type === 'w' ? store.resizeHeight : store.resizeWidth;
     if (store.keepRatio && otherVal.trim() !== '' && val !== '') {
-      const otherLabel = type === 'w' ? '세로' : '가로';
-      setRatioTooltip({ type, msg: `비율 유지 중입니다. 수정하려면 ${otherLabel} 값을 지워주세요.` });
+      const otherLabel = type === 'w' ? t('options.height') : t('options.width');
+      setRatioTooltip({ type, msg: t('options.resize_tooltip', { otherLabel }) });
       setTimeout(() => setRatioTooltip(null), 3000);
       return;
     }
@@ -29,7 +31,7 @@ export function ResizeOptionsCard({ resizeError, onResizeErrorChange }: ResizeOp
 
   return (
     <OptionCard
-      title="이미지 크기 조절"
+      title={t('options.resize')}
       subtitle="Resize"
       className="resize-card"
       headerAction={<ToggleSwitch checked={store.enableResize} onChange={c => store.setOption('enableResize', c)} />}
@@ -37,15 +39,15 @@ export function ResizeOptionsCard({ resizeError, onResizeErrorChange }: ResizeOp
     >
       <div className="grid-cols-2-gap">
         <div className="form-field">
-          <p className="input-label">가로</p>
+          <p className="input-label">{t('options.width')}</p>
           <input type="text" value={store.resizeWidth} onChange={createResizeHandler('w')} className="input-field" placeholder="Auto" />
         </div>
         <div className="form-field">
-          <p className="input-label">세로</p>
+          <p className="input-label">{t('options.height')}</p>
           <input type="text" value={store.resizeHeight} onChange={createResizeHandler('h')} className="input-field" placeholder="Auto" />
         </div>
         <div className="grid-span-2 option-row">
-          <span className="toggle-label-muted">비율 유지</span>
+          <span className="toggle-label-muted">{t('options.keep_ratio')}</span>
           <ToggleSwitch checked={store.keepRatio} onChange={c => store.setOption('keepRatio', c)} size="small" />
         </div>
       </div>
@@ -54,3 +56,4 @@ export function ResizeOptionsCard({ resizeError, onResizeErrorChange }: ResizeOp
     </OptionCard>
   );
 }
+

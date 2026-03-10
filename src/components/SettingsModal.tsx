@@ -1,10 +1,11 @@
 'use client';
 
-import { Settings, Check } from 'lucide-react';
+import { Settings, Check, Globe } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Glass } from './Glass';
 import { useAppStore } from '@/store/useAppStore';
 import { setHandle } from '@/lib/idb';
+import { useTranslation } from 'react-i18next';
 
 interface SettingsModalProps {
     onClose: () => void;
@@ -17,6 +18,7 @@ interface SettingsModalProps {
  */
 export function SettingsModal({ onClose }: SettingsModalProps) {
     const store = useAppStore();
+    const { t } = useTranslation();
 
     return (
         <div className="modal-overlay" onClick={onClose}>
@@ -28,16 +30,40 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
                             <div className="modal-icon-container">
                                 <Settings className="modal-icon" />
                             </div>
-                            <h2 className="modal-title">환경 설정</h2>
+                            <h2 className="modal-title">{t('common.settings')}</h2>
                         </div>
                         <button onClick={onClose} className="modal-close-btn">✕</button>
                     </div>
 
                     {/* Content */}
                     <div className="modal-body">
+                        {/* Language Selection */}
+                        <div className="modal-section">
+                            <h3 className="modal-section-title flex items-center gap-2">
+                                <Globe className="w-4 h-4 opacity-70" />
+                                {t('common.language')}
+                            </h3>
+                            <div className="flex gap-2 mt-2">
+                                {(['auto', 'ko', 'en'] as const).map((lang) => (
+                                    <button
+                                        key={lang}
+                                        onClick={() => store.setLanguage(lang)}
+                                        className={cn(
+                                            "px-3 py-1.5 rounded-lg text-sm transition-all border",
+                                            store.language === lang
+                                                ? "bg-indigo-500/20 border-indigo-500/50 text-indigo-200"
+                                                : "bg-white/5 border-white/10 text-white/60 hover:bg-white/10"
+                                        )}
+                                    >
+                                        {t(`common.${lang === 'auto' ? 'auto' : lang === 'ko' ? 'korean' : 'english'}`)}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
                         {/* Download Mode */}
                         <div className="modal-section">
-                            <h3 className="modal-section-title">다운로드 저장 방식</h3>
+                            <h3 className="modal-section-title">{t('settings.download_mode')}</h3>
                             <div>
                                 {(['default', 'custom'] as const).map((mode) => (
                                     <label key={mode} className="modal-option-item">
@@ -51,7 +77,7 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
                                             {store.downloadMode === mode && <div className="radio-custom-inner" />}
                                         </div>
                                         <span className="modal-option-text">
-                                            {mode === 'default' ? '브라우저 다운로드 (Zip 압축)' : '특정 폴더에 직접 저장'}
+                                            {mode === 'default' ? t('settings.default_mode') : t('settings.custom_mode')}
                                         </span>
                                     </label>
                                 ))}
@@ -73,11 +99,11 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
                                     }}
                                     className="btn-folder"
                                 >
-                                    📁 저장 폴더 지정하기
+                                    📁 {t('settings.change_folder')}
                                 </button>
                                 {store.customDirectoryHandle && (
                                     <p className="modal-folder-success">
-                                        <Check className="w-3.5 h-3.5" />지정됨: {store.customDirectoryHandle.name}
+                                        <Check className="w-3.5 h-3.5" />{t('settings.folder_unselected')} {store.customDirectoryHandle.name}
                                     </p>
                                 )}
                             </div>
@@ -88,3 +114,4 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
         </div>
     );
 }
+

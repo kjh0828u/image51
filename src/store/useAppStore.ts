@@ -22,6 +22,8 @@ export interface ImageItem {
     isDownloaded?: boolean;
 }
 
+import i18n from '../lib/i18n';
+
 /**
  * 이미지 처리 엔진에 전달될 설정 옵션들을 정의합니다.
  */
@@ -29,6 +31,10 @@ export interface AppOptions {
     // 여백 제거 (Auto Crop)
     enableAutoCrop: boolean;
     autoCropMargin: number;
+
+    // 배경 제거 (MediaPipe)
+    enableBgRemoval: boolean;
+    bgRemovalModel: 'selfie' | 'landscape';
 
     // 이미지 압축 (Compress)
     enableCompress: boolean;
@@ -49,6 +55,9 @@ export interface AppOptions {
 
     enableCustomFormat: boolean;
     customFormat: 'png' | 'jpg' | 'webp' | 'svg';
+
+    // 언어 설정
+    language: 'auto' | 'ko' | 'en';
 }
 
 /**
@@ -67,6 +76,9 @@ const defaultOptions: AppOptions = {
     enableAutoCrop: false,
     autoCropMargin: 0,
 
+    enableBgRemoval: false,
+    bgRemovalModel: 'selfie',
+
     enableCompress: true,
     quality: 60,
 
@@ -83,6 +95,8 @@ const defaultOptions: AppOptions = {
 
     enableCustomFormat: false,
     customFormat: 'png',
+
+    language: 'auto',
 };
 
 /**
@@ -90,6 +104,7 @@ const defaultOptions: AppOptions = {
  */
 const imageOptionKeys = [
     'enableAutoCrop', 'autoCropMargin',
+    'enableBgRemoval', 'bgRemovalModel',
     'enableCompress', 'quality',
     'enableResize', 'resizeWidth', 'resizeHeight', 'keepRatio',
     'enableGrayscale', 'grayscale',
@@ -109,6 +124,7 @@ export interface AppState extends AppOptions {
     updateImageStatus: (id: string, updates: Partial<ImageItem>) => void;
 
     setOption: <K extends keyof AppOptions>(key: K, value: AppOptions[K]) => void;
+    setLanguage: (lang: 'auto' | 'ko' | 'en') => void;
     setCustomDirectoryHandle: (handle: FileSystemDirectoryHandle | null) => void;
     resetOptions: () => void;
 
@@ -137,6 +153,8 @@ function extractImageOptions(state: AppState): AppOptions {
     imageOptionKeys.forEach(key => {
         options[key] = state[key as keyof AppOptions];
     });
+    // 언어 설정도 옵션에 포함시켜 프로필에 저장되도록 함
+    options.language = state.language;
     return options as AppOptions;
 }
 
@@ -186,6 +204,14 @@ export const useAppStore = create<AppState>()(
             })),
 
             setOption: <K extends keyof AppOptions>(key: K, value: AppOptions[K]) => set({ [key]: value } as any),
+
+            setLanguage: (lang: 'auto' | 'ko' | 'en') => {
+                if (lang !== 'auto') {
+                    i18n.changeLanguage(lang);
+                }
+                set({ language: lang });
+            },
+
             setCustomDirectoryHandle: (handle: FileSystemDirectoryHandle | null) => set({ customDirectoryHandle: handle }),
 
             resetOptions: () => set({ ...defaultOptions, activeProfileId: null }),
@@ -212,6 +238,10 @@ export const useAppStore = create<AppState>()(
                 const profile = state.profiles.find(p => p.id === id);
                 if (profile) {
                     set({ ...profile.options, activeProfileId: id });
+                    // 프로필 로드 시 설정된 언어가 있다면 적용
+                    if (profile.options.language && profile.options.language !== 'auto') {
+                        i18n.changeLanguage(profile.options.language);
+                    }
                 }
             },
 
@@ -241,8 +271,14 @@ export const useAppStore = create<AppState>()(
                 return result;
             },
             merge: (persistedState: any, currentState: AppState) => {
-                return { ...currentState, ...(persistedState as Partial<AppState>) };
+                const merged = { ...currentState, ...(persistedState as Partial<AppState>) };
+                // 스토리지에서 불러온 직후 언어 설정 적용
+                if (merged.language && merged.language !== 'auto') {
+                    i18n.changeLanguage(merged.language);
+                }
+                return merged;
             }
         }
     )
 );
+

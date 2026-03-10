@@ -3,6 +3,7 @@ import { Trash2, Download, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatBytes } from '@/lib/fileUtils';
 import { ImageItem } from '@/store/useAppStore';
+import { useTranslation } from 'react-i18next';
 
 interface ImageListProps {
     images: ImageItem[];
@@ -13,13 +14,15 @@ interface ImageListProps {
 }
 
 export function ImageList({ images, onRemove, onClear, onDownload, onAddFiles }: ImageListProps) {
+    const { t } = useTranslation();
+
     return (
         <div className="image-list" onClick={e => e.stopPropagation()}>
             <div className="image-list-scroll custom-scrollbar">
                 {images.map(img => (
                     <div key={img.id} className="image-item">
                         <div className="image-preview checkered-bg">
-                            <img src={img.status === 'done' ? img.processedUrl! : img.previewUrl} alt="" />
+                            <img src={img.status === 'done' ? img.processedUrl! : img.previewUrl} alt={img.file.name} />
                         </div>
                         <div className="image-info">
                             <p className="image-filename">{img.file.name}</p>
@@ -29,14 +32,14 @@ export function ImageList({ images, onRemove, onClear, onDownload, onAddFiles }:
                                     img.status === 'processing' ? 'status-processing' :
                                         img.status === 'done' ? 'status-done' : 'status-pending'
                                 )}>
-                                    {img.status}
+                                    {img.status === 'done' ? t('common.save') : img.status}
                                 </span>
                                 {img.status === 'done' && img.processedSize && (
                                     <span className="image-size">{formatBytes(img.processedSize)}</span>
                                 )}
                                 {img.isDownloaded && (
                                     <span className="image-downloaded-badge">
-                                        <Check className="w-2.5 h-2.5" />저장됨
+                                        <Check className="w-2.5 h-2.5" />{t('common.save')}
                                     </span>
                                 )}
                             </div>
@@ -58,9 +61,10 @@ export function ImageList({ images, onRemove, onClear, onDownload, onAddFiles }:
                 ))}
             </div>
             <div className="image-list-footer">
-                <button onClick={onAddFiles} className="btn-text btn-text-primary">+ 이미지 추가</button>
-                <button onClick={onClear} className="btn-text btn-text-muted">모두 지우기</button>
+                <button onClick={onAddFiles} className="btn-text btn-text-primary">+ {t('common.add_image')}</button>
+                <button onClick={onClear} className="btn-text btn-text-muted">{t('common.clear_all')}</button>
             </div>
         </div>
     );
 }
+

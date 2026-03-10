@@ -108,12 +108,10 @@ export default function RootLayout({
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
         />
-        {/* 비동기 폰트 로딩 최적화 - 사전 연결 설정은 유지 */}
+        {/* 리소스 우선순위 최적화: 필수적인 연결만 유지 */}
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link rel="preconnect" href="https://cdn.jsdelivr.net" crossOrigin="anonymous" />
-        <link rel="preconnect" href="https://hangeul.pstatic.net" crossOrigin="anonymous" />
-        <link rel="preconnect" href="https://spoqa.github.io" crossOrigin="anonymous" />
       </head>
       <body className={`${notoSansKr.variable} antialiased`}>
         <FontLoader />

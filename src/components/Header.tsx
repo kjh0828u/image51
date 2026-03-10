@@ -19,8 +19,8 @@ export function Header({ onOpenSettings, activeTab, onTabChange }: HeaderProps) 
         <header className="header">
             <div className="header-inner">
                 <div className="header-brand">
-                    <Image src="/logo.png" alt="Image51" width={43} height={43} className="header-logo" priority />
-                    <Image src="/logo_typo.png" alt="Image51 文字" width={110} height={37} className="header-typo" priority />
+                    <Image src="/logo-opt.webp" alt="Image51" width={43} height={43} className="header-logo" priority />
+                    <Image src="/logo_typo-opt.webp" alt="Image51 文字" width={110} height={37} className="header-typo" priority />
                     <h1 className="sr-only">
                         {t('seo.title')}
                     </h1>

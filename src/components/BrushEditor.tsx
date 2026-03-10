@@ -3269,17 +3269,35 @@ export function BrushEditor({
           <div className="flex-1" />
 
           <div className="w-8 h-[1px] bg-[#333] mb-2" />
-          <button onClick={() => setZoom(z => Math.min(8, z + 0.2))} className="brush-tool-btn" title={t('editor.zoom_in')} aria-label={t('editor.zoom_in')}>
+          <button
+            onClick={() => setZoom(z => Math.min(8, z + 0.2))}
+            className="brush-tool-btn"
+            title={t('editor.zoom_in')}
+            aria-label={t('editor.zoom_in')}
+          >
             <PlusCircle size={18} aria-hidden="true" />
           </button>
-          <button onClick={() => setZoom(z => Math.max(0.1, z - 0.2))} className="brush-tool-btn" title={t('editor.zoom_out')} aria-label={t('editor.zoom_out')}>
+          <button
+            onClick={() => setZoom(z => Math.max(0.1, z - 0.2))}
+            className="brush-tool-btn"
+            title={t('editor.zoom_out')}
+            aria-label={t('editor.zoom_out')}
+          >
             <MinusCircle size={18} aria-hidden="true" />
           </button>
           <button onClick={() => {
-            const containerW = containerRef.current?.clientWidth ?? 800;
-            const containerH = containerRef.current?.clientHeight ?? 600;
+            const container = containerRef.current;
+            if (!container) return;
+            const containerW = container.clientWidth;
+            const containerH = container.clientHeight;
             setZoom(Math.min((containerW - 40) / imageSize.w, (containerH - 40) / imageSize.h, 1));
-          }} className="brush-tool-btn" title={t('editor.fit_screen')} aria-label={t('editor.fit_screen')}><Maximize2 size={18} aria-hidden="true" /></button>
+          }}
+            className="brush-tool-btn"
+            title={t('editor.fit_screen')}
+            aria-label={t('editor.fit_screen')}
+          >
+            <Maximize2 size={18} aria-hidden="true" />
+          </button>
         </div>
 
         {/* Center Canvas Area */}

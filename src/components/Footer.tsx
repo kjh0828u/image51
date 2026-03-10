@@ -25,7 +25,7 @@ export function Footer({ autoDownload, onAutoDownloadChange }: FooterProps) {
                     "w-4 h-4 rounded-md border border-white/20 transition-all flex items-center justify-center group-hover:border-indigo-500",
                     autoDownload && "bg-indigo-500 border-indigo-500 shadow-lg shadow-indigo-500/20"
                 )}>
-                    {autoDownload && <Check className="w-3 h-3 text-white" />}
+                    {autoDownload && <Check className="w-3 h-3 text-white" aria-hidden="true" />}
                 </div>
                 <span className="text-[11px] font-bold text-gray-500 group-hover:text-gray-300 transition-colors uppercase tracking-wider">{t('options.auto_download')}</span>
             </label>

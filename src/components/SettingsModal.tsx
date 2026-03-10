@@ -21,16 +21,22 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
     const { t } = useTranslation();
 
     return (
-        <div className="modal-overlay" onClick={onClose}>
-            <div className="modal-container" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-overlay" onClick={onClose} role="presentation">
+            <div
+                className="modal-container"
+                onClick={(e) => e.stopPropagation()}
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="settings-title"
+            >
                 <Glass variant="thick" className="modal-content" contentClassName="glass-content modal-glass-content">
                     {/* Header */}
                     <div className="modal-header">
                         <div className="modal-header-left">
                             <div className="modal-icon-container">
-                                <Settings className="modal-icon" />
+                                <Settings className="modal-icon" aria-hidden="true" />
                             </div>
-                            <h2 className="modal-title">{t('common.settings')}</h2>
+                            <h2 className="modal-title" id="settings-title">{t('common.settings')}</h2>
                         </div>
                         <button onClick={onClose} className="modal-close-btn" aria-label={t('common.close')}>✕</button>
                     </div>

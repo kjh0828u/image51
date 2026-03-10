@@ -1,5 +1,7 @@
 import { MetadataRoute } from 'next'
 
+export const dynamic = 'force-static'
+
 export default function sitemap(): MetadataRoute.Sitemap {
     const baseUrl = 'https://image51.rmntwndrs.com' // TODO: 실제 연결한 도메인으로 변경하세요.
 

@@ -57,13 +57,16 @@ export function useSelectionTools({
         const sel = selectionRef.current;
         if (!overlay || !sel) return;
 
-        // 버퍼 크기는 줌이 적용된 상태지만, sel(이미지 데이터)은 원본 크기임
-        // 따라서 원본 크기 w, h를 sel 길이와 비례하여 구하거나 명시적으로 받아야 함
-        // 여기서는 overlay 버퍼가 이미 zoom된 상태라고 가정하고, 그리기 시 scale 적용
-        const imgW = Math.floor(sel.length / (sel.length / Math.sqrt(sel.length))); // 임시
-        // 실제로는 원본 이미지 크기 정보가 필요함. 일단 overlay.width/zoom 사용
-        const w = Math.round(overlay.width / zoom);
-        const h = Math.round(overlay.height / zoom);
+        // 원본 이미지 크기 정보 확보 (stride mismatch 방지)
+        let w = originalRef.current?.width || 0;
+        let h = originalRef.current?.height || 0;
+
+        // 만약 originalRef가 비어있다면 overlay 크기와 zoom으로 역산 (폴백)
+        if (w === 0 || h === 0) {
+            w = Math.round(overlay.width / zoom);
+            h = Math.round(overlay.height / zoom);
+        }
+
         const ctx = overlay.getContext('2d')!;
 
         if (cachedSelKey.current !== sel) {
@@ -133,7 +136,6 @@ export function useSelectionTools({
         ctx.scale(zoom, zoom);
 
         if (overlayCache.current) {
-            // putImageData는 transform을 무시하므로 임시 캔버스를 통해 drawImage 사용
             const temp = document.createElement('canvas');
             temp.width = w; temp.height = h;
             temp.getContext('2d')!.putImageData(overlayCache.current, 0, 0);
@@ -175,7 +177,7 @@ export function useSelectionTools({
 
         ctx.save();
         ctx.setLineDash([]);
-        ctx.lineWidth = 3 / zoom; // 줌에 상관없이 일정한 두께 유지
+        ctx.lineWidth = 3 / zoom;
         ctx.strokeStyle = 'rgba(0,0,0,0.5)';
         drawPath();
         ctx.lineWidth = 1.5 / zoom;
@@ -183,7 +185,7 @@ export function useSelectionTools({
         drawPath();
         ctx.restore();
         ctx.restore(); // for scale
-    }, [overlayRef, selectionRef, cachedSelKey, overlayCache, marchingSegs, isSliding, marchingOffset, zoom]);
+    }, [originalRef, overlayRef, selectionRef, cachedSelKey, overlayCache, marchingSegs, isSliding, marchingOffset, zoom]);
 
     const startMarching = useCallback(() => {
         const loop = (time: number) => {

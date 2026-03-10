@@ -240,9 +240,22 @@ export default function Home() {
             </div>
 
             <div className="floating-actions">
-              <button onClick={() => handleStartProcessing(setResizeError)} disabled={pendingCount === 0} className="btn-floating-primary">{t('actions.start_process')}</button>
+              <button
+                onClick={() => handleStartProcessing(setResizeError)}
+                disabled={pendingCount === 0}
+                className="btn-floating-primary"
+                aria-label={t('actions.start_process')}
+              >
+                {t('actions.start_process')}
+              </button>
               {downloadableCount > 0 && (
-                <button onClick={() => handleDownloadAll()} className="btn-floating-secondary"><Download className="w-4 h-4" /> {t('actions.batch_download')}</button>
+                <button
+                  onClick={() => handleDownloadAll()}
+                  className="btn-floating-secondary"
+                  aria-label={t('actions.batch_download')}
+                >
+                  <Download className="w-4 h-4" aria-hidden="true" /> {t('actions.batch_download')}
+                </button>
               )}
             </div>
           </div>

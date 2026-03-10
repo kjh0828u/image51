@@ -3079,8 +3079,9 @@ export function BrushEditor({
                   onCloseTab(tab.id, e);
                 }}
                 className="p-0.5 rounded-full hover:bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity"
+                aria-label={`${tab.name} ${t('common.close')}`}
               >
-                <X size={12} />
+                <X size={12} aria-hidden="true" />
               </button>
             </div>
           ))}
@@ -3088,8 +3089,9 @@ export function BrushEditor({
             onClick={() => onAddNewTab()}
             className="p-1.5 rounded-lg text-gray-500 hover:bg-white/5 hover:text-indigo-400 transition-all ml-1 shrink-0"
             title={t('editor.open_new_tab')}
+            aria-label={t('editor.open_new_tab')}
           >
-            <Plus size={18} />
+            <Plus size={18} aria-hidden="true" />
           </button>
         </div>
 
@@ -3104,6 +3106,7 @@ export function BrushEditor({
               value={aiAdjust}
               onChange={(e) => setAiAdjust(Number(e.target.value))}
               className="w-32 h-1 range-slider"
+              aria-label="AI Smart Adjust"
             />
             <span className="text-[10px] font-mono text-indigo-400 w-10">
               {aiAdjust === 0 ? 'Original' : aiAdjust > 0 ? `+${aiAdjust}` : aiAdjust}
@@ -3202,13 +3205,13 @@ export function BrushEditor({
           </div>
           <div className="w-8 h-[1px] bg-[#333] mb-2" />
           <div className="flex flex-col gap-1 mb-2">
-            <button onClick={() => { stopMarching(); cancelCrop(); setTool('clone'); }} className={`brush-tool-btn ${tool === 'clone' ? 'brush-tool-btn-active' : ''}`} title="Clone Stamp Tool (S, Alt+Click to set source)"><Stamp size={18} /></button>
-            <button onClick={() => { stopMarching(); cancelCrop(); setTool('heal'); }} className={`brush-tool-btn ${tool === 'heal' ? 'brush-tool-btn-active' : ''}`} title="Healing Brush Tool (H, Alt+Click to set source)"><LifeBuoy size={18} /></button>
-            <button onClick={() => { stopMarching(); cancelCrop(); setTool('blur-brush'); }} className={`brush-tool-btn ${tool === 'blur-brush' ? 'brush-tool-btn-active' : ''}`} title="Blur Tool"><Droplets size={18} /></button>
+            <button onClick={() => { stopMarching(); cancelCrop(); setTool('clone'); }} className={`brush-tool-btn ${tool === 'clone' ? 'brush-tool-btn-active' : ''}`} title={t('tools.clone')} aria-label={t('tools.clone')}><Stamp size={18} aria-hidden="true" /></button>
+            <button onClick={() => { stopMarching(); cancelCrop(); setTool('heal'); }} className={`brush-tool-btn ${tool === 'heal' ? 'brush-tool-btn-active' : ''}`} title={t('tools.heal')} aria-label={t('tools.heal')}><LifeBuoy size={18} aria-hidden="true" /></button>
+            <button onClick={() => { stopMarching(); cancelCrop(); setTool('blur-brush'); }} className={`brush-tool-btn ${tool === 'blur-brush' ? 'brush-tool-btn-active' : ''}`} title={t('tools.blur')} aria-label={t('tools.blur')}><Droplets size={18} aria-hidden="true" /></button>
           </div>
           <div className="w-8 h-[1px] bg-[#333] mb-2" />
           <div className="flex flex-col gap-1 mb-2">
-            <button onClick={() => { stopMarching(); cancelCrop(); setTool('text'); }} className={`brush-tool-btn ${tool === 'text' ? 'brush-tool-btn-active' : ''}`} title="Horizontal Type Tool (T)"><Type size={18} /></button>
+            <button onClick={() => { stopMarching(); cancelCrop(); setTool('text'); }} className={`brush-tool-btn ${tool === 'text' ? 'brush-tool-btn-active' : ''}`} title={t('tools.text')} aria-label={t('tools.text')}><Type size={18} aria-hidden="true" /></button>
           </div>
 
           <div className="w-8 h-[1px] bg-[#333] mb-3" />
@@ -3310,6 +3313,11 @@ export function BrushEditor({
                     <span className="text-[10px] font-bold text-gray-400">SMOOTH</span>
                     <input type="range" min={0} max={20} value={wandSmooth} onChange={(e) => setWandSmooth(Number(e.target.value))} className="w-24 h-1 range-slider" />
                     <span className="text-[11px] font-mono text-indigo-400 w-8">{wandSmooth}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-bold text-gray-400">EXPAND</span>
+                    <input type="range" min={0} max={50} value={wandExpand} onChange={(e) => handleExpandChange(Number(e.target.value))} className="w-24 h-1 range-slider" />
+                    <span className="text-[11px] font-mono text-indigo-400 w-8">{wandExpand}</span>
                   </div>
                 </>
               )}
@@ -3699,11 +3707,13 @@ export function BrushEditor({
             <button
               className="brush-panel-title px-3 py-2 bg-[#333] text-white font-black italic flex justify-between items-center w-full"
               onClick={() => setHistoryOpen(v => !v)}
+              aria-expanded={historyOpen}
+              aria-label={t('editor.history')}
             >
               <span>{t('editor.history').toUpperCase()}</span>
               <div className="flex items-center gap-1">
-                <Activity size={12} className="text-gray-500" />
-                <span className="text-[10px] text-gray-500">{historyOpen ? '▲' : '▼'}</span>
+                <Activity size={12} className="text-gray-500" aria-hidden="true" />
+                <span className="text-[10px] text-gray-500" aria-hidden="true">{historyOpen ? '▲' : '▼'}</span>
               </div>
             </button>
             {historyOpen && (
@@ -3721,11 +3731,13 @@ export function BrushEditor({
             <button
               className="brush-panel-title px-3 py-2 bg-[#333] text-white font-black italic flex justify-between items-center w-full"
               onClick={() => setAdjOpen(v => !v)}
+              aria-expanded={adjOpen}
+              aria-label={t('editor.adjustments')}
             >
               <span>{t('editor.adjustments').toUpperCase()}</span>
               <div className="flex items-center gap-1">
-                <Sliders size={12} className="text-gray-500" />
-                <span className="text-[10px] text-gray-500">{adjOpen ? '▲' : '▼'}</span>
+                <Sliders size={12} className="text-gray-500" aria-hidden="true" />
+                <span className="text-[10px] text-gray-500" aria-hidden="true">{adjOpen ? '▲' : '▼'}</span>
               </div>
             </button>
             {adjOpen && <div className="overflow-y-auto no-scrollbar p-3 space-y-3 bg-[#282828]">

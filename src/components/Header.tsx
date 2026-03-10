@@ -27,16 +27,22 @@ export function Header({ onOpenSettings, activeTab, onTabChange }: HeaderProps) 
                 </div>
 
                 <div className="header-center">
-                    <div className="header-tab-pill">
+                    <div className="header-tab-pill" role="tablist">
                         <button
                             onClick={() => onTabChange('individual')}
                             className={`header-tab-item ${activeTab === 'individual' ? 'header-tab-active' : ''}`}
+                            role="tab"
+                            aria-selected={activeTab === 'individual'}
+                            aria-label={t('header.edit')}
                         >
                             {t('header.edit')}
                         </button>
                         <button
                             onClick={() => onTabChange('batch')}
                             className={`header-tab-item ${activeTab === 'batch' ? 'header-tab-active' : ''}`}
+                            role="tab"
+                            aria-selected={activeTab === 'batch'}
+                            aria-label={t('header.batch')}
                         >
                             {t('header.batch')}
                         </button>

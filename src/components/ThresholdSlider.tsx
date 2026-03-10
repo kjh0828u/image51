@@ -32,6 +32,7 @@ export function ThresholdSlider({ label, value, enabled, onChange, onToggle, max
                     value={value}
                     onChange={e => onChange(Number(e.target.value))}
                     className="range-slider"
+                    aria-label={label}
                 />
                 <ToggleSwitch checked={enabled} onChange={onToggle} size="small" />
             </div>

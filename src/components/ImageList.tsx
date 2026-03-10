@@ -68,8 +68,22 @@ export function ImageList({ images, onRemove, onClear, onDownload, onAddFiles }:
                 ))}
             </div>
             <div className="image-list-footer">
-                <button onClick={onAddFiles} className="btn-text btn-text-primary">+ {t('common.add_image')}</button>
-                <button onClick={onClear} className="btn-text btn-text-muted">{t('common.clear_all')}</button>
+                <button 
+                    onClick={onAddFiles} 
+                    className="btn-text btn-text-primary"
+                    aria-label={t('common.add_image')}
+                    title={t('common.add_image')}
+                >
+                    + {t('common.add_image')}
+                </button>
+                <button 
+                    onClick={onClear} 
+                    className="btn-text btn-text-muted"
+                    aria-label={t('common.clear_all')}
+                    title={t('common.clear_all')}
+                >
+                    {t('common.clear_all')}
+                </button>
             </div>
         </div>
     );

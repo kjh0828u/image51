@@ -410,16 +410,16 @@ const LayerPanel = memo(({
       <div className="layer-panel-header">
         <span className="layer-panel-title">{t('editor.layers')}</span>
         <div className="layer-panel-actions">
-          <button className="layer-panel-btn" onClick={() => addPaintLayer(`Layer ${layers.length + 1}`, layers, activeLayerId)}><Plus size={13} /></button>
+          <button className="layer-panel-btn" onClick={() => addPaintLayer(`${t('editor.layer')} ${layers.length + 1}`, layers, activeLayerId)} aria-label={t('editor.add_layer')} title={t('editor.add_layer')}><Plus size={13} aria-hidden="true" /></button>
           <button className="layer-panel-btn" disabled={layers.findIndex((l: any) => l.id === activeLayerId) >= layers.length - 1} onClick={() => {
             const idx = layers.findIndex((l: any) => l.id === activeLayerId);
             if (idx < layers.length - 1) reorderLayer(activeLayerId, idx + 1, layers, activeLayerId);
-          }}><ChevronUp size={13} /></button>
+          }} aria-label={t('editor.move_up')} title={t('editor.move_up')}><ChevronUp size={13} aria-hidden="true" /></button>
           <button className="layer-panel-btn" disabled={layers.findIndex((l: any) => l.id === activeLayerId) <= 0} onClick={() => {
             const idx = layers.findIndex((l: any) => l.id === activeLayerId);
             if (idx > 0) reorderLayer(activeLayerId, idx - 1, layers, activeLayerId);
-          }}><ChevronDown size={13} /></button>
-          <button className="layer-panel-btn" disabled={layers.length <= 1} onClick={() => removeLayer(activeLayerId, layers, activeLayerId)}><Trash2 size={13} /></button>
+          }} aria-label={t('editor.move_down')} title={t('editor.move_down')}><ChevronDown size={13} aria-hidden="true" /></button>
+          <button className="layer-panel-btn" disabled={layers.length <= 1} onClick={() => removeLayer(activeLayerId, layers, activeLayerId)} aria-label={t('editor.delete_layer')} title={t('editor.delete_layer')}><Trash2 size={13} aria-hidden="true" /></button>
         </div>
       </div>
       <div className="layer-list custom-scrollbar">
@@ -3038,11 +3038,11 @@ export function BrushEditor({
       {/* ── TOP BAR (Header) ────────────────────────────────── */}
       <div className="brush-top-bar">
         <div className="flex items-center gap-1">
-          <button ref={undoBtnRef} onClick={undo} disabled={!canUndo} className="brush-tool-btn" title={`${t('editor.undo')} (Ctrl+Z)`}>
-            <Undo2 size={18} />
+          <button ref={undoBtnRef} onClick={undo} disabled={!canUndo} className="brush-tool-btn" title={`${t('editor.undo')} (Ctrl+Z)`} aria-label={t('editor.undo')}>
+            <Undo2 size={18} aria-hidden="true" />
           </button>
-          <button ref={redoBtnRef} onClick={redo} disabled={!canRedo} className="brush-tool-btn" title={`${t('editor.redo')} (Ctrl+Y)`}>
-            <Redo2 size={18} />
+          <button ref={redoBtnRef} onClick={redo} disabled={!canRedo} className="brush-tool-btn" title={`${t('editor.redo')} (Ctrl+Y)`} aria-label={t('editor.redo')}>
+            <Redo2 size={18} aria-hidden="true" />
           </button>
         </div>
 
@@ -3185,20 +3185,20 @@ export function BrushEditor({
         {/* Left Toolbar */}
         <div className="brush-editor-sidebar-left bg-[#252526] border-r border-[#111] py-2 flex flex-col items-center gap-1">
           <div className="flex flex-col gap-1 mb-2">
-            <button onClick={() => { cancelCrop(); setTool('move'); }} className={`brush-tool-btn ${tool === 'move' ? 'brush-tool-btn-active' : ''}`} title="Move Tool (V)"><Move size={18} /></button>
-            <button onClick={() => { cancelCrop(); setTool('wand'); }} className={`brush-tool-btn ${tool === 'wand' ? 'brush-tool-btn-active' : ''}`} title="Magic Wand Tool (W)"><Wand2 size={18} /></button>
+            <button onClick={() => { cancelCrop(); setTool('move'); }} className={`brush-tool-btn ${tool === 'move' ? 'brush-tool-btn-active' : ''}`} title={`${t('tools.move')} (V)`} aria-label={t('tools.move')}><Move size={18} aria-hidden="true" /></button>
+            <button onClick={() => { cancelCrop(); setTool('wand'); }} className={`brush-tool-btn ${tool === 'wand' ? 'brush-tool-btn-active' : ''}`} title={`${t('tools.wand')} (W)`} aria-label={t('tools.wand')}><Wand2 size={18} aria-hidden="true" /></button>
           </div>
           <div className="w-8 h-[1px] bg-[#333] mb-2" />
           <div className="flex flex-col gap-1 mb-2">
-            <button onClick={() => { stopMarching(); cancelCrop(); setTool('crop'); setCropRect(null); cropRectRef.current = null; startMarching(); }} className={`brush-tool-btn ${tool === 'crop' ? 'brush-tool-btn-active' : ''}`} title="Crop Tool (C)"><Crop size={18} /></button>
-            <button onClick={() => { stopMarching(); cancelCrop(); setTool('eyedropper'); }} className={`brush-tool-btn ${tool === 'eyedropper' ? 'brush-tool-btn-active' : ''}`} title="Eyedropper Tool (I)"><Pipette size={18} /></button>
+            <button onClick={() => { stopMarching(); cancelCrop(); setTool('crop'); setCropRect(null); cropRectRef.current = null; startMarching(); }} className={`brush-tool-btn ${tool === 'crop' ? 'brush-tool-btn-active' : ''}`} title={`${t('tools.crop')} (C)`} aria-label={t('tools.crop')}><Crop size={18} aria-hidden="true" /></button>
+            <button onClick={() => { stopMarching(); cancelCrop(); setTool('eyedropper'); }} className={`brush-tool-btn ${tool === 'eyedropper' ? 'brush-tool-btn-active' : ''}`} title={`${t('tools.eyedropper')} (I)`} aria-label={t('tools.eyedropper')}><Pipette size={18} aria-hidden="true" /></button>
           </div>
           <div className="w-8 h-[1px] bg-[#333] mb-2" />
           <div className="flex flex-col gap-1 mb-2">
-            <button onClick={() => { stopMarching(); cancelCrop(); setTool('paint'); }} className={`brush-tool-btn ${tool === 'paint' ? 'brush-tool-btn-active' : ''}`} title="Brush Tool (B)"><Brush size={18} /></button>
-            <button onClick={() => { stopMarching(); cancelCrop(); setTool('erase'); }} className={`brush-tool-btn ${tool === 'erase' ? 'brush-tool-btn-active' : ''}`} title="Eraser Tool (E)"><Eraser size={18} /></button>
-            <button onClick={() => { stopMarching(); cancelCrop(); setTool('restore'); }} className={`brush-tool-btn ${tool === 'restore' ? 'brush-tool-btn-active' : ''}`} title="Restore (R)"><RefreshCcw size={18} /></button>
-            <button onClick={() => { stopMarching(); cancelCrop(); setTool('bucket'); }} className={`brush-tool-btn ${tool === 'bucket' ? 'brush-tool-btn-active' : ''}`} title="Paint Bucket Tool (G)"><PaintBucket size={18} /></button>
+            <button onClick={() => { stopMarching(); cancelCrop(); setTool('paint'); }} className={`brush-tool-btn ${tool === 'paint' ? 'brush-tool-btn-active' : ''}`} title={`${t('tools.brush')} (B)`} aria-label={t('tools.brush')}><Brush size={18} aria-hidden="true" /></button>
+            <button onClick={() => { stopMarching(); cancelCrop(); setTool('erase'); }} className={`brush-tool-btn ${tool === 'erase' ? 'brush-tool-btn-active' : ''}`} title={`${t('tools.eraser')} (E)`} aria-label={t('tools.eraser')}><Eraser size={18} aria-hidden="true" /></button>
+            <button onClick={() => { stopMarching(); cancelCrop(); setTool('restore'); }} className={`brush-tool-btn ${tool === 'restore' ? 'brush-tool-btn-active' : ''}`} title={`${t('tools.restore')} (R)`} aria-label={t('tools.restore')}><RefreshCcw size={18} aria-hidden="true" /></button>
+            <button onClick={() => { stopMarching(); cancelCrop(); setTool('bucket'); }} className={`brush-tool-btn ${tool === 'bucket' ? 'brush-tool-btn-active' : ''}`} title={`${t('tools.bucket')} (G)`} aria-label={t('tools.bucket')}><PaintBucket size={18} aria-hidden="true" /></button>
           </div>
           <div className="w-8 h-[1px] bg-[#333] mb-2" />
           <div className="flex flex-col gap-1 mb-2">
@@ -3242,18 +3242,20 @@ export function BrushEditor({
               <button
                 onClick={swapColors}
                 className="absolute top-0 right-0 z-20 p-0.5 bg-[#444] rounded-full hover:bg-[#555] text-white-100 hover:text-white transition-colors shadow-md"
-                title="전경색/배경색 스왑 (X)"
+                title={`${t('editor.swap_colors')} (X)`}
+                aria-label={t('editor.swap_colors')}
               >
-                <ArrowLeftRight size={10} className="-scale-x-100" />
+                <ArrowLeftRight size={10} className="-scale-x-100" aria-hidden="true" />
               </button>
 
               {/* Reset Colors Button */}
               <button
                 onClick={resetColors}
                 className="absolute bottom-0 left-0 z-20 flex flex-col items-center justify-center p-0.5 bg-[#444] rounded-sm hover:bg-[#555] transition-colors shadow-md"
-                title="기본 색상으로 초기화 (D)"
+                title={`${t('editor.reset_colors')} (D)`}
+                aria-label={t('editor.reset_colors')}
               >
-                <div className="flex gap-[1px]">
+                <div className="flex gap-[1px]" aria-hidden="true">
                   <div className="w-1.5 h-1.5 bg-black border border-white/20" />
                   <div className="w-1.5 h-1.5 bg-white border border-black/20" />
                 </div>
@@ -3264,17 +3266,17 @@ export function BrushEditor({
           <div className="flex-1" />
 
           <div className="w-8 h-[1px] bg-[#333] mb-2" />
-          <button onClick={() => setZoom(z => Math.min(8, z + 0.2))} className="brush-tool-btn" title="확대">
-            <PlusCircle size={18} />
+          <button onClick={() => setZoom(z => Math.min(8, z + 0.2))} className="brush-tool-btn" title={t('editor.zoom_in')} aria-label={t('editor.zoom_in')}>
+            <PlusCircle size={18} aria-hidden="true" />
           </button>
-          <button onClick={() => setZoom(z => Math.max(0.1, z - 0.2))} className="brush-tool-btn" title="축소">
-            <MinusCircle size={18} />
+          <button onClick={() => setZoom(z => Math.max(0.1, z - 0.2))} className="brush-tool-btn" title={t('editor.zoom_out')} aria-label={t('editor.zoom_out')}>
+            <MinusCircle size={18} aria-hidden="true" />
           </button>
           <button onClick={() => {
             const containerW = containerRef.current?.clientWidth ?? 800;
             const containerH = containerRef.current?.clientHeight ?? 600;
             setZoom(Math.min((containerW - 40) / imageSize.w, (containerH - 40) / imageSize.h, 1));
-          }} className="brush-tool-btn" title="맞춤"><Maximize2 size={18} /></button>
+          }} className="brush-tool-btn" title={t('editor.fit_screen')} aria-label={t('editor.fit_screen')}><Maximize2 size={18} aria-hidden="true" /></button>
         </div>
 
         {/* Center Canvas Area */}

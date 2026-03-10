@@ -7,8 +7,8 @@ export default function robots(): MetadataRoute.Robots {
         rules: {
             userAgent: '*',
             allow: '/',
-            disallow: ['/private/', '/api/'], // 비공개 경로나 API가 없으면 '/'만 남겨도 됩니다.
+            disallow: '',
         },
-        sitemap: 'https://image51.rmntwndrs.com/sitemap.xml', // 본인 도메인으로 수정하세요.
+        sitemap: 'https://image51.rmntwndrs.com/sitemap.xml',
     }
 }

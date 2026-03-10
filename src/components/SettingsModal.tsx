@@ -32,7 +32,7 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
                             </div>
                             <h2 className="modal-title">{t('common.settings')}</h2>
                         </div>
-                        <button onClick={onClose} className="modal-close-btn">✕</button>
+                        <button onClick={onClose} className="modal-close-btn" aria-label={t('common.close')}>✕</button>
                     </div>
 
                     {/* Content */}
@@ -69,9 +69,10 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
                                     <label key={mode} className="modal-option-item">
                                         <input
                                             type="radio"
-                                            className="hidden"
+                                            className="sr-only"
                                             checked={store.downloadMode === mode}
                                             onChange={() => store.setOption('downloadMode', mode)}
+                                            aria-label={mode === 'default' ? t('settings.default_mode') : t('settings.custom_mode')}
                                         />
                                         <div className={cn("radio-custom", store.downloadMode === mode && "radio-custom-checked")}>
                                             {store.downloadMode === mode && <div className="radio-custom-inner" />}

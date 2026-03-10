@@ -16,9 +16,10 @@ export function Footer({ autoDownload, onAutoDownloadChange }: FooterProps) {
             <label className="auto-download-label flex items-center gap-3 cursor-pointer group">
                 <input
                     type="checkbox"
-                    className="hidden"
+                    className="sr-only"
                     checked={autoDownload}
                     onChange={e => onAutoDownloadChange(e.target.checked)}
+                    aria-label={t('options.auto_download')}
                 />
                 <div className={cn(
                     "w-4 h-4 rounded-md border border-white/20 transition-all flex items-center justify-center group-hover:border-indigo-500",

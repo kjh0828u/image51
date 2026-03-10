@@ -49,12 +49,19 @@ export function ImageList({ images, onRemove, onClear, onDownload, onAddFiles }:
                                 <button
                                     onClick={() => onDownload(img)}
                                     className={cn("btn-icon", img.isDownloaded && "text-white/15 hover:text-white/30")}
+                                    aria-label={`${img.file.name} ${t('common.download')}`}
+                                    title={t('common.download')}
                                 >
-                                    <Download className="w-5 h-5" />
+                                    <Download className="w-5 h-5" aria-hidden="true" />
                                 </button>
                             )}
-                            <button onClick={() => onRemove(img.id)} className="btn-icon-delete">
-                                <Trash2 className="w-5 h-5" />
+                            <button
+                                onClick={() => onRemove(img.id)}
+                                className="btn-icon-delete"
+                                aria-label={`${img.file.name} ${t('common.delete')}`}
+                                title={t('common.delete')}
+                            >
+                                <Trash2 className="w-5 h-5" aria-hidden="true" />
                             </button>
                         </div>
                     </div>

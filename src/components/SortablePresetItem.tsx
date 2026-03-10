@@ -15,6 +15,7 @@ import { cn } from '@/lib/utils';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { Profile } from '@/store/useAppStore';
+import { useTranslation } from 'react-i18next';
 
 interface SortablePresetItemProps {
   p: Profile;                           // 프리셋 데이터 (id, name, options)
@@ -26,6 +27,7 @@ interface SortablePresetItemProps {
 }
 
 export function SortablePresetItem({ p, isActive, onLoad, onUpdate, onRename, onDelete }: SortablePresetItemProps) {
+  const { t } = useTranslation();
   // dnd-kit의 useSortable 훅으로 드래그 기능 연결
   const {
     attributes,    // 접근성 속성
@@ -70,27 +72,28 @@ export function SortablePresetItem({ p, isActive, onLoad, onUpdate, onRename, on
         <button
           onClick={(e) => { e.stopPropagation(); onUpdate(p.id, p.name); }}
           className="preset-action-btn"
-          title="현재 설정 저장 (덮어쓰기)"
+          title={t('common.save')}
+          aria-label={`${p.name} ${t('common.save')}`}
         >
-          <Save className="w-3.5 h-3.5" />
+          <Save className="w-3.5 h-3.5" aria-hidden="true" />
         </button>
 
-        {/* 이름 수정 */}
         <button
           onClick={(e) => { e.stopPropagation(); onRename(p.id, p.name); }}
           className="preset-action-btn preset-action-btn-edit"
-          title="이름 수정"
+          title={t('common.rename')}
+          aria-label={`${p.name} ${t('common.rename')}`}
         >
-          <Pencil className="w-3.5 h-3.5" />
+          <Pencil className="w-3.5 h-3.5" aria-hidden="true" />
         </button>
 
-        {/* 삭제 */}
         <button
           onClick={(e) => { e.stopPropagation(); onDelete(p.id, p.name); }}
           className="preset-action-btn preset-action-btn-delete"
-          title="삭제"
+          title={t('common.delete')}
+          aria-label={`${p.name} ${t('common.delete')}`}
         >
-          <Trash2 className="w-3.5 h-3.5" />
+          <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
         </button>
       </div>
     </div>

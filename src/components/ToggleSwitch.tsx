@@ -19,15 +19,17 @@ interface ToggleSwitchProps {
 
 export function ToggleSwitch({ checked, onChange, size = 'default' }: ToggleSwitchProps) {
   return (
-    <div
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
       onClick={() => onChange(!checked)}
       className={cn(
-        "toggle",
+        "toggle focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-[#111]",
         size === 'small' ? 'toggle-small' : 'toggle-default',
         checked ? "toggle-on" : "toggle-off"
       )}
     >
-      {/* 움직이는 원형 버튼 (thumb) */}
       <div
         className={cn(
           "toggle-thumb",
@@ -35,6 +37,6 @@ export function ToggleSwitch({ checked, onChange, size = 'default' }: ToggleSwit
           checked && (size === 'small' ? 'toggle-thumb-on-small' : 'toggle-thumb-on-default')
         )}
       />
-    </div>
+    </button>
   );
 }

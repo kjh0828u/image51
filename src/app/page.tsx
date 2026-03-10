@@ -9,18 +9,22 @@ import { DndContext, closestCenter } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { useTranslation } from 'react-i18next';
 import {
-  Glass,
-  ToggleSwitch,
-  SortablePresetItem,
-  GlassDistortionFilter,
-  OptionCard,
-  SettingsModal,
-  Header,
   Footer,
+  Glass,
+  GlassDistortionFilter,
+  Header,
   ImageList,
+  OptionCard,
   ResizeOptionsCard,
-  BrushEditor,
+  SettingsModal,
+  SortablePresetItem,
+  ToggleSwitch,
 } from '@/components';
+import dynamic from 'next/dynamic';
+const BrushEditor = dynamic(() => import('@/components/BrushEditor').then(mod => mod.BrushEditor), {
+  ssr: false,
+  loading: () => <div className="flex-1 flex items-center justify-center bg-black text-white italic">Loading Editor Experience...</div>
+});
 import { useImageProcessing } from '@/hooks/useImageProcessing';
 import { usePresetDragDrop } from '@/hooks/usePresetDragDrop';
 
@@ -200,12 +204,12 @@ export default function Home() {
             <div className="options-grid">
               <OptionCard title={t('options.auto_crop')} subtitle="Auto Crop" headerAction={<ToggleSwitch checked={store.enableAutoCrop} onChange={c => store.setOption('enableAutoCrop', c)} />} disabled={!store.enableAutoCrop}>
                 <div className="option-row"><span className="input-label">{t('options.auto_crop_row')}</span><span className="option-value">{store.autoCropMargin}</span></div>
-                <input type="range" min="0" max="100" value={store.autoCropMargin} onChange={e => store.setOption('autoCropMargin', Number(e.target.value))} className="range-slider" />
+                <input type="range" min="0" max="100" value={store.autoCropMargin} onChange={e => store.setOption('autoCropMargin', Number(e.target.value))} className="range-slider" aria-label={t('options.auto_crop')} />
               </OptionCard>
 
               <OptionCard title={t('options.compress')} subtitle="Compress" headerAction={<ToggleSwitch checked={store.enableCompress} onChange={c => store.setOption('enableCompress', c)} />} disabled={!store.enableCompress}>
                 <div className="option-row"><span className="input-label">{t('options.quality_row')}</span><span className="option-value">{store.quality}</span></div>
-                <input type="range" min="1" max="100" value={store.quality} onChange={e => store.setOption('quality', Number(e.target.value))} className="range-slider" />
+                <input type="range" min="1" max="100" value={store.quality} onChange={e => store.setOption('quality', Number(e.target.value))} className="range-slider" aria-label={t('options.compress')} />
               </OptionCard>
 
               <ResizeOptionsCard resizeError={resizeError} onResizeErrorChange={setResizeError} />
@@ -225,6 +229,7 @@ export default function Home() {
                         "flex-1 h-8 rounded text-xs font-bold transition-all",
                         store.customFormat === fmt ? "bg-indigo-500 text-white" : "bg-white/10 text-gray-400 hover:bg-white/20"
                       )}
+                      aria-label={`${t('options.format')} ${fmt.toUpperCase()}`}
                     >
                       {fmt.toUpperCase()}
                     </button>

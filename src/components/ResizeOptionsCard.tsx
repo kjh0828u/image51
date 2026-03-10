@@ -40,11 +40,25 @@ export function ResizeOptionsCard({ resizeError, onResizeErrorChange }: ResizeOp
       <div className="grid-cols-2-gap">
         <div className="form-field">
           <p className="input-label">{t('options.width')}</p>
-          <input type="text" value={store.resizeWidth} onChange={createResizeHandler('w')} className="input-field" placeholder="Auto" />
+          <input
+            type="text"
+            value={store.resizeWidth}
+            onChange={createResizeHandler('w')}
+            className="input-field"
+            placeholder="Auto"
+            aria-label={t('options.width')}
+          />
         </div>
         <div className="form-field">
           <p className="input-label">{t('options.height')}</p>
-          <input type="text" value={store.resizeHeight} onChange={createResizeHandler('h')} className="input-field" placeholder="Auto" />
+          <input
+            type="text"
+            value={store.resizeHeight}
+            onChange={createResizeHandler('h')}
+            className="input-field"
+            placeholder="Auto"
+            aria-label={t('options.height')}
+          />
         </div>
         <div className="grid-span-2 option-row">
           <span className="toggle-label-muted">{t('options.keep_ratio')}</span>

@@ -16,13 +16,14 @@ export const metadata: Metadata = {
   applicationName: "Image51",
   category: "multimedia",
   title: {
-    default: "Image51 - All-in-One Online Image AI Tools",
+    default: "Image51 - AI Background Removal, Batch Edit & Image Converter (온라인 배경 제거)",
     template: "%s | Image51",
   },
-  description: "Remove background, compress, and resize images directly in your browser. Fast, secure, and privacy-focused AI image tools.",
+  description: "Remove background with AI, batch edit, and convert images (JPG/PNG/WebP) directly in your browser. 개인정보를 보호하는 스마트한 AI 이미지 배경 제거 및 일괄 편집 도구입니다.",
   keywords: [
-    "Image51", "Background Removal", "Image Compressor", "Image Resizer", "AI Background Removal",
-    "Online Image Editor", "No Upload Image Tool", "배경 제거", "누끼 따기", "이미지 압축", "리사이즈",
+    "Image51", "AI Background Removal", "Image Batch Process", "Image Converter", "Background Remover Online",
+    "JPG to PNG", "PNG to JPG", "Online Image Editor", "No Upload Image Tool",
+    "이미지 배경지우기", "누끼 따기", "배경 제거", "이미지 일괄 편집", "이미지 변환", "이미지 편집 사이트",
     "무료 온라인 도구", "인물 누끼", "사물 누끼", "개인정보 보호 이미지 편집"
   ],
   authors: [{ name: "Image51 Team" }],

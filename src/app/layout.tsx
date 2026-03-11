@@ -68,6 +68,10 @@ export const metadata: Metadata = {
       "x-default": "https://image51.rmntwndrs.com/image-editor",
     },
   },
+  icons: {
+    icon: "/logo-opt.webp",
+    apple: "/logo-opt.webp",
+  },
 };
 
 export const viewport = {

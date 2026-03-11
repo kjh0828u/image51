@@ -109,6 +109,8 @@ export default function RootLayout({
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
         />
+        <meta name="referrer" content="strict-origin-when-cross-origin" />
+        <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
         {/* 리소스 우선순위 최적화: 필수적인 연결만 유지 */}
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />

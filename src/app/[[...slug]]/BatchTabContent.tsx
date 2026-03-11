@@ -137,10 +137,13 @@ export default function BatchTabContent({
               {(['png', 'jpg', 'webp', 'svg'] as const).map(fmt => (
                 <button
                   key={fmt}
+                  disabled={!store.enableCustomFormat}
                   onClick={() => store.setOption('customFormat', fmt)}
                   className={cn(
                     "flex-1 h-8 rounded text-xs font-bold transition-all",
-                    store.customFormat === fmt ? "bg-indigo-500 text-white" : "bg-white/10 text-gray-400 hover:bg-white/20"
+                    store.enableCustomFormat
+                      ? (store.customFormat === fmt ? "bg-indigo-500 text-white shadow-lg" : "bg-white/10 text-gray-400 hover:bg-white/20")
+                      : "bg-white/5 text-gray-600 cursor-not-allowed"
                   )}
                   aria-label={`${t('options.format')} ${fmt.toUpperCase()}`}
                 >

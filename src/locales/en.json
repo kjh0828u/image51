@@ -10,7 +10,7 @@
     "empty_images": "No images. Drag files or click the button to add.",
     "settings": "Settings",
     "language": "Language",
-    "auto": "Auto (System Settings)",
+    "auto": "Auto (Default)",
     "korean": "Korean",
     "english": "English",
     "save": "Save",
@@ -31,9 +31,9 @@
   },
   "options": {
     "bg_removal": "Remove BG",
-    "bg_removal_desc": "AI Background Removal (Forced PNG)",
+    "bg_removal_desc": "AI Background Removal (Keep Transparency)",
     "model_selection": "Model Selection",
-    "selfie_model_desc": "Selfie/Person (High Perf)",
+    "selfie_model_desc": "Selfie/Person (Precise)",
     "landscape_model_desc": "Landscape/General (Spec)",
     "auto_crop": "AutoCrop",
     "auto_crop_desc": "Crop to optimal size by removing transparency",
@@ -53,7 +53,8 @@
     "quality_row": "Quality (%)",
     "format": "Save Format",
     "format_desc": "Output image format",
-    "auto_download": "Auto download on process"
+    "auto_download": "Auto download on process",
+    "auto_placeholder": "Auto"
   },
   "presets": {
     "title": "Saved Presets",
@@ -89,6 +90,7 @@
     "ai_bg_removal": "AI Remove BG",
     "ai_processing": "AI Processing...",
     "ai_done": "AI Done",
+    "ai_adjust": "AI Adjust (Restore/Shrink)",
     "save_success": "Saved Successfully!",
     "export_format": "Export Format",
     "export_now": "Export Now",

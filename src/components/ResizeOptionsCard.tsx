@@ -45,7 +45,7 @@ export function ResizeOptionsCard({ resizeError, onResizeErrorChange }: ResizeOp
             value={store.resizeWidth}
             onChange={createResizeHandler('w')}
             className="input-field"
-            placeholder="Auto"
+            placeholder={t("options.auto_placeholder")}
             aria-label={t('options.width')}
           />
         </div>
@@ -56,7 +56,7 @@ export function ResizeOptionsCard({ resizeError, onResizeErrorChange }: ResizeOp
             value={store.resizeHeight}
             onChange={createResizeHandler('h')}
             className="input-field"
-            placeholder="Auto"
+            placeholder={t("options.auto_placeholder")}
             aria-label={t('options.height')}
           />
         </div>

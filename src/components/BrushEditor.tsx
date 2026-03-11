@@ -3099,7 +3099,7 @@ export function BrushEditor({
 
         {aiDone && (
           <div className="flex items-center gap-2 ml-4">
-            <label htmlFor="ai-adjust-range" className="text-[10px] font-bold text-gray-500 uppercase tracking-tighter">AI Smart Adjust (Restore/Shrink)</label>
+            <label htmlFor="ai-adjust-range" className="text-[10px] font-bold text-gray-500 uppercase tracking-tighter">{t('editor.ai_adjust')}</label>
             <input
               id="ai-adjust-range"
               type="range"
@@ -3136,7 +3136,7 @@ export function BrushEditor({
                 </div>
                 <div className="flex flex-col">
                   <span className="text-[12px] font-black text-white leading-tight">{t('editor.save_success')}</span>
-                  <span className="text-[8px] text-white/70 font-bold uppercase tracking-wider leading-none">Saved Successfully</span>
+                  <span className="text-[8px] text-white/70 font-bold uppercase tracking-wider leading-none">Complete</span>
                 </div>
               </div>
             </div>

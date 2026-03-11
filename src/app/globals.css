@@ -590,7 +590,7 @@ body::before {
 
 /* ========== Upload Zone ========== */
 .upload-zone {
-  min-height: 380px;
+  min-height: 340px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1356,7 +1356,7 @@ body::before {
 
 /* ========== Glass Profile Section ========== */
 .glass-profile-section {
-  height: 260px;
+  height: 220px;
   overflow: hidden;
 }
 
@@ -1603,6 +1603,32 @@ body::before {
 }
 
 /* ========== Custom Scrollbar (Global) ========== */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(110, 212, 197, 0.2);
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background-clip: content-box;
+}
+
+.custom-scrollbar:hover::-webkit-scrollbar-thumb {
+  background: rgba(110, 212, 197, 0.4);
+  border: 1px solid transparent;
+  background-clip: content-box;
+}
+
+.custom-scrollbar::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;
@@ -2882,6 +2908,7 @@ body::before {
 
 /* ── 태블릿 (768px ~ 1024px) ────────────────────────────────── */
 @media (max-width: 1024px) {
+
   /* Header */
   .header {
     padding: 0.6rem 1.25rem;
@@ -3157,7 +3184,8 @@ body::before {
     height: 52px;
     flex-direction: row;
     align-items: center;
-    justify-content: flex-start; /* 잘림 방지: 왼쪽부터 배치 후 스크롤 */
+    justify-content: flex-start;
+    /* 잘림 방지: 왼쪽부터 배치 후 스크롤 */
     padding: 0 0.5rem;
     gap: 2px;
     order: 3;
@@ -3185,7 +3213,7 @@ body::before {
   }
 
   /* 툴 버튼 그룹: 수직→수평 */
-  .brush-editor-sidebar-left > div {
+  .brush-editor-sidebar-left>div {
     flex-direction: row !important;
     margin-bottom: 0 !important;
     gap: 2px !important;
@@ -3210,7 +3238,7 @@ body::before {
   }
 
   /* 캔버스 영역: 최대화 */
-  .brush-editor-layout > .flex-1 {
+  .brush-editor-layout>.flex-1 {
     order: 1;
     /* 캔버스가 최상단 */
     min-height: 0;
@@ -3375,6 +3403,7 @@ body::before {
 
 /* ── 터치 디바이스 공통 최적화 ─────────────────────────────── */
 @media (hover: none) and (pointer: coarse) {
+
   /* 터치 스크롤 최적화 */
   .brush-editor-sidebar-left {
     -webkit-overflow-scrolling: touch;

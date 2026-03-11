@@ -78,13 +78,13 @@ export function useImageProcessing() {
     }
   };
 
-  const handleStartProcessing = async (onResizeError: (msg: string | null) => void) => {
+  const handleStartProcessing = async (onResizeError?: (msg: string | null) => void) => {
     const initialState = useAppStore.getState();
     if (initialState.enableResize && !initialState.resizeWidth.trim() && !initialState.resizeHeight.trim()) {
-      onResizeError('가로 또는 세로 크기를 한 개 이상 입력해주세요.');
+      onResizeError?.('가로 또는 세로 크기를 한 개 이상 입력해주세요.');
       return;
     }
-    onResizeError(null);
+    onResizeError?.(null);
 
     const pendingImages = initialState.images.filter(img => img.status === 'pending');
     if (pendingImages.length === 0) return;

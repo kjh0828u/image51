@@ -107,20 +107,29 @@ export default function BatchTabContent({
         <h2 className="section-title">{t('common.batch')}</h2>
         <div className="options-grid">
           <OptionCard title={t('options.auto_crop')} subtitle="Auto Crop" headerAction={<ToggleSwitch checked={store.enableAutoCrop} onChange={c => store.setOption('enableAutoCrop', c)} />} disabled={!store.enableAutoCrop}>
-            <div className="option-row"><span className="input-label">{t('options.auto_crop_row')}</span><span className="option-value">{store.autoCropMargin}</span></div>
-            <input type="range" min="0" max="100" value={store.autoCropMargin} onChange={e => store.setOption('autoCropMargin', Number(e.target.value))} className="range-slider" aria-label={t('options.auto_crop')} />
+            <div className="option-row">
+              <label htmlFor="batch-auto-crop-margin" className="input-label">{t('options.auto_crop_row')}</label>
+              <span className="option-value">{store.autoCropMargin}</span>
+            </div>
+            <input id="batch-auto-crop-margin" type="range" min="0" max="100" value={store.autoCropMargin} onChange={e => store.setOption('autoCropMargin', Number(e.target.value))} className="range-slider" />
           </OptionCard>
 
           <OptionCard title={t('options.compress')} subtitle="Compress" headerAction={<ToggleSwitch checked={store.enableCompress} onChange={c => store.setOption('enableCompress', c)} />} disabled={!store.enableCompress}>
-            <div className="option-row"><span className="input-label">{t('options.quality_row')}</span><span className="option-value">{store.quality}</span></div>
-            <input type="range" min="1" max="100" value={store.quality} onChange={e => store.setOption('quality', Number(e.target.value))} className="range-slider" aria-label={t('options.compress')} />
+            <div className="option-row">
+              <label htmlFor="batch-quality" className="input-label">{t('options.quality_row')}</label>
+              <span className="option-value">{store.quality}</span>
+            </div>
+            <input id="batch-quality" type="range" min="1" max="100" value={store.quality} onChange={e => store.setOption('quality', Number(e.target.value))} className="range-slider" />
           </OptionCard>
 
-          <ResizeOptionsCard resizeError={null} onResizeErrorChange={() => {}} />
+          <ResizeOptionsCard resizeError={null} onResizeErrorChange={() => { }} />
 
           <OptionCard title={t('options.grayscale')} subtitle="Grayscale" headerAction={<ToggleSwitch checked={store.enableGrayscale} onChange={c => store.setOption('enableGrayscale', c)} />} disabled={!store.enableGrayscale}>
-            <div className="option-row"><span className="input-label">{t('options.grayscale_intensity')}</span><span className="option-value">{store.grayscale}%</span></div>
-            <input type="range" min="0" max="100" value={store.grayscale} onChange={e => store.setOption('grayscale', Number(e.target.value))} className="range-slider" />
+            <div className="option-row">
+              <label htmlFor="batch-grayscale" className="input-label">{t('options.grayscale_intensity')}</label>
+              <span className="option-value">{store.grayscale}%</span>
+            </div>
+            <input id="batch-grayscale" type="range" min="0" max="100" value={store.grayscale} onChange={e => store.setOption('grayscale', Number(e.target.value))} className="range-slider" />
           </OptionCard>
 
           <OptionCard title={t('options.format')} subtitle="Format" headerAction={<ToggleSwitch checked={store.enableCustomFormat} onChange={c => store.setOption('enableCustomFormat', c)} />} disabled={!store.enableCustomFormat}>
@@ -144,7 +153,7 @@ export default function BatchTabContent({
 
         <div className="floating-actions">
           <button
-            onClick={() => handleStartProcessing()}
+            onClick={() => handleStartProcessing(setResizeError)}
             disabled={pendingCount === 0}
             className="btn-floating-primary"
             aria-label={t('actions.start_process')}

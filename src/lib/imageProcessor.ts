@@ -47,6 +47,7 @@ export async function processImage(file: File, options: AppOptions): Promise<str
     if (options.enableAutoCrop) {
         workCanvas = autoCropCanvas(workCanvas, options.autoCropMargin);
     }
+
     if (options.enableResize) {
         workCanvas = resizeCanvas(workCanvas, options.resizeWidth, options.resizeHeight, options.keepRatio);
     }
@@ -78,19 +79,9 @@ export async function processImage(file: File, options: AppOptions): Promise<str
     }
 
     // 6. 압축 및 최종 결과 URL 생성
-    let finalBlob = await canvasToBlob(workCanvas, mimeType);
-    if (options.enableCompress && !mimeType.includes('svg')) {
-        finalBlob = await new Promise<Blob>((resolve) => {
-            new Compressor(finalBlob, {
-                quality: options.quality / 100,
-                mimeType,
-                strict: true,
-                checkOrientation: false,
-                success: resolve,
-                error: () => resolve(finalBlob)
-            });
-        });
-    }
+    // 캔버스에서 직접 원하는 품질로 변환하여 중복 인코딩 방지 및 성능/용량 최적화
+    const quality = options.enableCompress ? options.quality / 100 : 1.0;
+    const finalBlob = await canvasToBlob(workCanvas, mimeType, quality);
 
     return URL.createObjectURL(finalBlob);
 }

@@ -82,8 +82,8 @@ const defaultOptions: AppOptions = {
     enableCompress: true,
     quality: 60,
 
-    enableResize: true,
-    resizeWidth: '200',
+    enableResize: false,
+    resizeWidth: '1200',
     resizeHeight: '',
     keepRatio: true,
 

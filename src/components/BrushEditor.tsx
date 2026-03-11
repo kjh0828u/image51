@@ -306,8 +306,9 @@ const ColorPickerPopup = memo(({ color, onChange, size = 24, className = '', tit
 
             {/* HEX 입력 */}
             <div className="color-picker-input-row">
-              <span className="color-picker-label">HEX</span>
+              <label htmlFor="hex-input" className="color-picker-label">HEX</label>
               <input
+                id="hex-input"
                 type="text"
                 value={hexInput}
                 onChange={handleHexChange}
@@ -441,8 +442,8 @@ const LayerPanel = memo(({
       {activeLayer && (
         <div className="p-2 border-t border-[#111] bg-[#252526] flex flex-col gap-2 flex-shrink-0">
           <div className="flex items-center gap-2">
-            <span className="text-[9px] font-bold text-gray-500 uppercase w-14">{t('editor.opacity')}</span>
-            <input type="range" min={0} max={100} value={activeLayer.opacity} onChange={(e) => setLayerOpacity(activeLayerId, Number(e.target.value), layers, activeLayerId)} className="flex-1 h-1 range-slider" />
+            <label htmlFor="layer-opacity" className="text-[9px] font-bold text-gray-500 uppercase w-14">{t('editor.opacity')}</label>
+            <input id="layer-opacity" type="range" min={0} max={100} value={activeLayer.opacity} onChange={(e) => setLayerOpacity(activeLayerId, Number(e.target.value), layers, activeLayerId)} className="flex-1 h-1 range-slider" />
             <span className="text-[9px] font-mono text-indigo-400 w-8">{activeLayer.opacity}%</span>
           </div>
           <div className="flex gap-1">
@@ -3098,8 +3099,9 @@ export function BrushEditor({
 
         {aiDone && (
           <div className="flex items-center gap-2 ml-4">
-            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-tighter">AI Smart Adjust (Restore/Shrink)</span>
+            <label htmlFor="ai-adjust-range" className="text-[10px] font-bold text-gray-500 uppercase tracking-tighter">AI Smart Adjust (Restore/Shrink)</label>
             <input
+              id="ai-adjust-range"
               type="range"
               min={-100}
               max={100}
@@ -3107,7 +3109,6 @@ export function BrushEditor({
               value={aiAdjust}
               onChange={(e) => setAiAdjust(Number(e.target.value))}
               className="w-32 h-1 range-slider"
-              aria-label="AI Smart Adjust"
             />
             <span className="text-[10px] font-mono text-indigo-400 w-10">
               {aiAdjust === 0 ? 'Original' : aiAdjust > 0 ? `+${aiAdjust}` : aiAdjust}
@@ -3165,10 +3166,11 @@ export function BrushEditor({
               {downloadFormat !== 'png' && downloadFormat !== 'svg' && (
                 <div className="mb-3">
                   <div className="flex justify-between items-center mb-1">
-                    <span className="text-[10px] text-[#888] font-bold">{t('editor.quality').toUpperCase()}</span>
+                    <label htmlFor="download-quality" className="text-[10px] text-[#888] font-bold">{t('editor.quality').toUpperCase()}</label>
                     <span className="text-[10px] text-indigo-400 font-bold">{downloadQuality}%</span>
                   </div>
                   <input
+                    id="download-quality"
                     type="range" min={10} max={100} step={5} value={downloadQuality}
                     onChange={(e) => setDownloadQuality(Number(e.target.value))}
                     className="w-full range-slider h-1"
@@ -3334,18 +3336,18 @@ export function BrushEditor({
               {tool === 'wand' && (
                 <>
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-bold text-gray-400">TOLERANCE</span>
-                    <input type="range" min={5} max={120} value={tolerance} onChange={(e) => setTolerance(Number(e.target.value))} className="w-24 h-1 range-slider" />
+                    <label htmlFor="wand-tolerance" className="text-[10px] font-bold text-gray-400">TOLERANCE</label>
+                    <input id="wand-tolerance" type="range" min={5} max={120} value={tolerance} onChange={(e) => setTolerance(Number(e.target.value))} className="w-24 h-1 range-slider" />
                     <span className="text-[11px] font-mono text-indigo-400 w-8">{tolerance}</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-bold text-gray-400">SMOOTH</span>
-                    <input type="range" min={0} max={20} value={wandSmooth} onChange={(e) => setWandSmooth(Number(e.target.value))} className="w-24 h-1 range-slider" />
+                    <label htmlFor="wand-smooth" className="text-[10px] font-bold text-gray-400">SMOOTH</label>
+                    <input id="wand-smooth" type="range" min={0} max={20} value={wandSmooth} onChange={(e) => setWandSmooth(Number(e.target.value))} className="w-24 h-1 range-slider" />
                     <span className="text-[11px] font-mono text-indigo-400 w-8">{wandSmooth}</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-bold text-gray-400">EXPAND</span>
-                    <input type="range" min={0} max={50} value={wandExpand} onChange={(e) => handleExpandChange(Number(e.target.value))} className="w-24 h-1 range-slider" />
+                    <label htmlFor="wand-expand" className="text-[10px] font-bold text-gray-400">EXPAND</label>
+                    <input id="wand-expand" type="range" min={0} max={50} value={wandExpand} onChange={(e) => handleExpandChange(Number(e.target.value))} className="w-24 h-1 range-slider" />
                     <span className="text-[11px] font-mono text-indigo-400 w-8">{wandExpand}</span>
                   </div>
                 </>
@@ -3354,24 +3356,24 @@ export function BrushEditor({
               {(tool === 'erase' || tool === 'restore' || tool === 'paint' || tool === 'heal' || tool === 'clone' || tool === 'blur-brush') && (
                 <>
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-bold text-gray-400">SIZE</span>
-                    <input type="range" min={5} max={300} value={brushSize} onChange={(e) => setBrushSize(Number(e.target.value))} className="w-24 h-1 range-slider" />
+                    <label htmlFor="opt-brush-size" className="text-[10px] font-bold text-gray-400">SIZE</label>
+                    <input id="opt-brush-size" type="range" min={5} max={300} value={brushSize} onChange={(e) => setBrushSize(Number(e.target.value))} className="w-24 h-1 range-slider" />
                     <span className="text-[11px] font-mono text-indigo-400 w-10">{brushSize}px</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-bold text-gray-400">HARDNESS</span>
-                    <input type="range" min={0} max={100} value={brushHardness} onChange={(e) => setBrushHardness(Number(e.target.value))} className="w-20 h-1 range-slider" />
+                    <label htmlFor="opt-brush-hardness" className="text-[10px] font-bold text-gray-400">HARDNESS</label>
+                    <input id="opt-brush-hardness" type="range" min={0} max={100} value={brushHardness} onChange={(e) => setBrushHardness(Number(e.target.value))} className="w-20 h-1 range-slider" />
                     <span className="text-[11px] font-mono text-indigo-400 w-10">{brushHardness}%</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-bold text-gray-400">OPACITY</span>
-                    <input type="range" min={10} max={100} value={brushOpacity} onChange={(e) => setBrushOpacity(Number(e.target.value))} className="w-20 h-1 range-slider" />
+                    <label htmlFor="opt-brush-opacity" className="text-[10px] font-bold text-gray-400">OPACITY</label>
+                    <input id="opt-brush-opacity" type="range" min={10} max={100} value={brushOpacity} onChange={(e) => setBrushOpacity(Number(e.target.value))} className="w-20 h-1 range-slider" />
                     <span className="text-[11px] font-mono text-indigo-400 w-10">{brushOpacity}%</span>
                   </div>
                   {tool === 'blur-brush' && (
                     <div className="flex items-center gap-2">
-                      <span className="text-[10px] font-bold text-gray-400">BLUR</span>
-                      <input type="range" min={1} max={100} value={brushBlur} onChange={(e) => setBrushBlur(Number(e.target.value))} className="w-20 h-1 range-slider" />
+                      <label htmlFor="opt-brush-blur" className="text-[10px] font-bold text-gray-400">BLUR</label>
+                      <input id="opt-brush-blur" type="range" min={1} max={100} value={brushBlur} onChange={(e) => setBrushBlur(Number(e.target.value))} className="w-20 h-1 range-slider" />
                       <span className="text-[11px] font-mono text-indigo-400 w-8">{brushBlur}</span>
                     </div>
                   )}
@@ -3409,8 +3411,8 @@ export function BrushEditor({
 
               {tool === 'bucket' && (
                 <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-bold text-gray-400">TOLERANCE</span>
-                  <input type="range" min={5} max={120} value={tolerance} onChange={(e) => setTolerance(Number(e.target.value))} className="w-28 h-1 range-slider" />
+                  <label htmlFor="bucket-tolerance" className="text-[10px] font-bold text-gray-400">TOLERANCE</label>
+                  <input id="bucket-tolerance" type="range" min={5} max={120} value={tolerance} onChange={(e) => setTolerance(Number(e.target.value))} className="w-28 h-1 range-slider" />
                   <span className="text-[11px] font-mono text-indigo-400">{tolerance}</span>
                 </div>
               )}
@@ -3442,8 +3444,9 @@ export function BrushEditor({
 
               {tool === 'text' && (
                 <div className="flex items-center gap-3">
-                  <span className="text-[10px] font-bold text-gray-400">FONT</span>
+                  <label htmlFor="font-family-select" className="text-[10px] font-bold text-gray-400">FONT</label>
                   <select
+                    id="font-family-select"
                     value={textStyle.fontFamily}
                     onChange={(e) => { const v = { ...textStyleRef.current, fontFamily: e.target.value }; textStyleRef.current = v; setTextStyle(v); applyTextStyleLive(v); commitTextStyleChange(v); }}
                     className="h-6 bg-[#333] text-gray-300 text-[10px] border-0 rounded px-1 max-w-[120px]"
@@ -3482,6 +3485,7 @@ export function BrushEditor({
                     </optgroup>
                   </select>
                   <input
+                    aria-label="Font Size"
                     type="number" min={8} max={300} value={textStyle.fontSize}
                     onChange={(e) => { const v = { ...textStyleRef.current, fontSize: Number(e.target.value) }; textStyleRef.current = v; setTextStyle(v); applyTextStyleLive(v); commitTextStyleChange(v); }}
                     className="w-14 h-6 bg-[#333] text-gray-300 text-[10px] border-0 rounded px-1"
@@ -3505,8 +3509,9 @@ export function BrushEditor({
                     title="텍스트 색상"
                   />
                   <div className="w-px h-4 bg-[#444]" />
-                  <span className="text-[10px] text-gray-400">자간</span>
+                  <label htmlFor="text-ls-input" className="text-[10px] text-gray-400">자간</label>
                   <input
+                    id="text-ls-input"
                     type="number" min={-200} max={500} step={1}
                     value={textStyle.letterSpacing ?? 0}
                     onChange={(e) => {
@@ -3519,6 +3524,7 @@ export function BrushEditor({
                     className="w-14 h-6 bg-[#333] text-gray-300 text-[10px] border-0 rounded px-1"
                   />
                   <input
+                    aria-label="자간 슬라이더"
                     type="range" min={-200} max={500} step={1}
                     defaultValue={textStyle.letterSpacing ?? 0}
                     key={`ls-${editingTextLayerIdRef.current ?? selectedTextLayerIdRef.current}`}
@@ -3535,8 +3541,9 @@ export function BrushEditor({
                     }}
                     className="w-20 h-1 accent-indigo-500"
                   />
-                  <span className="text-[10px] text-gray-400 ml-2">행간</span>
+                  <label htmlFor="text-lh-input" className="text-[10px] text-gray-400 ml-2">행간</label>
                   <input
+                    id="text-lh-input"
                     type="number" min={0.5} max={5.0} step={0.05}
                     value={textStyle.lineHeight ?? 1.3}
                     onChange={(e) => {
@@ -3549,6 +3556,7 @@ export function BrushEditor({
                     className="w-14 h-6 bg-[#333] text-gray-300 text-[10px] border-0 rounded px-1"
                   />
                   <input
+                    aria-label="행간 슬라이더"
                     type="range" min={0.5} max={5.0} step={0.05}
                     defaultValue={textStyle.lineHeight ?? 1.3}
                     key={`lh-${editingTextLayerIdRef.current ?? selectedTextLayerIdRef.current}`}
@@ -3773,31 +3781,31 @@ export function BrushEditor({
               <div className="space-y-3">
                 <div className="flex flex-col gap-1">
                   <div className="flex justify-between items-center text-[10px] font-bold text-gray-400">
-                    <span>{t('options.brightness').toUpperCase()}</span>
+                    <label htmlFor="adj-brightness">{t('options.brightness').toUpperCase()}</label>
                     <span className="text-indigo-400">{brightness}%</span>
                   </div>
-                  <input type="range" min={0} max={200} value={brightness} onChange={(e) => setBrightness(Number(e.target.value))} className="w-full h-1 range-slider" />
+                  <input id="adj-brightness" type="range" min={0} max={200} value={brightness} onChange={(e) => setBrightness(Number(e.target.value))} className="w-full h-1 range-slider" />
                 </div>
                 <div className="flex flex-col gap-1">
                   <div className="flex justify-between items-center text-[10px] font-bold text-gray-400">
-                    <span>{t('options.contrast').toUpperCase()}</span>
+                    <label htmlFor="adj-contrast">{t('options.contrast').toUpperCase()}</label>
                     <span className="text-indigo-400">{contrast}%</span>
                   </div>
-                  <input type="range" min={0} max={200} value={contrast} onChange={(e) => setContrast(Number(e.target.value))} className="w-full h-1 range-slider" />
+                  <input id="adj-contrast" type="range" min={0} max={200} value={contrast} onChange={(e) => setContrast(Number(e.target.value))} className="w-full h-1 range-slider" />
                 </div>
                 <div className="flex flex-col gap-1">
                   <div className="flex justify-between items-center text-[10px] font-bold text-gray-400">
-                    <span>{t('options.saturation').toUpperCase()}</span>
+                    <label htmlFor="adj-saturation">{t('options.saturation').toUpperCase()}</label>
                     <span className="text-indigo-400">{saturation}%</span>
                   </div>
-                  <input type="range" min={0} max={200} value={saturation} onChange={(e) => setSaturation(Number(e.target.value))} className="w-full h-1 range-slider" />
+                  <input id="adj-saturation" type="range" min={0} max={200} value={saturation} onChange={(e) => setSaturation(Number(e.target.value))} className="w-full h-1 range-slider" />
                 </div>
                 <div className="flex flex-col gap-1">
                   <div className="flex justify-between items-center text-[10px] font-bold text-gray-400">
-                    <span>{t('options.blur').toUpperCase()}</span>
+                    <label htmlFor="adj-blur">{t('options.blur').toUpperCase()}</label>
                     <span className="text-indigo-400">{blur}px</span>
                   </div>
-                  <input type="range" min={0} max={20} value={blur} onChange={(e) => setBlur(Number(e.target.value))} className="w-full h-1 range-slider" />
+                  <input id="adj-blur" type="range" min={0} max={20} value={blur} onChange={(e) => setBlur(Number(e.target.value))} className="w-24 h-1 range-slider" />
                 </div>
               </div>
               <button

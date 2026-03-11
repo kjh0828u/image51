@@ -80,7 +80,7 @@ export async function processImage(file: File, options: AppOptions): Promise<str
 
     // 6. 압축 및 최종 결과 URL 생성
     // 캔버스에서 직접 원하는 품질로 변환하여 중복 인코딩 방지 및 성능/용량 최적화
-    const quality = options.enableCompress ? options.quality / 100 : 1.0;
+    const quality = options.enableCompress ? (options.quality || 60) / 100 : 1.0;
     const finalBlob = await canvasToBlob(workCanvas, mimeType, quality);
 
     return URL.createObjectURL(finalBlob);

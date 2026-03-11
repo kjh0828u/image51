@@ -9,17 +9,15 @@ const EXTRA_GOOGLE_FONTS = "https://fonts.googleapis.com/css2?family=Noto+Serif+
 const EXTERNAL_FONTS = [
     "https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css",
     "https://cdn.jsdelivr.net/gh/sun-typeface/SUIT@2/fonts/static/woff2/SUIT.css",
-    "https://cdn.jsdelivr.net/gh/webfontworld/gmarket/GmarketSans.css",
+    "https://webfontworld.github.io/gmarket/GmarketSans.css",
     "https://hangeul.pstatic.net/hangeul_static/css/maru-buri.css",
     "https://spoqa.github.io/spoqa-han-sans/css/SpoqaHanSans-kr.css",
 ];
 
 const SECONDARY_EXTERNAL_FONTS = [
-    "https://cdn.jsdelivr.net/gh/ebang106/ebangFont/ebang_font.css",
-    "https://cdn.jsdelivr.net/gh/zzz-daniel/zzz-fonts/TmoneyRoundWind/TmoneyRoundWind.css",
-    "https://cdn.jsdelivr.net/gh/velopert/seoul-fonts@master/seoul-fonts.css",
-    "https://cdn.jsdelivr.net/gh/cafe24/cafe24-fonts@latest/cafe24-fonts.css",
-    "https://cdn.jsdelivr.net/gh/lee-loung/binggrae-font@master/font.css"
+    "https://hangeul.pstatic.net/hangeul_static/css/nanum-square.css",
+    "https://hangeul.pstatic.net/hangeul_static/css/nanum-square-round.css",
+    "https://hangeul.pstatic.net/hangeul_static/css/nanum-barun-gothic.css",
 ];
 
 export function FontLoader() {

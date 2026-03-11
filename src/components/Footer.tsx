@@ -32,7 +32,7 @@ export function Footer({ autoDownload, onAutoDownloadChange }: FooterProps) {
 
             <div className="flex flex-col items-end gap-1 opacity-40 hover:opacity-100 transition-opacity">
                 <span className="text-[10px] font-black text-white italic uppercase tracking-tighter">Image51 Editor v0.1.0</span>
-                <span className="text-[9px] font-bold text-gray-500 uppercase tracking-widest">© 2024 Image51 Team. All rights reserved.</span>
+                <span className="text-[9px] font-bold text-gray-500 uppercase tracking-widest">© 2026 Romantic Wanderers. All rights reserved.</span>
             </div>
         </footer>
     );

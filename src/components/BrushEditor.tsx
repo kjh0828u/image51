@@ -596,6 +596,7 @@ export function BrushEditor({
   const [showAdjustPanel, setShowAdjustPanel] = useState(false);
   const [adjOpen, setAdjOpen] = useState(false); // Adjustments 패널 접힘 (기본 닫힘)
   const [historyOpen, setHistoryOpen] = useState(false); // 히스토리 패널 접힘 (기본 닫힘)
+  const [mobilePanelOpen, setMobilePanelOpen] = useState(false); // 모바일 우측 패널 토글
   const [layerDragOver, setLayerDragOver] = useState<string | null>(null); // 드래그 오버 중인 레이어 ID
   const layerDragIdRef = useRef<string | null>(null); // 드래그 중인 레이어 ID
 
@@ -3180,6 +3181,16 @@ export function BrushEditor({
             </div>
           )}
         </div>
+
+        {/* 모바일 전용: 패널 토글 버튼 */}
+        <button
+          className={`mobile-panel-toggle${mobilePanelOpen ? ' active' : ''}`}
+          onClick={() => setMobilePanelOpen(v => !v)}
+          aria-label={t('editor.layers')}
+          title={t('editor.layers')}
+        >
+          <Layers size={16} aria-hidden="true" />
+        </button>
       </div>
 
 
@@ -3191,33 +3202,33 @@ export function BrushEditor({
             <button onClick={() => { cancelCrop(); setTool('move'); }} className={`brush-tool-btn ${tool === 'move' ? 'brush-tool-btn-active' : ''}`} title={`${t('tools.move')} (V)`} aria-label={t('tools.move')}><Move size={18} aria-hidden="true" /></button>
             <button onClick={() => { cancelCrop(); setTool('wand'); }} className={`brush-tool-btn ${tool === 'wand' ? 'brush-tool-btn-active' : ''}`} title={`${t('tools.wand')} (W)`} aria-label={t('tools.wand')}><Wand2 size={18} aria-hidden="true" /></button>
           </div>
-          <div className="w-8 h-[1px] bg-[#333] mb-2" />
+          <div className="toolbar-divider-h w-8 h-[1px] bg-[#333] mb-2" />
           <div className="flex flex-col gap-1 mb-2">
             <button onClick={() => { stopMarching(); cancelCrop(); setTool('crop'); setCropRect(null); cropRectRef.current = null; startMarching(); }} className={`brush-tool-btn ${tool === 'crop' ? 'brush-tool-btn-active' : ''}`} title={`${t('tools.crop')} (C)`} aria-label={t('tools.crop')}><Crop size={18} aria-hidden="true" /></button>
             <button onClick={() => { stopMarching(); cancelCrop(); setTool('eyedropper'); }} className={`brush-tool-btn ${tool === 'eyedropper' ? 'brush-tool-btn-active' : ''}`} title={`${t('tools.eyedropper')} (I)`} aria-label={t('tools.eyedropper')}><Pipette size={18} aria-hidden="true" /></button>
           </div>
-          <div className="w-8 h-[1px] bg-[#333] mb-2" />
+          <div className="toolbar-divider-h w-8 h-[1px] bg-[#333] mb-2" />
           <div className="flex flex-col gap-1 mb-2">
             <button onClick={() => { stopMarching(); cancelCrop(); setTool('paint'); }} className={`brush-tool-btn ${tool === 'paint' ? 'brush-tool-btn-active' : ''}`} title={`${t('tools.brush')} (B)`} aria-label={t('tools.brush')}><Brush size={18} aria-hidden="true" /></button>
             <button onClick={() => { stopMarching(); cancelCrop(); setTool('erase'); }} className={`brush-tool-btn ${tool === 'erase' ? 'brush-tool-btn-active' : ''}`} title={`${t('tools.eraser')} (E)`} aria-label={t('tools.eraser')}><Eraser size={18} aria-hidden="true" /></button>
             <button onClick={() => { stopMarching(); cancelCrop(); setTool('restore'); }} className={`brush-tool-btn ${tool === 'restore' ? 'brush-tool-btn-active' : ''}`} title={`${t('tools.restore')} (R)`} aria-label={t('tools.restore')}><RefreshCcw size={18} aria-hidden="true" /></button>
             <button onClick={() => { stopMarching(); cancelCrop(); setTool('bucket'); }} className={`brush-tool-btn ${tool === 'bucket' ? 'brush-tool-btn-active' : ''}`} title={`${t('tools.bucket')} (G)`} aria-label={t('tools.bucket')}><PaintBucket size={18} aria-hidden="true" /></button>
           </div>
-          <div className="w-8 h-[1px] bg-[#333] mb-2" />
+          <div className="toolbar-divider-h w-8 h-[1px] bg-[#333] mb-2" />
           <div className="flex flex-col gap-1 mb-2">
             <button onClick={() => { stopMarching(); cancelCrop(); setTool('clone'); }} className={`brush-tool-btn ${tool === 'clone' ? 'brush-tool-btn-active' : ''}`} title={t('tools.clone')} aria-label={t('tools.clone')}><Stamp size={18} aria-hidden="true" /></button>
             <button onClick={() => { stopMarching(); cancelCrop(); setTool('heal'); }} className={`brush-tool-btn ${tool === 'heal' ? 'brush-tool-btn-active' : ''}`} title={t('tools.heal')} aria-label={t('tools.heal')}><LifeBuoy size={18} aria-hidden="true" /></button>
             <button onClick={() => { stopMarching(); cancelCrop(); setTool('blur-brush'); }} className={`brush-tool-btn ${tool === 'blur-brush' ? 'brush-tool-btn-active' : ''}`} title={t('tools.blur')} aria-label={t('tools.blur')}><Droplets size={18} aria-hidden="true" /></button>
           </div>
-          <div className="w-8 h-[1px] bg-[#333] mb-2" />
+          <div className="toolbar-divider-h w-8 h-[1px] bg-[#333] mb-2" />
           <div className="flex flex-col gap-1 mb-2">
             <button onClick={() => { stopMarching(); cancelCrop(); setTool('text'); }} className={`brush-tool-btn ${tool === 'text' ? 'brush-tool-btn-active' : ''}`} title={t('tools.text')} aria-label={t('tools.text')}><Type size={18} aria-hidden="true" /></button>
           </div>
 
-          <div className="w-8 h-[1px] bg-[#333] mb-3" />
+          <div className="toolbar-divider-h w-8 h-[1px] bg-[#333] mb-3" />
 
           {/* Color Picker Section (Photoshop Style) */}
-          <div className="flex flex-col items-center gap-2 mb-3 mt-2 relative">
+          <div className="toolbar-color-picker flex flex-col items-center gap-2 mb-3 mt-2 relative">
             <div className="relative w-10 h-10">
               {/* Background Color Square */}
               <div className="absolute bottom-0 right-0 z-0">
@@ -3266,9 +3277,9 @@ export function BrushEditor({
             </div>
           </div>
 
-          <div className="flex-1" />
+          <div className="toolbar-spacer flex-1" />
 
-          <div className="w-8 h-[1px] bg-[#333] mb-2" />
+          <div className="toolbar-divider-h w-8 h-[1px] bg-[#333] mb-2" />
           <button
             onClick={() => setZoom(z => Math.min(8, z + 0.2))}
             className="brush-tool-btn"
@@ -3303,7 +3314,7 @@ export function BrushEditor({
         {/* Center Canvas Area */}
         <div className="flex-1 flex flex-col min-w-0 bg-[#1e1e1e] relative">
           {/* Options Bar */}
-          <div className="h-10 border-b border-[#111] bg-[#2d2d2d] flex items-center px-4 gap-4 overflow-hidden flex-shrink-0">
+          <div className="editor-options-bar h-10 border-b border-[#111] bg-[#2d2d2d] flex items-center px-4 gap-4 overflow-hidden flex-shrink-0">
             <div className="flex items-center gap-2 pr-4 border-r border-[#444]">
               {tool === 'move' && <Move size={16} className="text-gray-400" />}
               {tool === 'wand' && <Wand2 size={16} className="text-gray-400" />}
@@ -3687,7 +3698,7 @@ export function BrushEditor({
                 </div>
               ) : (
                 <div
-                  className="absolute inset-0 flex items-center justify-center p-8 pointer-events-none"
+                  className="editor-upload-center absolute inset-0 flex items-center justify-center p-8 pointer-events-none"
                   style={{ paddingLeft: '110px', paddingTop: '110px' }} // 눈금자 제외 중앙
                 >
                   <div
@@ -3719,7 +3730,7 @@ export function BrushEditor({
           </div>
         </div>
 
-        <div className="brush-editor-sidebar-right flex flex-col min-w-[240px]">
+        <div className={cn("brush-editor-sidebar-right flex flex-col min-w-[240px]", mobilePanelOpen && "mobile-panel-open")}>
           {/* History — 기본 접힘 및 조건부 렌더링 */}
           <div className="flex-shrink-0 flex flex-col border-b border-[#111]">
             <button

@@ -52,7 +52,7 @@ export function Header({ onOpenSettings, activeTab, onTabChange }: HeaderProps) 
                 <div className="header-end">
                     <button onClick={onOpenSettings} className="btn-glass" aria-label={t('common.settings')}>
                         <Settings className="w-4 h-4" aria-hidden="true" />
-                        {t('common.settings')}
+                        <span className="settings-text">{t('common.settings')}</span>
                     </button>
                 </div>
             </div>

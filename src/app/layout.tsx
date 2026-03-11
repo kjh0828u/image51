@@ -61,11 +61,11 @@ export const metadata: Metadata = {
     },
   },
   alternates: {
-    canonical: "https://image51.rmntwndrs.com",
+    canonical: "https://image51.rmntwndrs.com/image-editor",
     languages: {
-      "ko-KR": "https://image51.rmntwndrs.com/?lang=ko",
-      "en-US": "https://image51.rmntwndrs.com/?lang=en",
-      "x-default": "https://image51.rmntwndrs.com/",
+      "ko-KR": "https://image51.rmntwndrs.com/image-editor?lang=ko",
+      "en-US": "https://image51.rmntwndrs.com/image-editor?lang=en",
+      "x-default": "https://image51.rmntwndrs.com/image-editor",
     },
   },
 };

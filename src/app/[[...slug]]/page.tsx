@@ -1,4 +1,7 @@
+import type { Metadata } from 'next';
 import HomeClient from './HomeClient';
+
+const BASE = 'https://image51.rmntwndrs.com';
 
 export async function generateStaticParams() {
   return [
@@ -10,6 +13,26 @@ export async function generateStaticParams() {
 
 interface PageProps {
   params: Promise<{ slug?: string[] }>;
+}
+
+export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+  const { slug } = await params;
+  const page = slug?.[0];
+
+  if (page === 'image-batch') {
+    return {
+      alternates: {
+        canonical: `${BASE}/image-batch`,
+      },
+    };
+  }
+
+  // /image-editor 또는 / → /image-editor canonical
+  return {
+    alternates: {
+      canonical: `${BASE}/image-editor`,
+    },
+  };
 }
 
 export default async function Page({ params }: PageProps) {

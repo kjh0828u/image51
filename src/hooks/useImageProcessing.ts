@@ -56,6 +56,8 @@ export function useImageProcessing() {
     if (targetImages.length === 1) {
       await handleSingleDownload(targetImages[0], skipPermissionRequest);
     } else {
+      // 만약 폴더 저장 모드가 설정되어있는데 여기까지 왔다면 권한 문제일 수 있으므로 
+      // 한 번 더 시도하거나 기본 ZIP 방식을 사용합니다.
       await downloadAsZip(targetImages);
       targetImages.forEach(img => currentState.updateImageStatus(img.id, { isDownloaded: true }));
     }
@@ -88,6 +90,12 @@ export function useImageProcessing() {
 
     const pendingImages = initialState.images.filter(img => img.status === 'pending');
     if (pendingImages.length === 0) return;
+
+    // 만약 자동 다운로드가 켜져있고 실제 폴더 저장 모드라면, 시작할 때 미리 권한을 한 번 물어봅니다.
+    // (작업 중간에 팝업이 뜨면 사용자 제스처 소실로 인해 실패하거나 다운로드 폴더로 리다이렉트 되는 것을 방지)
+    if (initialState.autoDownloadAfterProcessing && initialState.downloadMode === 'custom' && initialState.customDirectoryHandle) {
+      await verifyPermission(initialState.customDirectoryHandle, true, true);
+    }
 
     for (const img of pendingImages) {
       initialState.updateImageStatus(img.id, { status: 'processing' });

@@ -73,7 +73,7 @@
   "settings": {
     "download_mode": "Download Mode",
     "default_mode": "Default (Browser Download)",
-    "custom_mode": "Folder Select (File System API)",
+    "custom_mode": "Custom Folder Mode",
     "folder_unselected": "Selected:",
     "change_folder": "Choose/Change Folder"
   },

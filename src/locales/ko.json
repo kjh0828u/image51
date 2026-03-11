@@ -73,7 +73,7 @@
     "settings": {
         "download_mode": "다운로드 모드",
         "default_mode": "일반 모드 (브라우저 기본)",
-        "custom_mode": "폴더 선택 모드 (File System API)",
+        "custom_mode": "폴더 선택 모드",
         "folder_unselected": "선택된 폴더:",
         "change_folder": "폴더 선택/변경"
     },

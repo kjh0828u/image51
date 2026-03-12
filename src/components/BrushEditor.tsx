@@ -909,22 +909,19 @@ export function BrushEditor({
     ctx.clearRect(0, 0, bufferW, bufferH);
     if (!rect || rect.w <= 0 || rect.h <= 0) return;
 
-    // 실제 스케일은 상태값 zoom보다 캔버스 버퍼/이미지 너비 비율이 더 정확함
-    const s = bufferW / imageSize.w;
-
+    // 버퍼가 이미지 크기와 1:1이므로 스케일링 없이 그립니다.
     ctx.save();
-    ctx.scale(s, s);
 
     ctx.fillStyle = 'rgba(0,0,0,0.55)';
     ctx.fillRect(0, 0, imageSize.w, imageSize.h);
     ctx.clearRect(rect.x, rect.y, rect.w, rect.h);
 
     const t = (marchingOffset.current * 20);
-    ctx.setLineDash([6 / s, 4 / s]);
-    ctx.lineDashOffset = -t / s;
+    ctx.setLineDash([6 / zoom, 4 / zoom]);
+    ctx.lineDashOffset = -t / zoom;
 
     ctx.strokeStyle = 'rgba(0,0,0,0.4)';
-    ctx.lineWidth = 3 / s;
+    ctx.lineWidth = 3 / zoom;
     ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
 
     const colors = [[168, 85, 247], [255, 255, 255], [56, 189, 248], [236, 72, 153], [255, 255, 255]];
@@ -939,13 +936,13 @@ export function BrushEditor({
     const b = Math.round(b1 + (b2 - b1) * frac);
 
     ctx.strokeStyle = `rgb(${r},${g},${b})`;
-    ctx.lineWidth = 1.5 / s;
+    ctx.lineWidth = 1.5 / zoom;
     ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
     ctx.setLineDash([]);
     ctx.lineDashOffset = 0;
 
     ctx.strokeStyle = 'rgba(255,255,255,0.2)';
-    ctx.lineWidth = 1 / s;
+    ctx.lineWidth = 1 / zoom;
     for (let i = 1; i < 3; i++) {
       const gx = rect.x + (rect.w / 3) * i;
       const gy = rect.y + (rect.h / 3) * i;
@@ -953,7 +950,7 @@ export function BrushEditor({
       ctx.beginPath(); ctx.moveTo(rect.x, gy); ctx.lineTo(rect.x + rect.w, gy); ctx.stroke();
     }
 
-    const hs = 10 / s;
+    const hs = 10 / zoom;
     const corners = [
       { id: 'tl', x: rect.x - hs / 2, y: rect.y - hs / 2 },
       { id: 'tr', x: rect.x + rect.w - hs / 2, y: rect.y - hs / 2 },
@@ -966,7 +963,7 @@ export function BrushEditor({
     ];
     ctx.fillStyle = 'white';
     ctx.strokeStyle = '#4f46e5';
-    ctx.lineWidth = 1.5 / s;
+    ctx.lineWidth = 1.5 / zoom;
     for (const c of corners) {
       ctx.fillRect(c.x, c.y, hs, hs);
       ctx.strokeRect(c.x, c.y, hs, hs);
@@ -1028,7 +1025,7 @@ export function BrushEditor({
 
     ctx.clearRect(0, 0, overlay.width, overlay.height);
     ctx.save();
-    ctx.scale(zoom, zoom);
+    // 버퍼와 원본이 1:1이므로 별도 스케일링 불필요
 
     const pad = 6; // padding around text bounds
     const rx = bounds.x - pad;
@@ -1091,15 +1088,12 @@ export function BrushEditor({
     drawTextOutlineRef.current = drawTextOutline;
   }, [drawTextOutline]);
 
-  // ── 오버레이 캔버스 해상도 최적화 및 자동 리드로우 ──
-  // 줌 시에도 UI(크롭 가이드 등)가 흐릿해지지 않도록 내부 버퍼 크기를 디스플레이 크기에 맞춤
+  // ── 오버레이 캔버스 자동 리드로우 (줌 변경 시) ──
   useEffect(() => {
     const ov = overlayRef.current;
     if (ov && imageSize.w > 0) {
-      ov.width = Math.round(imageSize.w * zoom);
-      ov.height = Math.round(imageSize.h * zoom);
-
-      // 줌/사이즈 변경 시 캔버스가 초기화되므로 즉시 다시 그림
+      // 줌/사이즈 변경 시 버퍼를 직접 수정하지 않고(이미 core에서 w,h로 고정됨)
+      // 내용만 다시 그려줌으로써 어긋남 방지
       const currentCrop = cropRectRef.current;
       if (tool === 'crop' && currentCrop) {
         drawCropOverlay(currentCrop);
@@ -1108,7 +1102,7 @@ export function BrushEditor({
         drawTextOutline(selectedTextLayerIdRef.current, 'selected');
       }
     }
-  }, [zoom, imageSize, tool, drawCropOverlay, drawTextOutline]);
+  }, [zoom, tool, drawCropOverlay, drawTextOutline]);
 
   // ── 텍스트 마칭 타이머 ────────────────────────────────────
   // layerId/mode를 ref로 관리 → interval 콜백이 항상 최신 값으로 그림
@@ -3030,7 +3024,7 @@ export function BrushEditor({
       )}
 
       {isDraggingFile && (
-        <div className="absolute inset-0 z-[2000] flex flex-col items-center justify-center bg-indigo-600/20 backdrop-blur-sm border-2 border-indigo-400 border-dashed rounded-lg">
+        <div className="absolute inset-0 z-[2000] pointer-events-none flex flex-col items-center justify-center bg-indigo-600/20 backdrop-blur-sm border-2 border-indigo-400 border-dashed rounded-lg">
           <div className="w-16 h-16 bg-indigo-500 rounded-full flex items-center justify-center mb-4 shadow-xl">
             <ImagePlus size={32} className="text-white animate-bounce" />
           </div>

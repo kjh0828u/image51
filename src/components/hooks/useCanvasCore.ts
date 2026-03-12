@@ -64,7 +64,7 @@ export function useCanvasCore(imageUrl: string, onImageLoaded: () => void) {
 
     // ── 캔버스 크기 동기화 ────────────────────────────────────────────────
     const updateCanvasSize = useCallback((w: number, h: number) => {
-        [canvasRef, originalRef, maskRef, aiResultRef].forEach((ref) => {
+        [canvasRef, overlayRef, originalRef, maskRef, aiResultRef].forEach((ref) => {
             if (ref.current) {
                 ref.current.width = w;
                 ref.current.height = h;

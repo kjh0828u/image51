@@ -132,8 +132,6 @@ export function useSelectionTools({
         }
 
         ctx.clearRect(0, 0, overlay.width, overlay.height);
-        ctx.save();
-        ctx.scale(zoom, zoom);
 
         if (overlayCache.current) {
             const temp = document.createElement('canvas');
@@ -184,7 +182,6 @@ export function useSelectionTools({
         ctx.strokeStyle = `rgb(${r},${g},${b})`;
         drawPath();
         ctx.restore();
-        ctx.restore(); // for scale
     }, [originalRef, overlayRef, selectionRef, cachedSelKey, overlayCache, marchingSegs, isSliding, marchingOffset, zoom]);
 
     const startMarching = useCallback(() => {

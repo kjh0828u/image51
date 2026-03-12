@@ -24,6 +24,7 @@ import {
 import { useImageProcessing } from '@/hooks/useImageProcessing';
 import { usePresetDragDrop } from '@/hooks/usePresetDragDrop';
 import dynamic from 'next/dynamic';
+import { trackEvent } from '@/lib/gtag';
 
 // 일괄 처리 탭 동적 로드 (로딩 스피너를 빨리 멈추기 위해 백그라운드에서 로드)
 const BatchTabContent = dynamic(() => import('./BatchTabContent'), {
@@ -88,6 +89,7 @@ export default function HomeClient({ initialSlug }: HomeClientProps) {
     if (tab === 'batch') setShouldRenderBatch(true); // 탭 전환 시 즉시 렌더링 시작
     const newPath = tab === 'batch' ? '/image-batch' : '/image-editor';
     window.history.pushState({ tab }, '', newPath);
+    trackEvent('tab_changed', { tab_name: tab });
   }, []);
 
   // 멀티 탭 워크스페이스 상태
@@ -132,7 +134,7 @@ export default function HomeClient({ initialSlug }: HomeClientProps) {
   }, [store, t]);
 
   const handleDeletePreset = useCallback((id: string, name: string) => {
-    if (confirm(t('presets.delete_confirm', { name }))) store.setOption('activeProfileId', null); // 임시 방편 (실제 삭제는 아래)
+    if (confirm(t('presets.delete_confirm', { name }))) store.setActiveProfileId(null); // 임시 방편 (실제 삭제는 아래)
     // Confirm 로직은 store.deleteProfile(id) 호출용
     if (confirm(t('presets.delete_confirm'))) store.deleteProfile(id);
   }, [store, t]);

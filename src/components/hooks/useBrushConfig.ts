@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { trackEvent } from '@/lib/gtag';
 
 export type Tool = 'erase' | 'restore' | 'wand' | 'crop' | 'paint' | 'bucket' | 'eyedropper' | 'marquee-rect' | 'marquee-circle' | 'move' | 'text' | 'clone' | 'heal' | 'blur-brush';
 export type BrushShape = 'circle' | 'square' | 'rect-h' | 'rect-v' | 'rect-h-thin' | 'rect-v-thin' | 'diamond';
@@ -23,6 +24,7 @@ export function useBrushConfig() {
 
     useEffect(() => {
         toolRef.current = tool;
+        trackEvent('tool_activated', { tool_name: tool });
     }, [tool]);
 
     const swapColors = useCallback(() => {

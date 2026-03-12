@@ -2323,6 +2323,7 @@ export function BrushEditor({
       const blob = new Blob([svg], { type: 'image/svg+xml' });
       const filename = getDownloadFilename(originalName, 'image/svg+xml');
       performDownload(blob, filename);
+      trackEvent('download_complete', { method: 'single', format: 'svg', source: 'individual' });
       setShowDownloadPanel(false);
       return;
     }
@@ -2331,6 +2332,7 @@ export function BrushEditor({
       if (!blob) return;
       const filename = getDownloadFilename(originalName, blob.type);
       await performDownload(blob, filename);
+      trackEvent('download_complete', { method: 'single', format: blob.type, source: 'individual' });
       setShowDownloadPanel(false);
       setShowSaveToast(true);
     }, `image/${format}`, quality);

@@ -7,6 +7,7 @@
  */
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { trackEvent } from '../lib/gtag';
 
 /**
  * 개별 이미지 객체의 상태와 정보를 정의합니다.
@@ -115,6 +116,7 @@ export interface AppState extends AppOptions {
     images: ImageItem[];
     profiles: Profile[];
     activeProfileId: string | null;
+    setActiveProfileId: (id: string | null) => void;
     customDirectoryHandle: FileSystemDirectoryHandle | null;
 
     // Actions
@@ -164,6 +166,7 @@ export const useAppStore = create<AppState>()(
             images: [],
             profiles: [],
             activeProfileId: null,
+            setActiveProfileId: (id: string | null) => set({ activeProfileId: id }),
             customDirectoryHandle: null,
 
             ...defaultOptions,
@@ -185,6 +188,12 @@ export const useAppStore = create<AppState>()(
                     status: 'pending' as const,
                     originalSize: file.size,
                 }));
+
+                trackEvent('image_added', {
+                    file_count: files.length,
+                    total_size_kb: files.reduce((acc, f) => acc + f.size, 0) / 1024
+                });
+
                 return { images: [...remainingImages, ...newItems] };
             }),
 
@@ -203,13 +212,17 @@ export const useAppStore = create<AppState>()(
                 images: state.images.map(img => img.id === id ? { ...img, ...updates } : img)
             })),
 
-            setOption: <K extends keyof AppOptions>(key: K, value: AppOptions[K]) => set({ [key]: value } as any),
+            setOption: <K extends keyof AppOptions>(key: K, value: AppOptions[K]) => {
+                set({ [key]: value } as any);
+                trackEvent('option_changed', { option_name: key, option_value: value });
+            },
 
             setLanguage: (lang: 'auto' | 'ko' | 'en') => {
                 if (lang !== 'auto') {
                     i18n.changeLanguage(lang);
                 }
                 set({ language: lang });
+                trackEvent('language_switched', { to_lang: lang });
             },
 
             setCustomDirectoryHandle: (handle: FileSystemDirectoryHandle | null) => set({ customDirectoryHandle: handle }),
@@ -224,6 +237,7 @@ export const useAppStore = create<AppState>()(
                     options: extractImageOptions(state),
                 };
                 set({ profiles: [...state.profiles, newProfile], activeProfileId: newProfile.id });
+                trackEvent('preset_saved', { profile_name: name });
             },
 
             updateProfile: (id: string) => {
@@ -242,6 +256,7 @@ export const useAppStore = create<AppState>()(
                     if (profile.options.language && profile.options.language !== 'auto') {
                         i18n.changeLanguage(profile.options.language);
                     }
+                    trackEvent('preset_loaded', { profile_id: id });
                 }
             },
 
